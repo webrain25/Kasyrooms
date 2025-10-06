@@ -1,0 +1,169 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
+@import url('https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css');
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --background: hsl(225, 18%, 14%);
+  --foreground: hsl(0, 0%, 95%);
+  --card: hsl(225, 15%, 20%);
+  --card-foreground: hsl(0, 0%, 95%);
+  --popover: hsl(225, 15%, 20%);
+  --popover-foreground: hsl(0, 0%, 95%);
+  --primary: hsl(43, 73%, 52%);
+  --primary-foreground: hsl(225, 18%, 14%);
+  --secondary: hsl(225, 13%, 17%);
+  --secondary-foreground: hsl(0, 0%, 95%);
+  --muted: hsl(220, 9%, 60%);
+  --muted-foreground: hsl(220, 9%, 60%);
+  --accent: hsl(225, 15%, 23%);
+  --accent-foreground: hsl(0, 0%, 95%);
+  --destructive: hsl(0, 72%, 51%);
+  --destructive-foreground: hsl(0, 0%, 95%);
+  --border: hsl(225, 13%, 25%);
+  --input: hsl(225, 15%, 20%);
+  --ring: hsl(43, 73%, 52%);
+  --chart-1: hsl(43, 73%, 52%);
+  --chart-2: hsl(159, 78%, 36%);
+  --chart-3: hsl(42, 93%, 56%);
+  --chart-4: hsl(147, 78%, 42%);
+  --chart-5: hsl(341, 75%, 51%);
+  --sidebar: hsl(225, 13%, 17%);
+  --sidebar-foreground: hsl(0, 0%, 95%);
+  --sidebar-primary: hsl(43, 73%, 52%);
+  --sidebar-primary-foreground: hsl(225, 18%, 14%);
+  --sidebar-accent: hsl(225, 15%, 23%);
+  --sidebar-accent-foreground: hsl(0, 0%, 95%);
+  --sidebar-border: hsl(225, 13%, 25%);
+  --sidebar-ring: hsl(43, 73%, 52%);
+  --font-sans: 'Inter', system-ui, sans-serif;
+  --font-serif: Georgia, serif;
+  --font-mono: Menlo, monospace;
+  --radius: 0.75rem;
+  
+  /* Kasynoir specific colors */
+  --gold-primary: hsl(43, 73%, 52%);
+  --gold-accent: hsl(51, 100%, 50%);
+  --gold-dark: hsl(43, 73%, 35%);
+  --online: hsl(142, 71%, 45%);
+  --offline: hsl(0, 72%, 51%);
+  --card-hover: hsl(225, 15%, 23%);
+}
+
+.dark {
+  --background: hsl(225, 18%, 14%);
+  --foreground: hsl(0, 0%, 95%);
+  --card: hsl(225, 15%, 20%);
+  --card-foreground: hsl(0, 0%, 95%);
+  --popover: hsl(225, 15%, 20%);
+  --popover-foreground: hsl(0, 0%, 95%);
+  --primary: hsl(43, 73%, 52%);
+  --primary-foreground: hsl(225, 18%, 14%);
+  --secondary: hsl(225, 13%, 17%);
+  --secondary-foreground: hsl(0, 0%, 95%);
+  --muted: hsl(220, 9%, 60%);
+  --muted-foreground: hsl(220, 9%, 60%);
+  --accent: hsl(225, 15%, 23%);
+  --accent-foreground: hsl(0, 0%, 95%);
+  --destructive: hsl(0, 72%, 51%);
+  --destructive-foreground: hsl(0, 0%, 95%);
+  --border: hsl(225, 13%, 25%);
+  --input: hsl(225, 15%, 20%);
+  --ring: hsl(43, 73%, 52%);
+}
+
+@layer base {
+  * {
+    @apply border-border transition-all duration-200;
+  }
+
+  body {
+    @apply bg-background text-foreground font-sans antialiased;
+    font-family: var(--font-sans);
+  }
+
+  /* Custom scrollbar */
+  ::-webkit-scrollbar {
+    width: 8px;
+    height: 8px;
+  }
+
+  ::-webkit-scrollbar-track {
+    background: var(--secondary);
+  }
+
+  ::-webkit-scrollbar-thumb {
+    background: var(--card);
+    border-radius: 4px;
+  }
+
+  ::-webkit-scrollbar-thumb:hover {
+    background: var(--card-hover);
+  }
+}
+
+@layer components {
+  .model-card {
+    @apply relative overflow-hidden cursor-pointer;
+  }
+
+  .model-card:hover {
+    @apply transform -translate-y-1;
+  }
+
+  .model-card:hover .model-overlay {
+    @apply opacity-100;
+  }
+
+  .model-overlay {
+    @apply opacity-0 transition-opacity duration-300;
+  }
+
+  .btn-gold {
+    background: linear-gradient(135deg, var(--gold-primary), var(--gold-accent));
+    @apply transition-all duration-300;
+  }
+
+  .btn-gold:hover {
+    @apply transform -translate-y-0.5 shadow-lg;
+    box-shadow: 0 8px 20px rgba(212, 175, 55, 0.4);
+  }
+
+  .status-online {
+    animation: pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+  }
+
+  .category-filter.active {
+    background: linear-gradient(135deg, var(--gold-primary), var(--gold-accent));
+    @apply text-background;
+  }
+
+  @keyframes pulse {
+    0%, 100% {
+      opacity: 1;
+    }
+    50% {
+      opacity: 0.5;
+    }
+  }
+}
+
+@layer utilities {
+  .no-scrollbar {
+    -ms-overflow-style: none;
+    scrollbar-width: none;
+  }
+
+  .no-scrollbar::-webkit-scrollbar {
+    display: none;
+  }
+
+  .line-clamp-2 {
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+  }
+}
