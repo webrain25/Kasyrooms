@@ -73,6 +73,18 @@ export class MemStorage {
       const id = randomUUID();
       this.models.set(id, { ...m, id, createdAt: new Date().toISOString() });
     }
+
+    // Ensure a demo model bound to the demo 'modella' user exists with a stable id 'm-001'.
+    // This allows the demo model account (id 'm-001') to update its own profile/photos via guards.
+    if (!this.models.has('m-001')) {
+      const base = sample[0];
+      this.models.set('m-001', {
+        ...base,
+        id: 'm-001',
+        name: 'Modella Demo',
+        createdAt: new Date().toISOString()
+      });
+    }
   }
 
   async createUser(u: {username:string; email?:string; externalUserId?:string; role?: User['role'];}): Promise<User> {
