@@ -1,0 +1,52 @@
+DATENSCHUTZERKLÄRUNG – KASYROOMS
+Letzte Aktualisierung: 17. Oktober 2025
+
+Verantwortlicher: TARIQ S.R.L. (handelnd als „Kasyrooms“)
+Anschrift: str. Episcop Augustin Pacha Nr. 10, SAD7, Büro 1A, Aufgang A, 1. Etage, Timișoara, Rumänien
+Steuer-ID: 51753429 – Handelsregister: J2025032709004
+E-Mail: privacy@kasyrooms.com
+
+Diese Information erfolgt gemäß Verordnung (EU) 2016/679 (DSGVO).
+
+1) Verarbeitete Daten
+- Kontodaten (Benutzername, E-Mail, Passwort-Hash).
+- Nutzungs- und Protokolldaten (IP, Gerät, Browser, Zeitstempel).
+- Transaktionsdaten durch PCI-DSS-konforme Anbieter (Kasyrooms speichert keine Kartennummern).
+- Nutzerinhalte (Bilder/Video/Chat).
+- Alters-/ID-Prüfung (Ergebnis und minimale Attribute; keine vollständige Dokumentkopie bei zertifizierten Anbietern).
+
+2) Zwecke & Rechtsgrundlagen
+- Vertragserfüllung und Dienstleistung (Art. 6(1)(b) DSGVO).
+- Gesetzliche Pflichten & Sicherheit (Art. 6(1)(c) und 6(1)(f)).
+- Einwilligung für optionale Funktionen (Art. 6(1)(a)).
+
+3) Aufbewahrung
+- Konto: für die Vertragsdauer.
+- Sicherheitsprotokolle: bis zu 12 Monate.
+- Buchhaltungsunterlagen: gesetzlich vorgeschrieben.
+- Bei Kontoschließung: Löschung/Anonymisierung binnen 24 Monaten (sofern keine längere Aufbewahrung erforderlich ist).
+
+4) Empfänger
+- Technische Dienstleister (Hosting/VPS, CDN, E-Mail, Zahlungen, Alters-/KYC-Prüfung) als Auftragsverarbeiter.
+- Behörden, soweit erforderlich.
+- Kein Verkauf personenbezogener Daten.
+
+5) Übermittlungen in Drittländer
+- Möglich je nach eingesetzten Diensten (E-Mail/Analytics). Angemessene Garantien (SCC/Angemessenheitsbeschlüsse).
+
+6) Betroffenenrechte
+- Auskunft, Berichtigung, Löschung, Einschränkung, Datenübertragbarkeit, Widerspruch.
+- Widerruf von Einwilligungen.
+Kontakt: privacy@kasyrooms.com
+
+7) Minderjährige
+Zugang nur für Personen ab 18 Jahren. Altersprüfung ist verpflichtend.
+
+8) Sicherheit
+TLS-Verschlüsselung, Zugriffskontrollen, Protokollierung, Datenminimierung, Backups. Meldung von Datenschutzverletzungen gemäß DSGVO.
+
+9) Cookies
+Siehe Cookie-Richtlinie. Nicht notwendige Cookies nur mit Einwilligung.
+
+10) Kontakt
+privacy@kasyrooms.com oder Ihre Aufsichtsbehörde.

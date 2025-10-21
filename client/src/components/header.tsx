@@ -1,83 +1,227 @@
-import { useState } from "react";
+import { useEffect, useRef, useState, useLayoutEffect } from "react";
+import { useSearch } from "@/lib/searchContext";
+import { useAuth } from "@/lib/authContext";
+import { useFavorites } from "@/lib/favoritesContext";
+// Use logo from public root so it can be swapped without rebuilding
+import { useI18n } from "@/lib/i18n";
+import { BRAND } from "@/lib/brand";
+import { useQuery } from "@tanstack/react-query";
 
 export default function Header() {
+  const { t } = useI18n();
+  const headerRef = useRef<HTMLElement | null>(null);
   const [isSearchVisible, setIsSearchVisible] = useState(false);
+  const { searchTerm, setSearchTerm, setIsSearchActive } = useSearch();
+  const { user, isAuthenticated, isLoading, logout } = useAuth();
+  const { favorites } = useFavorites();
+  // Fetch models to validate favorites against actual existing IDs
+  const { data: allModels = [] } = useQuery({
+    queryKey: ["models", "for-favorites-badge"],
+    queryFn: async () => {
+      const res = await fetch("/api/models");
+      if (!res.ok) return [];
+      return res.json();
+    },
+    enabled: isAuthenticated // don't fetch when logged out
+  });
+  const validIds = new Set((allModels as any[]).map((m) => m.id));
+  const validFavoritesCount = favorites.filter((id) => validIds.has(id)).length;
+
+  const handleSearchChange = (value: string) => {
+    setSearchTerm(value);
+    setIsSearchActive(value.length > 0);
+  };
+
+  const handleSearchSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    setIsSearchActive(searchTerm.length > 0);
+  };
+
+  const handleLogout = () => {
+    logout();
+    window.location.href = "/";
+  };
+
+  useLayoutEffect(() => {
+    // Preload last known header height to reduce first-paint layout shift
+    const cached = sessionStorage.getItem('appHeaderH');
+    if (cached) {
+      document.documentElement.style.setProperty('--app-header-h', `${cached}px`);
+    }
+  }, []);
+
+  useEffect(() => {
+    const el = headerRef.current;
+    if (!el) return;
+    const setVar = () => {
+      const h = el.getBoundingClientRect().height;
+      const hp = Math.ceil(h);
+      document.documentElement.style.setProperty('--app-header-h', `${hp}px`);
+      sessionStorage.setItem('appHeaderH', String(hp));
+    };
+    setVar();
+    const ro = new ResizeObserver(setVar);
+    ro.observe(el);
+    window.addEventListener('orientationchange', setVar);
+    window.addEventListener('resize', setVar);
+    return () => {
+      ro.disconnect();
+      window.removeEventListener('orientationchange', setVar);
+      window.removeEventListener('resize', setVar);
+    };
+  }, []);
 
   return (
-    <header className="sticky top-0 z-50 bg-secondary/95 backdrop-blur-sm border-b border-border" data-testid="header">
+    <header ref={headerRef} className="bg-transparent">
       <div className="container mx-auto px-4">
-        <div className="flex items-center justify-between h-16">
-          {/* Logo */}
-          <div className="flex items-center space-x-8">
-            <a href="/" className="flex items-center space-x-2" data-testid="logo">
-              <div className="w-10 h-10 bg-gradient-to-br from-gold-primary to-gold-accent rounded-lg flex items-center justify-center">
-                <i className="fas fa-crown text-background text-xl"></i>
-              </div>
-              <span className="text-xl font-bold text-foreground">
-                Kasynoir <span className="text-gold-primary">Live</span>
-              </span>
-            </a>
-            
-            {/* Navigation */}
-            <nav className="hidden lg:flex items-center space-x-6" data-testid="navigation">
-              <a href="#" className="text-foreground hover:text-gold-primary font-medium" data-testid="nav-home">Home</a>
-              <a href="#" className="text-muted hover:text-gold-primary font-medium" data-testid="nav-models">Models</a>
-              <a href="#" className="text-muted hover:text-gold-primary font-medium" data-testid="nav-categories">Categories</a>
-              <a href="#" className="text-muted hover:text-gold-primary font-medium" data-testid="nav-vip">VIP Club</a>
-              <a href="#" className="text-muted hover:text-gold-primary font-medium" data-testid="nav-promotions">Promotions</a>
-            </nav>
-          </div>
-          
-          {/* Search and Auth */}
-          <div className="flex items-center space-x-4">
-            {/* Search */}
-            <div className="hidden md:flex items-center bg-card rounded-lg px-4 py-2 w-64" data-testid="search-container">
-              <i className="fas fa-search text-muted mr-2"></i>
-              <input
-                type="text"
-                placeholder="Search models..."
-                className="bg-transparent border-none outline-none text-sm text-foreground placeholder-muted w-full"
-                data-testid="input-search"
+        <div className="flex items-center justify-between h-20">
+          <div className="flex items-center space-x-3">
+            <a href="/" className="flex items-center space-x-2">
+              <img
+                src={BRAND.LOGO_SVG}
+                alt={BRAND.ALT}
+                className="h-16 sm:h-20 w-auto select-none [filter:drop-shadow(0_0_1px_rgba(0,0,0,0.5))]"
+                loading="eager"
+                fetchPriority="high"
+                decoding="async"
               />
-            </div>
-            
-            {/* Mobile search toggle */}
-            <button
-              className="md:hidden text-foreground hover:text-gold-primary"
-              onClick={() => setIsSearchVisible(!isSearchVisible)}
-              data-testid="button-search-mobile"
+            </a>
+          </div>
+          <form onSubmit={handleSearchSubmit} className="hidden md:flex items-center bg-card rounded-lg px-4 py-2 w-64">
+            <svg
+              xmlns="http://www.w3.org/2000/svg"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              className="w-4 h-4 text-muted mr-2"
+              aria-hidden="true"
             >
-              <i className="fas fa-search text-xl"></i>
-            </button>
-            
-            {/* Auth Buttons */}
-            <button className="hidden md:block px-6 py-2 bg-card hover:bg-card-hover text-foreground rounded-lg font-medium" data-testid="button-login">
-              Login
-            </button>
-            <button className="px-6 py-2 btn-gold text-background rounded-lg font-semibold shadow-lg" data-testid="button-register">
-              Register
-            </button>
-            
-            {/* Mobile Menu */}
-            <button className="lg:hidden text-foreground" data-testid="button-mobile-menu">
-              <i className="fas fa-bars text-xl"></i>
+              <circle cx="11" cy="11" r="7"></circle>
+              <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
+            </svg>
+            <input
+              type="text"
+              placeholder={t('searchPlaceholder')}
+              value={searchTerm}
+              onChange={(e) => handleSearchChange(e.target.value)}
+              className="bg-transparent border-none outline-none text-sm text-foreground placeholder-muted w-full"
+            />
+          </form>
+          <div className="flex items-center space-x-2">
+            {/* Hide favorites link until auth resolved to avoid flash when logged out */}
+            {(!isLoading && isAuthenticated) && favorites && (
+              <a href="/favorites" className="px-3 py-2 rounded-lg hover:bg-accent relative">
+                <svg
+                  xmlns="http://www.w3.org/2000/svg"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="2"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  className="w-5 h-5 text-gold-primary mr-1 inline-block align-middle"
+                  aria-hidden="true"
+                >
+                  <path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"/>
+                </svg>
+                <span className="hidden md:inline">{t('favorites')}</span>
+                {validFavoritesCount > 0 && (
+                  <span className="absolute -top-1 -right-1 bg-gold-primary text-background text-xs rounded-full w-5 h-5 flex items-center justify-center font-bold">
+                    {validFavoritesCount > 99 ? '99+' : validFavoritesCount}
+                  </span>
+                )}
+              </a>
+            )}
+            {!isAuthenticated && !isLoading && (
+              <div className="flex items-center space-x-2">
+                <a href="/login" className="px-4 py-2 text-sm font-medium rounded-lg border border-border hover:bg-accent transition-colors">
+                  {t('login')}
+                </a>
+                <a href="/register" className="px-4 py-2 text-sm font-medium rounded-lg bg-gold-primary text-background hover:opacity-90 transition-opacity">
+                  {t('signup')}
+                </a>
+              </div>
+            )}
+            {isAuthenticated && (
+              <>
+                <span className="text-sm text-muted">{t('welcome')}, {user?.username}</span>
+                {/* Role shortcuts */}
+                {user?.role === 'model' && (
+                  <a href="/dashboard/model" className="px-3 py-2 rounded-lg hover:bg-accent text-sm">Dashboard</a>
+                )}
+                {user?.role === 'admin' && (
+                  <a href="/admin" className="px-3 py-2 rounded-lg hover:bg-accent text-sm">Admin</a>
+                )}
+                <button 
+                  onClick={handleLogout}
+                  className="px-4 py-2 rounded-lg bg-transparent border border-border hover:bg-accent"
+                >
+                  <svg
+                    xmlns="http://www.w3.org/2000/svg"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="2"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    className="w-4 h-4 inline-block align-middle mr-2"
+                    aria-hidden="true"
+                  >
+                    <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" />
+                    <polyline points="16 17 21 12 16 7" />
+                    <line x1="21" y1="12" x2="9" y2="12" />
+                  </svg>
+                  {t('logout')}
+                </button>
+                {/* Language selector removed from header as per request */}
+                </>
+              )}
+            {/* Guest language selector removed; handled in footer now */}
+            <button type="button" aria-label="Toggle search" className="md:hidden p-3 min-h-[44px] min-w-[44px]" onClick={()=>setIsSearchVisible(v=>!v)}>
+              <svg
+                xmlns="http://www.w3.org/2000/svg"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                className="w-5 h-5 text-muted"
+                aria-hidden="true"
+              >
+                <circle cx="11" cy="11" r="7"></circle>
+                <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
+              </svg>
             </button>
           </div>
         </div>
-        
-        {/* Mobile Search */}
         {isSearchVisible && (
-          <div className="md:hidden py-4 border-t border-border" data-testid="mobile-search">
-            <div className="flex items-center bg-card rounded-lg px-4 py-2">
-              <i className="fas fa-search text-muted mr-2"></i>
-              <input
-                type="text"
-                placeholder="Search models..."
-                className="bg-transparent border-none outline-none text-sm text-foreground placeholder-muted w-full"
-                data-testid="input-search-mobile"
-              />
-            </div>
-          </div>
+          <form onSubmit={handleSearchSubmit} className="md:hidden mt-2 flex items-center bg-card rounded-lg px-3 py-2">
+            <svg
+              xmlns="http://www.w3.org/2000/svg"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              className="w-4 h-4 text-muted mr-2"
+              aria-hidden="true"
+            >
+              <circle cx="11" cy="11" r="7"></circle>
+              <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
+            </svg>
+            <input
+              type="text"
+              placeholder={t('searchPlaceholder')}
+              value={searchTerm}
+              onChange={(e) => handleSearchChange(e.target.value)}
+              className="bg-transparent border-none outline-none text-sm text-foreground placeholder-muted w-full"
+            />
+          </form>
         )}
       </div>
     </header>

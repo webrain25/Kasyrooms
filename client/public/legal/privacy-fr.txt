@@ -1,0 +1,52 @@
+POLITIQUE DE CONFIDENTIALITÉ – KASYROOMS
+Dernière mise à jour : 17 octobre 2025
+
+Responsable du traitement : TARIQ S.R.L. (opérant sous le nom « Kasyrooms »)
+Adresse : str. Episcop Augustin Pacha n° 10, SAD7, Bureau 1A, Esc. A, 1er étage, Timișoara, Roumanie
+CUI : 51753429 – Registre du Commerce : J2025032709004
+E-mail : privacy@kasyrooms.com
+
+Cette notice est fournie conformément au Règlement (UE) 2016/679 (RGPD).
+
+1) Données traitées
+- Données de compte (identifiant, e-mail, mot de passe haché).
+- Données d’utilisation et journaux (IP, appareil, navigateur, horodatage).
+- Données de transaction traitées par des prestataires certifiés PCI-DSS (Kasyrooms ne stocke pas les numéros de carte).
+- Contenus générés par l’utilisateur (images/vidéo/chat).
+- Données de vérification d’âge/identité (résultat et attributs minimaux ; pas de copie intégrale du document si prestataires certifiés).
+
+2) Finalités & bases légales
+- Fourniture de service et contrat (art. 6(1)(b) RGPD).
+- Obligations légales & sécurité (art. 6(1)(c) et 6(1)(f)).
+- Consentement pour fonctionnalités optionnelles (art. 6(1)(a)).
+
+3) Conservation
+- Compte : pendant la relation contractuelle.
+- Journaux de sécurité : jusqu’à 12 mois.
+- Documents comptables : selon la loi.
+- Clôture du compte : suppression/anonymisation sous 24 mois (sauf obligations contraires).
+
+4) Destinataires
+- Prestataires techniques (hébergement/VPS, CDN, e-mail, paiements, vérification d’âge/KYC) en qualité de sous-traitants.
+- Autorités, si requis.
+- Aucun commerce des données personnelles.
+
+5) Transferts internationaux
+- Possibles selon les services utilisés (e-mail/analytics). Garanties appropriées (clauses types/décisions d’adéquation).
+
+6) Droits
+- Accès, rectification, effacement, limitation, portabilité, opposition.
+- Retrait du consentement le cas échéant.
+Contact : privacy@kasyrooms.com
+
+7) Mineurs
+Accès interdit aux moins de 18 ans. Vérification d’âge obligatoire.
+
+8) Sécurité
+Chiffrement TLS, contrôles d’accès, journalisation, minimisation, sauvegardes. Notification des violations selon le RGPD.
+
+9) Cookies
+Voir la Cookie Policy. Cookies non essentiels activés uniquement avec consentement.
+
+10) Contact
+privacy@kasyrooms.com ou votre autorité de contrôle.

@@ -1,0 +1,1 @@
+export default function VipMembership() { return null; }

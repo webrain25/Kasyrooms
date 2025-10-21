@@ -1,4 +1,6 @@
-import { useState, useEffect } from "react";
+import { useEffect, useState } from "react";
+import { useLocation } from "wouter";
+import { useI18n } from "@/lib/i18n";
 
 const slides = [
   {
@@ -26,6 +28,19 @@ const slides = [
 
 export default function HeroCarousel() {
   const [currentSlide, setCurrentSlide] = useState(0);
+  const [, setLocation] = useLocation();
+  const { t } = useI18n();
+
+  const goToLogin = () => {
+    setLocation("/login");
+  };
+
+  const scrollToModels = () => {
+    const modelsSection = document.getElementById('models');
+    if (modelsSection) {
+      modelsSection.scrollIntoView({ behavior: 'smooth' });
+    }
+  };
 
   useEffect(() => {
     const timer = setInterval(() => {
@@ -84,12 +99,20 @@ export default function HeroCarousel() {
                       {slide.subtitle}
                     </p>
                     <div className="flex flex-wrap gap-4">
-                      <button className="px-8 py-3 btn-gold text-background rounded-lg font-semibold text-lg shadow-xl" data-testid="button-start-show">
+                      <button 
+                        onClick={goToLogin}
+                        className="px-8 py-3 btn-gold text-background rounded-lg font-semibold text-lg shadow-xl inline-flex items-center cursor-pointer" 
+                        data-testid="button-start-show"
+                      >
                         <i className="fas fa-video mr-2"></i>
-                        Start Private Show
+                        {t('startPrivateShow')}
                       </button>
-                      <button className="px-8 py-3 bg-card/80 backdrop-blur-sm hover:bg-card-hover text-foreground rounded-lg font-semibold text-lg" data-testid="button-browse-models">
-                        Browse Models
+                      <button 
+                        onClick={scrollToModels}
+                        className="px-8 py-3 bg-card/80 backdrop-blur-sm hover:bg-card-hover text-foreground rounded-lg font-semibold text-lg inline-flex items-center cursor-pointer" 
+                        data-testid="button-browse-models"
+                      >
+                        {t('browseModels')}
                       </button>
                     </div>
                   </div>

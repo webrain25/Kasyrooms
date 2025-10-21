@@ -2,14 +2,42 @@ import Header from "@/components/header";
 import HeroCarousel from "@/components/hero-carousel";
 import CategoryFilters from "@/components/category-filters";
 import ModelGrid from "@/components/model-grid";
-import VipPromotion from "@/components/vip-promotion";
 import Footer from "@/components/footer";
-import { useState } from "react";
+import { useState, useEffect } from "react";
+import { useSearch } from "@/lib/searchContext";
+import { useLocation } from "wouter";
+import { useAuth } from "@/lib/authContext";
 
 export default function Home() {
   const [activeFilter, setActiveFilter] = useState("online");
+  const { searchTerm, isSearchActive } = useSearch();
+  const [, setLocation] = useLocation();
+  const { isAuthenticated } = useAuth();
+
+  // If user logs out while 'favorites' is active, reset to 'online'
+  useEffect(() => {
+    if (!isAuthenticated && activeFilter === 'favorites') {
+      setActiveFilter('online');
+    }
+  }, [isAuthenticated, activeFilter]);
+
+  const goToAllModels = () => {
+    setLocation("/models");
+  };
 
   const getFilterConfig = () => {
+    if (isSearchActive) {
+      return {
+        title: `Search Results`,
+        icon: "fas fa-search",
+        iconClass: "text-gold-primary",
+        subtitle: `Results for "${searchTerm}"`,
+        filter: {},
+        showRank: false,
+        testId: "section-search-results"
+      };
+    }
+
     switch (activeFilter) {
       case "online":
         return {
@@ -31,16 +59,7 @@ export default function Home() {
           showRank: true,
           testId: "section-top-models"
         };
-      case "vip":
-        return {
-          title: "VIP Models",
-          icon: "fas fa-crown",
-          iconClass: "text-gold-primary",
-          subtitle: "Exclusive premium content creators",
-          filter: { isVip: true },
-          showRank: false,
-          testId: "section-vip-models"
-        };
+      
       case "new":
         return {
           title: "New Models",
@@ -86,33 +105,44 @@ export default function Home() {
 
   const config = getFilterConfig();
 
+  const handleFilterChange = (id: string) => {
+    setActiveFilter(id);
+    // Ensure the models section is fully visible below sticky header/filters
+    requestAnimationFrame(() => {
+      const el = document.getElementById('models');
+      if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    });
+  };
+
   return (
     <div className="min-h-screen bg-background">
       <Header />
-      <HeroCarousel />
-      <CategoryFilters activeFilter={activeFilter} onFilterChange={setActiveFilter} />
+      {!isSearchActive && <HeroCarousel />}
+  {!isSearchActive && <CategoryFilters activeFilter={activeFilter} onFilterChange={handleFilterChange} />}
       
       {/* Main Filtered Section */}
-      <section className="py-12 bg-background" data-testid={config.testId}>
+  <section id="models" className="py-12 bg-background" style={{ scrollMarginTop: '16px' }} data-testid={config.testId}>
         <div className="container mx-auto px-4">
           <div className="flex items-center justify-between mb-8">
             <div>
-              <h2 className="text-3xl font-bold mb-2 flex items-center" data-testid={`heading-${activeFilter}-models`}>
+              <h2 className="text-3xl font-bold mb-2 flex items-center" data-testid={`heading-${isSearchActive ? 'search' : activeFilter}-models`}>
                 <i className={`${config.icon} ${config.iconClass} mr-3`}></i>
                 {config.title}
               </h2>
               <p className="text-muted">{config.subtitle}</p>
             </div>
-            <a href="#" className="flex items-center space-x-2 text-gold-primary hover:text-gold-accent font-semibold" data-testid={`link-view-all-${activeFilter}`}>
-              <span>View all</span>
-              <i className="fas fa-arrow-right"></i>
-            </a>
+            {!isSearchActive && (
+              <button onClick={goToAllModels} className="flex items-center space-x-2 text-gold-primary hover:text-gold-accent font-semibold cursor-pointer" data-testid={`link-view-all-${activeFilter}`}>
+                <span>View all</span>
+                <i className="fas fa-arrow-right"></i>
+              </button>
+            )}
           </div>
-          <ModelGrid filter={config.filter} showRank={config.showRank} />
+          <ModelGrid filter={config.filter} showRank={config.showRank} minimal />
         </div>
       </section>
 
-      <VipPromotion />
+  {/* VIP promotion removed */}
       <Footer />
     </div>
   );

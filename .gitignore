@@ -1,3 +1,31 @@
+# Node & tooling
+node_modules/
+dist/
+build/
+.cache/
+.turbo/
+.pnpm-store/
+pnpm-lock.yaml
+yarn.lock
+
+# Env & logs
+.env
+.env.*
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# OS/editor
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+
+# TypeScript build info
+node_modules/typescript/tsbuildinfo
+
+# Coverage
+coverage/
 node_modules
 dist
 .DS_Store

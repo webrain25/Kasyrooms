@@ -17,11 +17,15 @@ export const models = pgTable("models", {
   languages: text("languages").array().notNull(),
   specialties: text("specialties").array().notNull(),
   isOnline: boolean("is_online").default(false),
-  isVip: boolean("is_vip").default(false),
+  // New: busy state when in a private show
+  isBusy: boolean("is_busy").default(false),
   isNew: boolean("is_new").default(false),
   rating: integer("rating").default(0), // out of 50 (5.0 stars * 10)
   viewerCount: integer("viewer_count").default(0),
   profileImage: text("profile_image").notNull(),
+  // Simple stats for admin
+  privateShows: integer("private_shows").default(0),
+  hoursOnline: integer("hours_online").default(0),
   createdAt: timestamp("created_at").default(sql`now()`),
 });
 

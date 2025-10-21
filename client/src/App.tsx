@@ -1,27 +1,84 @@
 import { Switch, Route } from "wouter";
+import { Suspense, lazy } from "react";
 import { queryClient } from "./lib/queryClient";
 import { QueryClientProvider } from "@tanstack/react-query";
 import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
-import NotFound from "@/pages/not-found";
-import Home from "@/pages/home";
+import { SearchProvider } from "@/lib/searchContext";
+import { FavoritesProvider } from "@/lib/favoritesContext";
+import { I18nProvider } from "@/lib/i18n";
+import { AuthProvider } from "@/lib/authContext";
+import { withRole } from "@/components/route-guards";
+const NotFound = lazy(() => import("@/pages/not-found"));
+const Home = lazy(() => import("@/pages/home"));
+const ModelProfile = lazy(() => import("@/pages/model-profile"));
+const Login = lazy(() => import("@/pages/login"));
+const Register = lazy(() => import("@/pages/register"));
+const AllModels = lazy(() => import("@/pages/models"));
+const Favorites = lazy(() => import("@/pages/favorites"));
+const BecomeModelPage = lazy(() => import("@/pages/become-model"));
+const HelpPage = lazy(() => import("@/pages/support/help"));
+const ContactPage = lazy(() => import("@/pages/support/contact"));
+const TermsPage = lazy(() => import("@/pages/terms"));
+const PrivacyPage = lazy(() => import("@/pages/privacy"));
+const CookiesPage = lazy(() => import("@/pages/cookies"));
+const SupportLanding = lazy(() => import("@/pages/support"));
+const FAQPage = lazy(() => import("@/pages/support/faq"));
+const DmcaPage = lazy(() => import("@/pages/dmca"));
+const GuidelinesPage = lazy(() => import("@/pages/guidelines"));
+const RefundPolicyPage = lazy(() => import("@/pages/refund"));
+const AdminDashboard = lazy(() => import("@/pages/admin"));
+const ModelDashboard = lazy(() => import("@/pages/model-dashboard"));
+const AgeCompliance = lazy(() => import("@/pages/age-compliance"));
 
 function Router() {
+  const AdminOnly = withRole(['admin'], AdminDashboard);
+  const ModelOnly = withRole(['model'], ModelDashboard);
   return (
-    <Switch>
-      <Route path="/" component={Home} />
-      <Route component={NotFound} />
-    </Switch>
+    <Suspense fallback={<div className="p-6 text-center">Loading…</div>}>
+      <Switch>
+        <Route path="/" component={Home} />
+        {/* Favorites page performs its own auth redirect */}
+        <Route path="/favorites" component={Favorites} />
+        <Route path="/models" component={AllModels} />
+        <Route path="/become-model" component={BecomeModelPage} />
+        <Route path="/support" component={SupportLanding} />
+        <Route path="/help" component={HelpPage} />
+        <Route path="/faq" component={FAQPage} />
+        <Route path="/contact" component={ContactPage} />
+        <Route path="/terms" component={TermsPage} />
+        <Route path="/privacy" component={PrivacyPage} />
+        <Route path="/cookies" component={CookiesPage} />
+        <Route path="/dmca" component={DmcaPage} />
+        <Route path="/guidelines" component={GuidelinesPage} />
+        <Route path="/refund" component={RefundPolicyPage} />
+  <Route path="/18plus" component={AgeCompliance} />
+  <Route path="/admin">{() => <AdminOnly />}</Route>
+  <Route path="/dashboard/model">{() => <ModelOnly />}</Route>
+        <Route path="/model/:id" component={ModelProfile} />
+        <Route path="/login" component={Login} />
+        <Route path="/register" component={Register} />
+        <Route component={NotFound} />
+      </Switch>
+    </Suspense>
   );
 }
 
 function App() {
   return (
     <QueryClientProvider client={queryClient}>
-      <TooltipProvider>
-        <Toaster />
-        <Router />
-      </TooltipProvider>
+      <AuthProvider>
+        <SearchProvider>
+          <FavoritesProvider>
+            <I18nProvider>
+          <TooltipProvider>
+            <Toaster />
+            <Router />
+          </TooltipProvider>
+            </I18nProvider>
+          </FavoritesProvider>
+        </SearchProvider>
+      </AuthProvider>
     </QueryClientProvider>
   );
 }

@@ -1,0 +1,52 @@
+PRIVACY POLICY – KASYROOMS
+Last updated: October 17, 2025
+
+Controller: TARIQ S.R.L. (operating as “Kasyrooms”)
+Address: str. Episcop Augustin Pacha no. 10, SAD7, Office 1A, Staircase A, 1st floor, Timișoara, Romania
+Tax ID: 51753429 – Trade Register: J2025032709004
+Email: privacy@kasyrooms.com
+
+This notice is provided under Regulation (EU) 2016/679 (GDPR).
+
+1) Data we process
+- Account data (username, email, password hash).
+- Usage and logs (IP, device, browser, timestamps).
+- Transactional data processed by PCI-DSS compliant providers (Kasyrooms does not store card numbers).
+- User-generated content (images/video/chat).
+- Age/ID verification data (result and minimum attributes only; no full document copy is stored when certified vendors are used).
+
+2) Purposes & legal bases
+- Service provision and contract (Art. 6(1)(b) GDPR).
+- Legal obligations & security (Art. 6(1)(c) and 6(1)(f)).
+- Consent for optional features (Art. 6(1)(a)), e.g., marketing communications (if enabled).
+
+3) Retention
+- Account: for the contractual relationship.
+- Security logs: up to 12 months.
+- Accounting/records: as required by law.
+- On account closure: deletion or anonymization within 24 months (unless longer retention is legally required).
+
+4) Recipients
+- Technical vendors (hosting/VPS, CDN, email, payments, age/KYC) as processors.
+- Authorities where required.
+- We do not sell personal data.
+
+5) International transfers
+- May occur depending on services used (e.g., email/analytics). Appropriate safeguards apply (SCCs/adequacy decisions).
+
+6) Your rights
+- Access, rectification, erasure, restriction, portability, objection.
+- Withdrawal of consent where applicable.
+Contact: privacy@kasyrooms.com
+
+7) Minors
+Access is prohibited to users under 18. We implement age verification; only verified adults can access the service.
+
+8) Security
+TLS encryption, access controls, logging, data minimization, backups. We will follow GDPR breach notification rules if required.
+
+9) Cookies & tracking
+See Cookie Policy. Non-essential cookies activate only with consent.
+
+10) Contact
+privacy@kasyrooms.com or your local supervisory authority.

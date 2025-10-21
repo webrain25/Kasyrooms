@@ -1,0 +1,3 @@
+# Prevent indexing on the dev environment
+User-agent: *
+Disallow: /

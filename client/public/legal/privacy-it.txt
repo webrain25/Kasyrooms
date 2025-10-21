@@ -1,0 +1,52 @@
+PRIVACY POLICY – KASYROOMS
+Ultimo aggiornamento: 17 ottobre 2025
+
+Titolare del trattamento: TARIQ S.R.L. (operante come “Kasyrooms”)
+Sede: str. Episcop Augustin Pacha nr. 10, SAD7, Biroul 1A, sc. A, et. 1, Timișoara, Romania
+CUI: 51753429 – ORC: J2025032709004
+Email: privacy@kasyrooms.com
+
+Questa informativa è redatta ai sensi del Regolamento (UE) 2016/679 (“GDPR”).
+
+1) Dati trattati
+- Dati account (username, email, password hash).
+- Dati di utilizzo e log (IP, device, browser, timestamp).
+- Dati transazionali (gestiti da terze parti PCI-DSS; Kasyrooms non conserva numeri carta).
+- Dati media caricati dall’utente (immagini/video/chat).
+- Dati per verifica età/identità (solo esito/verifica e minimi necessari; non conserviamo copia integrale del documento se usiamo fornitori certificati).
+
+2) Finalità e basi giuridiche
+- Erogazione dei servizi (art. 6.1.b GDPR).
+- Adempimenti legali e sicurezza (art. 6.1.c e 6.1.f).
+- Consenso per funzionalità opzionali (art. 6.1.a), es. comunicazioni marketing (se attive).
+
+3) Conservazione
+- Account: per tutta la durata del rapporto contrattuale.
+- Log sicurezza: fino a 12 mesi.
+- Documentazione contabile: secondo obblighi di legge.
+- In caso di chiusura account: cancellazione o anonimizzazione entro 24 mesi (salvi obblighi legali).
+
+4) Destinatari
+- Fornitori tecnici (hosting/VPS, CDN, email, pagamenti, verifica età/KYC) nominati responsabili.
+- Autorità, ove richiesto dalla legge.
+- Non vendiamo dati personali.
+
+5) Trasferimenti extra UE
+- Possibili in base ai servizi utilizzati (es. email/analytics). In tal caso applichiamo garanzie adeguate (SCC/decisioni di adeguatezza).
+
+6) Diritti dell’interessato
+- Accesso, rettifica, cancellazione, limitazione, portabilità, opposizione.
+- Revoca del consenso (ove la base sia il consenso).
+Per esercizio diritti: privacy@kasyrooms.com
+
+7) Minori
+Accesso vietato ai minori di 18 anni. Implementiamo verifica età conforme: l’accesso è consentito solo agli utenti verificati.
+
+8) Sicurezza
+Crittografia TLS, controlli di accesso, logging, minimizzazione dati, backup. In caso di violazione applicheremo le procedure di notifica previste dal GDPR.
+
+9) Cookie e tracciamento
+Vedi Cookie Policy. I cookie non essenziali sono attivati solo previo consenso.
+
+10) Contatti
+Per domande o reclami: privacy@kasyrooms.com. È inoltre possibile rivolgersi all’autorità Garante competente.

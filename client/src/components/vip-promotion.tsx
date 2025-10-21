@@ -1,4 +1,6 @@
 export default function VipPromotion() {
+  const goVip = () => { window.location.href = "/vip"; };
+
   return (
     <section className="py-16 bg-gradient-to-br from-gold-dark via-gold-primary to-gold-accent relative overflow-hidden" data-testid="vip-promotion">
       <div className="absolute inset-0 opacity-10">
@@ -38,7 +40,11 @@ export default function VipPromotion() {
             </div>
           </div>
           
-          <button className="px-12 py-4 bg-background hover:bg-card text-gold-primary rounded-lg font-bold text-lg shadow-2xl transform hover:scale-105 transition-all" data-testid="button-become-vip">
+          <button 
+            onClick={goVip}
+            className="px-12 py-4 bg-background hover:bg-card text-gold-primary rounded-lg font-bold text-lg shadow-2xl transform hover:scale-105 transition-all cursor-pointer" 
+            data-testid="button-become-vip"
+          >
             <i className="fas fa-crown mr-2"></i>
             Become VIP Member
           </button>

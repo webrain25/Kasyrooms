@@ -1,6 +1,6 @@
 # Overview
 
-This is a video chat platform called "Kasynoir Live" that connects users with live models. The application is built as a full-stack TypeScript application using Express.js for the backend and React with Vite for the frontend. It features a modern UI with dark theme, model browsing capabilities, filtering options, and VIP membership features.
+This is a video chat platform called "Kasyrooms" that connects users with live models. The application is built as a full-stack TypeScript application using Express.js for the backend and React with Vite for the frontend. It features a modern UI with dark theme, model browsing capabilities, status sorting (online/busy/offline), preview/private show flow, moderation tools, admin and model dashboards.
 
 # User Preferences
 
@@ -21,7 +21,7 @@ Preferred communication style: Simple, everyday language.
 - Hero carousel for promotional content
 - Category filters for model discovery
 - Model grid with card-based layout
-- VIP promotion section
+ 
 - Footer with links and social media
 
 ## Backend Architecture
@@ -31,7 +31,7 @@ Preferred communication style: Simple, everyday language.
 **Development vs Production**: In development mode, the application uses Vite's middleware mode for HMR (Hot Module Replacement) and serves the React application directly. In production, static files are served from the built `dist/public` directory.
 
 **API Design**: The REST API follows conventional patterns with endpoints structured under `/api/` prefix:
-- `GET /api/models` - List models with optional filters (online, vip, new)
+- `GET /api/models` - List models with optional filters (online, new)
 - `GET /api/models/:id` - Get specific model details
 - `GET /api/stats/online-count` - Get count of online models
 - `PATCH /api/models/:id/status` - Update model online status
@@ -44,7 +44,7 @@ Preferred communication style: Simple, everyday language.
 
 **Tables**:
 - `users` - User authentication with username/password
-- `models` - Model profiles with attributes like name, age, country, languages, specialties, online status, VIP status, ratings, and viewer counts
+- `models` - Model profiles with attributes like name, age, country, languages, specialties, online/busy status, ratings, and viewer counts
 
 **Type Safety**: Drizzle-Zod integration provides runtime validation schemas derived from database schemas, ensuring type safety across the full stack. Insert schemas exclude auto-generated fields (id, createdAt).
 

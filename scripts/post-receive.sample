@@ -1,0 +1,21 @@
+#!/usr/bin/env bash
+set -e
+
+# Bare repo hook: place in <bare-repo>/hooks/post-receive and chmod +x
+# Adjust WORK_TREE and APP_DIR accordingly.
+
+WORK_TREE=/var/www/kasyrooms
+GIT_DIR=/var/repos/kasyrooms.git
+
+export GIT_WORK_TREE=$WORK_TREE
+export GIT_DIR=$GIT_DIR
+
+# Checkout latest into work tree
+umask 0022
+mkdir -p "$WORK_TREE"
+cd "$WORK_TREE"
+
+git --work-tree="$WORK_TREE" --git-dir="$GIT_DIR" checkout -f main
+
+# Deploy
+"$WORK_TREE/scripts/deploy.sh" "$WORK_TREE"

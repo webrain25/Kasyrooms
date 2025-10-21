@@ -1,81 +1,96 @@
-import express, { type Request, Response, NextFunction } from "express";
+
+import express from "express";
+import cors from "cors";
+import path from "path";
+import { fileURLToPath } from "url";
+import fs from "fs/promises";
+import fsSync from "fs";
 import { registerRoutes } from "./routes";
-import { setupVite, serveStatic, log } from "./vite";
 
 const app = express();
-
-declare module 'http' {
-  interface IncomingMessage {
-    rawBody: unknown
-  }
-}
+app.use(cors());
+// Capture raw body for HMAC verification while parsing JSON
 app.use(express.json({
-  verify: (req, _res, buf) => {
+  verify: (req: any, _res, buf) => {
     req.rawBody = buf;
   }
 }));
-app.use(express.urlencoded({ extended: false }));
 
-app.use((req, res, next) => {
-  const start = Date.now();
-  const path = req.path;
-  let capturedJsonResponse: Record<string, any> | undefined = undefined;
+// API routes (pass app version for diagnostics)
+let appVersion = "dev";
+try {
+  const pkgRaw = fsSync.readFileSync(path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "package.json"), "utf-8");
+  const pkg = JSON.parse(pkgRaw);
+  if (pkg?.version) appVersion = String(pkg.version);
+} catch {}
+const server = await registerRoutes(app, { version: appVersion });
 
-  const originalResJson = res.json;
-  res.json = function (bodyJson, ...args) {
-    capturedJsonResponse = bodyJson;
-    return originalResJson.apply(res, [bodyJson, ...args]);
-  };
+// In development, mount Vite dev middleware; in production, serve static from /dist/public
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+const isProd = process.env.NODE_ENV === "production";
 
-  res.on("finish", () => {
-    const duration = Date.now() - start;
-    if (path.startsWith("/api")) {
-      let logLine = `${req.method} ${path} ${res.statusCode} in ${duration}ms`;
-      if (capturedJsonResponse) {
-        logLine += ` :: ${JSON.stringify(capturedJsonResponse)}`;
-      }
+const clientRoot = path.resolve(__dirname, "..", "client");
+const clientDist = path.resolve(__dirname, "..", "dist", "public");
 
-      if (logLine.length > 80) {
-        logLine = logLine.slice(0, 79) + "…";
-      }
+if (!isProd) {
+  // Vite dev server in middleware mode for a smooth DX
+  const { createServer: createViteServer } = await import("vite");
+  const vite = await createViteServer({
+    configFile: path.resolve(__dirname, "..", "vite.config.ts"),
+    server: { middlewareMode: true },
+  });
 
-      log(logLine);
+  app.use(vite.middlewares);
+
+  app.get("*", async (req, res, next) => {
+    try {
+      const url = req.originalUrl;
+      const indexHtmlPath = path.resolve(clientRoot, "index.html");
+      let html = await fs.readFile(indexHtmlPath, "utf-8");
+      html = await vite.transformIndexHtml(url, html);
+      res.setHeader("Content-Type", "text/html");
+      res.status(200).end(html);
+    } catch (e) {
+      next(e);
     }
   });
-
-  next();
-});
-
-(async () => {
-  const server = await registerRoutes(app);
-
-  app.use((err: any, _req: Request, res: Response, _next: NextFunction) => {
-    const status = err.status || err.statusCode || 500;
-    const message = err.message || "Internal Server Error";
-
-    res.status(status).json({ message });
-    throw err;
+} else {
+  // Production: serve built assets
+  app.use(express.static(clientDist));
+  app.get("*", async (_req, res) => {
+    res.sendFile(path.join(clientDist, "index.html"));
   });
+}
 
-  // importantly only setup vite in development and after
-  // setting up all the other routes so the catch-all route
-  // doesn't interfere with the other routes
-  if (app.get("env") === "development") {
-    await setupVite(app, server);
-  } else {
-    serveStatic(app);
-  }
+// Start server with retry if port is in use to avoid "stuck"/crash scenarios in dev
+const basePort = parseInt(process.env.PORT || "5000", 10);
+// Explicit host binding to avoid IPv6-only binding issues on Windows
+const baseHost = process.env.HOST || "127.0.0.1"; // set to "0.0.0.0" to listen on all interfaces
 
-  // ALWAYS serve the app on the port specified in the environment variable PORT
-  // Other ports are firewalled. Default to 5000 if not specified.
-  // this serves both the API and the client.
-  // It is the only port that is not firewalled.
-  const port = parseInt(process.env.PORT || '5000', 10);
-  server.listen({
-    port,
-    host: "0.0.0.0",
-    reusePort: true,
-  }, () => {
-    log(`serving on port ${port}`);
-  });
-})();
+function listenWithRetry(port: number, attemptsLeft: number, host: string) {
+  let started = false;
+  const attachAndListen = (p: number, tries: number) => {
+    // ensure previous error listeners don't accumulate
+    server.removeAllListeners("error");
+    server.once("error", (err: any) => {
+      if (started) return; // already started elsewhere
+      if (err && (err as any).code === "EADDRINUSE" && tries > 0) {
+        const nextPort = p + 1;
+        console.warn(`[kasyrooms] Port ${host}:${p} in use, retrying on ${host}:${nextPort}...`);
+        attachAndListen(nextPort, tries - 1);
+      } else {
+        console.error("[kasyrooms] Server failed to start:", err);
+        process.exit(1);
+      }
+    });
+    server.listen(p, host, () => {
+      if (started) return;
+      started = true;
+      console.log(`[kasyrooms] listening on ${host}:${p} (${isProd ? "production" : "development"})`);
+    });
+  };
+  attachAndListen(port, attemptsLeft);
+}
+
+listenWithRetry(basePort, 10, baseHost);

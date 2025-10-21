@@ -1,24 +1,29 @@
 import { useQuery } from "@tanstack/react-query";
 import ModelCard from "./model-card";
 import { Model } from "@shared/schema";
+import { useSearch } from "@/lib/searchContext";
+import { useI18n } from "@/lib/i18n";
 
 interface ModelGridProps {
   filter?: {
     isOnline?: boolean;
-    isVip?: boolean;
     isNew?: boolean;
     sortBy?: 'rating' | 'viewers';
   };
   limit?: number;
   showRank?: boolean;
+  minimal?: boolean;
 }
 
-export default function ModelGrid({ filter = {}, limit, showRank = false }: ModelGridProps) {
+export default function ModelGrid({ filter = {}, limit, showRank = false, minimal = false }: ModelGridProps) {
+  const { searchTerm, isSearchActive } = useSearch();
+  const { t } = useI18n();
+  
   const queryParams = new URLSearchParams();
   if (filter.isOnline) queryParams.append('online', 'true');
-  if (filter.isVip) queryParams.append('vip', 'true');
   if (filter.isNew) queryParams.append('new', 'true');
   if (filter.sortBy) queryParams.append('sortBy', filter.sortBy);
+  if (isSearchActive && searchTerm) queryParams.append('search', searchTerm);
 
   const { data: models, isLoading, error } = useQuery<Model[]>({
     queryKey: [`/api/models?${queryParams.toString()}`],
@@ -48,8 +53,8 @@ export default function ModelGrid({ filter = {}, limit, showRank = false }: Mode
     return (
       <div className="text-center py-12" data-testid="model-grid-error">
         <i className="fas fa-exclamation-triangle text-destructive text-4xl mb-4"></i>
-        <h3 className="text-xl font-semibold mb-2">Unable to load models</h3>
-        <p className="text-muted">Please try again later</p>
+        <h3 className="text-xl font-semibold mb-2">{t('common.errors.loadModels')}</h3>
+        <p className="text-muted">{t('common.errors.tryLater')}</p>
       </div>
     );
   }
@@ -58,13 +63,18 @@ export default function ModelGrid({ filter = {}, limit, showRank = false }: Mode
     return (
       <div className="text-center py-12" data-testid="model-grid-empty">
         <i className="fas fa-user-slash text-muted text-4xl mb-4"></i>
-        <h3 className="text-xl font-semibold mb-2">No models found</h3>
-        <p className="text-muted">Try adjusting your filters</p>
+        <h3 className="text-xl font-semibold mb-2">{t('common.noModels.title')}</h3>
+        <p className="text-muted">{t('common.noModels.subtitle')}</p>
       </div>
     );
   }
 
-  const displayedModels = limit ? models.slice(0, limit) : models;
+  let displayedModels = limit ? models.slice(0, limit) : models;
+  // Client-side status sort: online > busy > offline
+  displayedModels = displayedModels.sort((a, b) => {
+    const score = (m: Model) => (m.isOnline ? 2 : 0) + (m.isBusy ? 1 : 0);
+    return score(b) - score(a);
+  });
 
   return (
     <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-4 md:gap-6" data-testid="model-grid">
@@ -74,6 +84,7 @@ export default function ModelGrid({ filter = {}, limit, showRank = false }: Mode
           model={model}
           showRank={showRank}
           rank={showRank ? index + 1 : undefined}
+          minimal={minimal}
         />
       ))}
     </div>

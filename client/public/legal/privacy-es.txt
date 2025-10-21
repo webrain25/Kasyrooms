@@ -1,0 +1,52 @@
+POLÍTICA DE PRIVACIDAD – KASYROOMS
+Última actualización: 17 de octubre de 2025
+
+Responsable del tratamiento: TARIQ S.R.L. (operando como «Kasyrooms»)
+Dirección: str. Episcop Augustin Pacha n.º 10, SAD7, Oficina 1A, Esc. A, 1.º piso, Timișoara, Rumanía
+CUI: 51753429 – Registro Mercantil: J2025032709004
+Correo: privacy@kasyrooms.com
+
+Aviso conforme al Reglamento (UE) 2016/679 (RGPD).
+
+1) Datos tratados
+- Datos de cuenta (usuario, email, hash de contraseña).
+- Uso y registros (IP, dispositivo, navegador, marcas de tiempo).
+- Datos de transacciones gestionados por proveedores PCI-DSS (Kasyrooms no almacena números de tarjeta).
+- Contenido generado por el usuario (imágenes/vídeo/chat).
+- Verificación de edad/identidad (resultado y datos mínimos; no guardamos copia completa del documento con proveedores certificados).
+
+2) Finalidades y bases legales
+- Prestación del servicio y contrato (art. 6(1)(b) RGPD).
+- Obligaciones legales y seguridad (art. 6(1)(c) y 6(1)(f)).
+- Consentimiento para funciones opcionales (art. 6(1)(a)).
+
+3) Conservación
+- Cuenta: durante la relación contractual.
+- Registros de seguridad: hasta 12 meses.
+- Documentación contable: según la ley.
+- Cierre de cuenta: eliminación o anonimización en 24 meses (salvo obligación legal).
+
+4) Destinatarios
+- Proveedores técnicos (hosting/VPS, CDN, email, pagos, verificación de edad/KYC) como encargados.
+- Autoridades cuando proceda.
+- No vendemos datos personales.
+
+5) Transferencias internacionales
+- Pueden darse según los servicios empleados (email/analytics). Aplicamos garantías adecuadas (SCC/decisiones de adecuación).
+
+6) Derechos
+- Acceso, rectificación, supresión, limitación, portabilidad, oposición.
+- Retirada del consentimiento cuando proceda.
+Contacto: privacy@kasyrooms.com
+
+7) Menores
+Acceso prohibido a menores de 18 años. Verificación de edad obligatoria.
+
+8) Seguridad
+Cifrado TLS, controles de acceso, registros, minimización, copias de seguridad. Notificaremos brechas según RGPD si corresponde.
+
+9) Cookies
+Véase la Política de Cookies. Los no esenciales solo con consentimiento.
+
+10) Contacto
+privacy@kasyrooms.com o su autoridad de control.
