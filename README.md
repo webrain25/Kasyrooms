@@ -1,5 +1,8 @@
 # Kasyrooms
 
+[![Deploy to VPS](https://github.com/webrain25/Kasyrooms/actions/workflows/deploy.yml/badge.svg?branch=main)](https://github.com/webrain25/Kasyrooms/actions/workflows/deploy.yml)
+[![Live](https://img.shields.io/website?url=https%3A%2F%2Fdev.kasyrooms.com&up_message=online&down_message=offline)](https://dev.kasyrooms.com)
+
 React + Vite frontend with an Express backend (bundled with esbuild) and PM2 + Nginx for deployment.
 
 ## Quick start (dev)

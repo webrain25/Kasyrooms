@@ -28,7 +28,8 @@ git push vps main
 Create repository secrets:
 - VPS_HOST
 - VPS_USER
-- VPS_SSH_KEY (private key)
+- VPS_SSH_KEY (private key content)
 - VPS_APP_DIR (e.g., /var/www/kasyrooms)
+- VPS_PORT (optional, default 22)
 
 Then adjust `.github/workflows/deploy.yml` as needed and push to main.

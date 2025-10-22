@@ -3,10 +3,17 @@ name: Deploy to VPS (SSH)
 on:
   push:
     branches: ["main"]
+  workflow_dispatch:
+
+concurrency:
+  group: deploy-vps
+  cancel-in-progress: true
 
 jobs:
   deploy:
     runs-on: ubuntu-latest
+    env:
+      VPS_PORT: ${{ secrets.VPS_PORT || 22 }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -28,6 +35,7 @@ jobs:
           host: ${{ secrets.VPS_HOST }}
           username: ${{ secrets.VPS_USER }}
           key: ${{ secrets.VPS_SSH_KEY }}
+          port: ${{ env.VPS_PORT }}
           source: "dist,ecosystem.config.cjs,package.json,package-lock.json"
           target: "${{ secrets.VPS_APP_DIR }}"
 
@@ -37,8 +45,13 @@ jobs:
           host: ${{ secrets.VPS_HOST }}
           username: ${{ secrets.VPS_USER }}
           key: ${{ secrets.VPS_SSH_KEY }}
+          port: ${{ env.VPS_PORT }}
           script: |
             cd ${{ secrets.VPS_APP_DIR }}
-            npm ci --no-audit --no-fund
+            npm ci --omit=dev --no-audit --no-fund
             pm2 describe kasyrooms >/dev/null 2>&1 && pm2 restart kasyrooms || pm2 start ecosystem.config.cjs
             pm2 save || true
+
+      - name: Verify public /api/version
+        run: |
+          curl -fsS -L https://www.dev.kasyrooms.com/api/version || curl -fsS -L https://dev.kasyrooms.com/api/version
