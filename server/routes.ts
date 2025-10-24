@@ -148,9 +148,19 @@ export async function registerRoutes(app: Express, opts?: { version?: string }) 
     res.json(await storage.listPublicMessages(limit));
   });
   app.post("/api/chat/public", async (req, res) => {
-    const { user, text } = req.body ?? {};
+    const { user, text, userId_B } = req.body ?? {};
     if (!user || !text) return res.status(400).json({ error: "user and text required" });
-    res.json(await storage.postPublicMessage(user, text));
+    res.json(await storage.postPublicMessage(user, text, userId_B));
+  });
+
+  // Convenience: allow starting a private show by username (useful from recent public chat list)
+  app.post('/api/sessions/start-by-username', async (req, res) => {
+    const { username, modelId } = req.body ?? {};
+    if (!username || !modelId) return res.status(400).json({ error: 'username and modelId required' });
+    const user = await storage.getUserByUsername(String(username));
+    if (!user) return res.status(404).json({ error: 'user not found' });
+    const s = await storage.startSession(user.id, String(modelId));
+    res.json(s);
   });
 
   // ===== INTEGRAZIONE SIRPLAY (Operatore B) =====

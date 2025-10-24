@@ -1,9 +1,11 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import Header from "@/components/header";
 import Footer from "@/components/footer";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { useAuth } from "@/lib/authContext";
+import { Switch } from "@/components/ui/switch";
+import { useToast } from "@/hooks/use-toast";
 
 export default function ModelDashboard() {
   const { user, isAuthenticated, token } = useAuth();
@@ -11,6 +13,15 @@ export default function ModelDashboard() {
   const [photoUrl, setPhotoUrl] = useState("");
   const [photos, setPhotos] = useState<string[]>([]);
   const [busy, setBusy] = useState(false);
+  const [isOnline, setIsOnline] = useState<boolean>(false);
+  const [chat, setChat] = useState<Array<{ user: string; text: string; when?: string; userId_B?: string }>>([]);
+  const [chatText, setChatText] = useState("");
+  const [sessionId, setSessionId] = useState<string | null>(null);
+  const [autoOnline, setAutoOnline] = useState<boolean>(false);
+  const [initialized, setInitialized] = useState(false);
+  const [clearedAt, setClearedAt] = useState<number>(0);
+  const displayName = useMemo(()=> profile?.displayName || user?.username || "Modella", [profile?.displayName, user?.username]);
+  const { toast } = useToast();
 
   useEffect(() => {
     if (!user) return;
@@ -23,13 +34,33 @@ export default function ModelDashboard() {
         if (r.ok) {
           const m = await r.json();
           setProfile({ displayName: m.name });
+          setIsOnline(!!m.isOnline);
         }
         const p = await fetch(`/api/models/${user.id}/photos`, { headers });
         const pj = await p.json();
         setPhotos(Array.isArray(pj.photos) ? pj.photos : []);
+        // load public chat
+        const c = await fetch(`/api/chat/public?limit=50`);
+        const cj = await c.json();
+        if (Array.isArray(cj)) setChat(cj);
+        // preferences
+        try {
+          const stored = localStorage.getItem(`model:autoOnline:${user.id}`);
+          if (stored) setAutoOnline(stored === '1');
+          const cAt = localStorage.getItem(`model:recentsClearedAt:${user.id}`);
+          if (cAt) setClearedAt(Number(cAt));
+        } catch {}
+        setInitialized(true);
       } catch {}
     })();
   }, [user?.id, user?.role, token]);
+
+  // If auto-online enabled, go online on first load
+  useEffect(() => {
+    if (!initialized || !user) return;
+    if (autoOnline && !isOnline) toggleOnline(true);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [initialized]);
 
   if (!isAuthenticated) {
     return (
@@ -70,11 +101,131 @@ export default function ModelDashboard() {
     } finally { setBusy(false); }
   };
 
+  const toggleOnline = async (next: boolean) => {
+    if (!user) return;
+    setBusy(true);
+    try {
+      const headers: Record<string,string> = { 'Content-Type':'application/json', 'x-user-id': user.id, 'x-role': user.role || '' };
+      if (token) headers['Authorization'] = `Bearer ${token}`;
+      const r = await fetch(`/api/models/${user.id}/status`, { method:'PATCH', headers, body: JSON.stringify({ isOnline: next }) });
+      if (r.ok) setIsOnline(next);
+    } finally { setBusy(false); }
+  };
+
+  const sendChat = async () => {
+    if (!chatText.trim()) return;
+    try {
+      const r = await fetch('/api/chat/public', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ user: displayName, text: chatText.trim(), userId_B: user?.id })});
+      if (r.ok) {
+        const msg = await r.json();
+        setChat(prev => [msg, ...prev].slice(0, 50));
+        setChatText("");
+      }
+    } catch {}
+  };
+
+  const startPrivate = async (userIdB: string) => {
+    if (!userIdB.trim() || !user) return;
+    setBusy(true);
+    try {
+      const r = await fetch('/api/sessions/start', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ userId_B: userIdB.trim(), modelId: user.id }) });
+      const s = await r.json();
+      if (s?.id) setSessionId(s.id);
+      // mark busy true when private show starts
+      if (s?.id) {
+        setSessionId(s.id);
+        toast({ title: 'Private Show avviato', description: `Sessione ${s.id}` });
+      }
+      await toggleOnline(true);
+      const headers: Record<string,string> = { 'Content-Type':'application/json', 'x-user-id': user.id, 'x-role': user.role || '' };
+      if (token) headers['Authorization'] = `Bearer ${token}`;
+      await fetch(`/api/models/${user.id}/busy`, { method:'PATCH', headers, body: JSON.stringify({ isBusy: true }) });
+    } finally { setBusy(false); }
+  };
+
+  const endPrivate = async () => {
+    if (!sessionId) return;
+    setBusy(true);
+    try {
+      await fetch(`/api/sessions/${sessionId}/end`, { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ durationSec: 60, totalCharged: 2 }) });
+  toast({ title: 'Private Show terminato' });
+      setSessionId(null);
+      if (user) {
+        const headers: Record<string,string> = { 'Content-Type':'application/json', 'x-user-id': user.id, 'x-role': user.role || '' };
+        if (token) headers['Authorization'] = `Bearer ${token}`;
+        await fetch(`/api/models/${user.id}/busy`, { method:'PATCH', headers, body: JSON.stringify({ isBusy: false }) });
+      }
+    } finally { setBusy(false); }
+  };
+
+  // Build recent chat users list (unique, excluding the model herself)
+  const recentUsers = useMemo(() => {
+    const seen = new Set<string>();
+    const list: Array<{ label: string; userId_B?: string; when?: string }> = [];
+    for (const m of chat) {
+      const label = String((m as any).user || '').trim();
+      if (!label || label.toLowerCase() === String(displayName).toLowerCase()) continue;
+      const when = (m as any).when ? Date.parse((m as any).when) : Date.now();
+      if (clearedAt && when <= clearedAt) continue;
+      if (seen.has(label)) continue;
+      seen.add(label);
+      list.push({ label, userId_B: (m as any).userId_B, when: (m as any).when });
+      if (list.length >= 10) break;
+    }
+    return list;
+  }, [chat, displayName, clearedAt]);
+
+  const startPrivateByUsername = async (username: string) => {
+    if (!user) return;
+    setBusy(true);
+    try {
+      const r = await fetch('/api/sessions/start-by-username', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ username, modelId: user.id }) });
+      const s = await r.json();
+      if (s?.id) setSessionId(s.id);
+      if (s?.id) {
+        setSessionId(s.id);
+        toast({ title: 'Private Show avviato', description: `Sessione ${s.id}` });
+      }
+      await toggleOnline(true);
+      const headers: Record<string,string> = { 'Content-Type':'application/json', 'x-user-id': user.id, 'x-role': user.role || '' };
+      if (token) headers['Authorization'] = `Bearer ${token}`;
+      await fetch(`/api/models/${user.id}/busy`, { method:'PATCH', headers, body: JSON.stringify({ isBusy: true }) });
+    } finally { setBusy(false); }
+  };
+
   return (
     <div className="min-h-screen bg-background">
       <Header />
       <div className="container mx-auto px-4 py-8 space-y-6">
-        <h1 className="text-3xl font-bold">Model Dashboard</h1>
+        <h1 className="text-3xl font-bold">La tua Room</h1>
+
+        <Card>
+          <CardHeader className="pb-2"><CardTitle className="text-sm font-semibold">Stato Live</CardTitle></CardHeader>
+          <CardContent className="flex items-center gap-3">
+            <div className={`h-2 w-2 rounded-full ${isOnline ? 'bg-emerald-500' : 'bg-zinc-500'}`}></div>
+            <span className="text-sm">{isOnline ? 'Online' : 'Offline'}</span>
+            <Button onClick={()=>toggleOnline(!isOnline)} disabled={busy} variant={isOnline ? 'secondary' : 'default'}>
+              {isOnline ? 'Vai Offline' : 'Vai Online'}
+            </Button>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader className="pb-2"><CardTitle className="text-sm font-semibold">Preferenze</CardTitle></CardHeader>
+          <CardContent className="flex items-center justify-between gap-3">
+            <div className="text-sm">
+              <div className="font-medium">Auto-online all’ingresso</div>
+              <div className="text-muted">Entra automaticamente online quando apri la Room</div>
+            </div>
+            <Switch
+              checked={autoOnline}
+              onCheckedChange={(val)=>{
+                setAutoOnline(val);
+                try { if (user) localStorage.setItem(`model:autoOnline:${user.id}`, val ? '1' : '0'); } catch {}
+              }}
+            />
+          </CardContent>
+        </Card>
 
         <Card>
           <CardHeader className="pb-2"><CardTitle className="text-sm font-semibold">Profile</CardTitle></CardHeader>
@@ -100,6 +251,77 @@ export default function ModelDashboard() {
               ))}
               {photos.length === 0 && <p className="text-sm text-muted">No photos yet</p>}
             </div>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader className="pb-2"><CardTitle className="text-sm font-semibold">Chat Pubblica</CardTitle></CardHeader>
+          <CardContent className="space-y-3">
+            <div className="h-56 overflow-auto rounded border border-border p-2 bg-card flex flex-col-reverse">
+              <div className="space-y-1">
+                {chat.map((m, i) => (
+                  <div key={i} className="text-sm"><span className="text-gold-primary font-medium">{m.user}:</span> {m.text}</div>
+                ))}
+                {chat.length===0 && <div className="text-sm text-muted">Nessun messaggio</div>}
+              </div>
+            </div>
+            <div className="flex gap-2">
+              <input value={chatText} onChange={e=>setChatText(e.target.value)} placeholder="Scrivi un messaggio" className="flex-1 px-3 py-2 rounded-md bg-card border border-border text-sm" />
+              <Button onClick={sendChat} disabled={!chatText.trim()}>Invia</Button>
+            </div>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader className="pb-2"><CardTitle className="text-sm font-semibold">Private Show</CardTitle></CardHeader>
+          <CardContent className="space-y-3">
+            {!sessionId ? (
+              <div className="flex gap-2 items-center">
+                <input id="ps-user" placeholder="ID utente (es. u-001)" className="flex-1 px-3 py-2 rounded-md bg-card border border-border text-sm" />
+                <Button onClick={()=>{
+                  const el = document.getElementById('ps-user') as HTMLInputElement | null;
+                  startPrivate(el?.value || '');
+                }} disabled={busy}>Crea Private Show</Button>
+              </div>
+            ) : (
+              <div className="flex gap-3 items-center">
+                <div className="text-sm">Sessione attiva: {sessionId}</div>
+                <Button variant="destructive" onClick={endPrivate} disabled={busy}>Termina</Button>
+              </div>
+            )}
+            <div className="text-xs text-muted">Suggerimento: usa u-001 per i test rapidi.</div>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader className="pb-2"><CardTitle className="text-sm font-semibold">Utenti recenti in chat</CardTitle></CardHeader>
+          <CardContent className="flex flex-wrap gap-2 items-center">
+            {recentUsers.length === 0 && <div className="text-sm text-muted">Nessuno ancora</div>}
+            {recentUsers.map((u, i) => (
+              <button
+                key={i}
+                className="px-3 py-1.5 rounded-full bg-accent hover:bg-accent/80 text-sm flex items-center gap-2"
+                onClick={() => u.userId_B ? startPrivate(u.userId_B) : startPrivateByUsername(u.label)}
+                title={u.userId_B ? `Avvia con ${u.label}` : `Avvia con ${u.label} (per username)`}
+              >
+                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="w-3.5 h-3.5"><circle cx="12" cy="7" r="4"></circle><path d="M5.5 21a6.5 6.5 0 0 1 13 0"></path></svg>
+                <span>{u.label}</span>
+                {u.userId_B && <span className="text-xs text-muted">({u.userId_B})</span>}
+              </button>
+            ))}
+            {recentUsers.length > 0 && (
+              <button
+                className="ml-auto px-3 py-1.5 rounded-full border border-border hover:bg-accent text-xs"
+                onClick={() => {
+                  const ts = Date.now();
+                  setClearedAt(ts);
+                  try { if (user) localStorage.setItem(`model:recentsClearedAt:${user.id}`, String(ts)); } catch {}
+                  toast({ title: 'Recenti svuotati' });
+                }}
+              >
+                Pulisci elenco
+              </button>
+            )}
           </CardContent>
         </Card>
       </div>

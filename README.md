@@ -27,6 +27,20 @@ $env:NODE_ENV="production"; $env:HOST="127.0.0.1"; $env:PORT="5000"; node dist/i
 npm run smoke
 ```
 
+## Demo login
+
+Endpoint: POST /api/auth/login with JSON body { "username": "..." }
+
+Utenti disponibili (nessuna password richiesta):
+- utente → id: u-001, role: user
+- modella → id: m-001, role: model
+- admin → id: a-001, role: admin
+
+Esempio (PowerShell):
+```powershell
+Invoke-RestMethod -Uri "https://dev.kasyrooms.com/api/auth/login" -Method Post -ContentType 'application/json' -Body '{"username":"admin"}'
+```
+
 ## Deploy
 
 See `docs/DEPLOY.md` for PM2 + Nginx, and `docs/DEPLOY_GIT.md` for Git-based deployments or GitHub Actions.

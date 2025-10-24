@@ -3,8 +3,9 @@ module.exports = {
     {
       name: 'kasyrooms',
       script: 'dist/index.js',
-      instances: 1,
-      exec_mode: 'fork',
+      // Zero-downtime ready: use cluster with 2 instances and pm2 reload in CI
+      instances: 2,
+      exec_mode: 'cluster',
       watch: false,
       env: {
         NODE_ENV: 'production',

@@ -27,6 +27,19 @@ export default function Header() {
   const validIds = new Set((allModels as any[]).map((m) => m.id));
   const validFavoritesCount = favorites.filter((id) => validIds.has(id)).length;
 
+  // For models, show a small "Live" badge when online
+  const { data: modelMe } = useQuery({
+    queryKey: ['model-me-status', user?.id],
+    queryFn: async () => {
+      if (!user?.id || user?.role !== 'model') return null as any;
+      const res = await fetch(`/api/models/${user.id}`);
+      if (!res.ok) return null as any;
+      return res.json();
+    },
+    enabled: !!user?.id && user?.role === 'model',
+    refetchInterval: 15000
+  });
+
   const handleSearchChange = (value: string) => {
     setSearchTerm(value);
     setIsSearchActive(value.length > 0);
@@ -150,7 +163,12 @@ export default function Header() {
                 <span className="text-sm text-muted">{t('welcome')}, {user?.username}</span>
                 {/* Role shortcuts */}
                 {user?.role === 'model' && (
-                  <a href="/dashboard/model" className="px-3 py-2 rounded-lg hover:bg-accent text-sm">Dashboard</a>
+                  <a href="/dashboard/model" className="px-3 py-2 rounded-lg hover:bg-accent text-sm inline-flex items-center gap-2">
+                    Dashboard
+                    {modelMe?.isOnline && (
+                      <span className="px-2 py-0.5 text-[11px] leading-none rounded-full bg-emerald-500/20 text-emerald-400 border border-emerald-500/30">LIVE</span>
+                    )}
+                  </a>
                 )}
                 {user?.role === 'admin' && (
                   <a href="/admin" className="px-3 py-2 rounded-lg hover:bg-accent text-sm">Admin</a>

@@ -102,7 +102,7 @@ export default function ModelCard({ model, showRank = false, rank, minimal = fal
           </div>
           <button
             onClick={handleStartChat}
-            className="w-full py-2.5 btn-gold text-background rounded-lg font-semibold text-sm"
+            className="w-full py-3 btn-gold text-black rounded-lg font-semibold text-sm shadow-[0_6px_18px_rgba(212,175,55,0.35)] ring-1 ring-black/10 hover:shadow-[0_10px_24px_rgba(212,175,55,0.5)]"
             data-testid={`button-start-chat-${model.id}`}
           >
             <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="w-4 h-4 mr-2"><polygon points="23 7 16 12 23 17 23 7"/><rect x="1" y="5" width="15" height="14" rx="2" ry="2"/></svg>

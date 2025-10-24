@@ -41,7 +41,7 @@ export class MemStorage {
   sessions: Array<{ id: string; userId_B: string; modelId: string; startAt: string; endAt?: string; durationSec?: number; totalCharged?: number }>=[];
   blocksByModel = new Map<string, Set<string>>(); // modelId -> set of blocked userIds
   reports: Report[] = [];
-  publicChat: Array<{ id: string; user: string; text: string; when: string }> = [];
+  publicChat: Array<{ id: string; user: string; text: string; when: string; userId_B?: string }> = [];
 
   constructor() {
     this.seed();
@@ -181,8 +181,8 @@ export class MemStorage {
   async listReports() { return this.reports; }
 
   // public chat (simple in-memory, global)
-  async postPublicMessage(user: string, text: string) {
-    const msg = { id: randomUUID(), user, text, when: new Date().toISOString() };
+  async postPublicMessage(user: string, text: string, userId_B?: string) {
+    const msg = { id: randomUUID(), user, text, when: new Date().toISOString(), userId_B };
     this.publicChat.unshift(msg);
     // trim
     if (this.publicChat.length > 200) this.publicChat.pop();
@@ -248,6 +248,15 @@ export class MemStorage {
     const bal = (this.balances.get(userId_A) ?? 0) - amount;
     this.balances.set(userId_A, bal);
     return bal;
+  }
+
+  // helpers
+  async getUserByUsername(username: string) {
+    const target = username.toLowerCase();
+    for (const u of this.users.values()) {
+      if (u.username.toLowerCase() === target) return u;
+    }
+    return undefined;
   }
 }
 

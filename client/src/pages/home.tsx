@@ -7,12 +7,13 @@ import { useState, useEffect } from "react";
 import { useSearch } from "@/lib/searchContext";
 import { useLocation } from "wouter";
 import { useAuth } from "@/lib/authContext";
+import { Button } from "@/components/ui/button";
 
 export default function Home() {
   const [activeFilter, setActiveFilter] = useState("online");
   const { searchTerm, isSearchActive } = useSearch();
   const [, setLocation] = useLocation();
-  const { isAuthenticated } = useAuth();
+  const { isAuthenticated, user } = useAuth();
 
   // If user logs out while 'favorites' is active, reset to 'online'
   useEffect(() => {
@@ -118,6 +119,19 @@ export default function Home() {
     <div className="min-h-screen bg-background">
       <Header />
       {!isSearchActive && <HeroCarousel />}
+      {!isSearchActive && user?.role === 'model' && (
+        <section className="py-6 bg-background/60">
+          <div className="container mx-auto px-4">
+            <div className="flex items-center justify-between rounded-lg border border-border bg-card p-4">
+              <div>
+                <div className="text-sm opacity-80">Benvenuta, {user.username}</div>
+                <div className="font-semibold">Accedi alla tua Room per andare online, chattare e avviare Private Show</div>
+              </div>
+              <Button onClick={()=>setLocation('/dashboard/model')} className="btn-gold">Apri la tua Room</Button>
+            </div>
+          </div>
+        </section>
+      )}
   {!isSearchActive && <CategoryFilters activeFilter={activeFilter} onFilterChange={handleFilterChange} />}
       
       {/* Main Filtered Section */}
