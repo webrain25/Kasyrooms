@@ -57,8 +57,25 @@ if (!isProd) {
   });
 } else {
   // Production: serve built assets
-  app.use(express.static(clientDist));
+  // Static assets: cache aggressively for hashed asset files; avoid caching for index.html
+  app.use(express.static(clientDist, {
+    etag: true,
+    lastModified: true,
+    setHeaders: (res, p) => {
+      const rel = p.replace(/\\/g, "/");
+      if (rel.endsWith("/index.html") || rel.endsWith("index.html")) {
+        res.setHeader("Cache-Control", "no-cache");
+      } else if (rel.includes("/assets/")) {
+        // Vite emits hashed filenames under /assets; safe to cache long-term
+        res.setHeader("Cache-Control", "public, max-age=31536000, immutable");
+      } else {
+        // default short cache for other files
+        res.setHeader("Cache-Control", "public, max-age=300");
+      }
+    }
+  }));
   app.get("*", async (_req, res) => {
+    res.setHeader("Cache-Control", "no-cache");
     res.sendFile(path.join(clientDist, "index.html"));
   });
 }
