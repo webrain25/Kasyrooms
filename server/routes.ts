@@ -100,6 +100,16 @@ export async function registerRoutes(app: Express, opts?: { version?: string }) 
     res.json({ count: list.length });
   });
 
+  // Proxy-safe home grouping endpoint under /api/stats
+  app.get("/api/stats/home-groups", async (req, res) => {
+    const u = getReqUser(req);
+    const favsOverride = typeof req.query.favs === 'string' && (req.query.favs as string).trim().length > 0
+      ? (req.query.favs as string).split(',').map(s=>s.trim()).filter(Boolean)
+      : undefined;
+    const result = await storage.listModelsHome({ userId: u?.id, favoritesOverride: favsOverride });
+    res.json(result);
+  });
+
   app.get("/api/models/:id", async (req, res) => {
     const m = await storage.getModel(req.params.id);
     if (!m) return res.status(404).json({ error: "Model not found" });
