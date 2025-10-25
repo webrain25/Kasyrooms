@@ -65,6 +65,23 @@ export async function registerRoutes(app: Express, opts?: { version?: string }) 
     const result = await storage.listModelsHome({ userId: u?.id, favoritesOverride: favsOverride });
     res.json(result);
   });
+  // Aliases to avoid potential route-order conflicts on some deployments
+  app.get("/api/models-home", async (req, res) => {
+    const u = getReqUser(req);
+    const favsOverride = typeof req.query.favs === 'string' && (req.query.favs as string).trim().length > 0
+      ? (req.query.favs as string).split(',').map(s=>s.trim()).filter(Boolean)
+      : undefined;
+    const result = await storage.listModelsHome({ userId: u?.id, favoritesOverride: favsOverride });
+    res.json(result);
+  });
+  app.get("/api/home/models", async (req, res) => {
+    const u = getReqUser(req);
+    const favsOverride = typeof req.query.favs === 'string' && (req.query.favs as string).trim().length > 0
+      ? (req.query.favs as string).split(',').map(s=>s.trim()).filter(Boolean)
+      : undefined;
+    const result = await storage.listModelsHome({ userId: u?.id, favoritesOverride: favsOverride });
+    res.json(result);
+  });
 
   // Online models count (used by filters bar)
   app.get("/api/stats/online-count", async (_req, res) => {
