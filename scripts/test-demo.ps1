@@ -10,7 +10,7 @@ function Write-Step($msg) { Write-Host "`n=== $msg ===" -ForegroundColor Cyan }
 function Write-Ok($msg) { Write-Host "[OK] $msg" -ForegroundColor Green }
 function Write-Err($msg) { Write-Host "[ERR] $msg" -ForegroundColor Red }
 
-function Login-User([string]$username) {
+function Invoke-UserLogin([string]$username) {
   $body = @{ username = $username } | ConvertTo-Json -Compress
   $res = Invoke-RestMethod -Uri "$BaseUrl/api/auth/login" -Method Post -Headers $HeadersJson -Body $body
   return $res
@@ -23,7 +23,7 @@ try {
 
   # Admin flow
   Write-Step "Login admin"
-  $adm = Login-User -username 'admin'
+  $adm = Invoke-UserLogin -username 'admin'
   $admToken = $adm.token
   if (-not $admToken) { throw 'Admin token missing' }
   Write-Ok "Admin user: $($adm.user.id) role=$($adm.user.role)"
@@ -35,7 +35,7 @@ try {
 
   # Model flow
   Write-Step "Login modella"
-  $mod = Login-User -username 'modella'
+  $mod = Invoke-UserLogin -username 'modella'
   $modToken = $mod.token
   if (-not $modToken) { throw 'Model token missing' }
   Write-Ok "Model user: $($mod.user.id) role=$($mod.user.role)"
@@ -56,7 +56,7 @@ try {
 
   # User flow
   Write-Step "Login utente"
-  $usr = Login-User -username 'utente'
+  $usr = Invoke-UserLogin -username 'utente'
   $usrToken = $usr.token
   if (-not $usrToken) { throw 'User token missing' }
   Write-Ok "User: $($usr.user.id) role=$($usr.user.role)"
