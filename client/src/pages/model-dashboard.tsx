@@ -40,7 +40,7 @@ export default function ModelDashboard() {
         const pj = await p.json();
         setPhotos(Array.isArray(pj.photos) ? pj.photos : []);
         // load public chat
-        const c = await fetch(`/api/chat/public?limit=50`);
+  const c = await fetch(`/api/chat/public?limit=50&modelId=${encodeURIComponent(user.id)}`);
         const cj = await c.json();
         if (Array.isArray(cj)) setChat(cj);
         // preferences
@@ -115,7 +115,7 @@ export default function ModelDashboard() {
   const sendChat = async () => {
     if (!chatText.trim()) return;
     try {
-      const r = await fetch('/api/chat/public', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ user: displayName, text: chatText.trim(), userId_B: user?.id })});
+  const r = await fetch('/api/chat/public', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ user: displayName, text: chatText.trim(), userId_B: user?.id, modelId: user?.id })});
       if (r.ok) {
         const msg = await r.json();
         setChat(prev => [msg, ...prev].slice(0, 50));

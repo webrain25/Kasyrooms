@@ -55,6 +55,17 @@ export async function registerRoutes(app: Express, opts?: { version?: string }) 
     res.json(await storage.listModels(filters));
   });
 
+  // Home grouping endpoint: favorites vs others, grouped by status
+  // Supports server-side favorites (from auth user) or client-provided favorites via ?favs=id1,id2
+  app.get("/api/models/home", async (req, res) => {
+    const u = getReqUser(req);
+    const favsOverride = typeof req.query.favs === 'string' && (req.query.favs as string).trim().length > 0
+      ? (req.query.favs as string).split(',').map(s=>s.trim()).filter(Boolean)
+      : undefined;
+    const result = await storage.listModelsHome({ userId: u?.id, favoritesOverride: favsOverride });
+    res.json(result);
+  });
+
   // Online models count (used by filters bar)
   app.get("/api/stats/online-count", async (_req, res) => {
     const list = await storage.listModels({ isOnline: true });
@@ -69,6 +80,13 @@ export async function registerRoutes(app: Express, opts?: { version?: string }) 
 
   app.patch("/api/models/:id/status", requireModelSelfOrAdmin(), async (req, res) => {
     const m = await storage.setModelOnline(req.params.id, !!req.body?.isOnline);
+    if (!m) return res.status(404).json({ error: "Model not found" });
+    res.json(m);
+  });
+
+  // Toggle model visibility (home listing)
+  app.patch("/api/models/:id/visible", requireModelSelfOrAdmin(), async (req, res) => {
+    const m = await storage.setVisible(req.params.id, !!req.body?.visible);
     if (!m) return res.status(404).json({ error: "Model not found" });
     res.json(m);
   });
@@ -94,6 +112,21 @@ export async function registerRoutes(app: Express, opts?: { version?: string }) 
     res.json(s);
   });
 
+  // Aliases for profile actions per spec
+  app.post('/api/models/:id/start-preview', async (req, res) => {
+    // Simulate preview start; client enforces 60s timer
+    const expiresAt = new Date(Date.now() + 60_000).toISOString();
+    res.json({ ok: true, expiresAt });
+  });
+  app.post('/api/models/:id/start-private', async (req, res) => {
+    const u = getReqUser(req);
+    if (!u || u.role !== 'user') return res.status(403).json({ error: 'forbidden' });
+    const modelId = String(req.params.id);
+    const s = await storage.startSession(u.id, modelId);
+    await storage.setModelBusy(modelId, true);
+    res.json(s);
+  });
+
   // Update model profile (simple patch)
   app.patch("/api/models/:id", requireModelSelfOrAdmin(), async (req, res) => {
     const m = await storage.updateModelProfile(req.params.id, req.body ?? {});
@@ -110,6 +143,35 @@ export async function registerRoutes(app: Express, opts?: { version?: string }) 
   });
   app.get("/api/models/:id/photos", async (req, res) => {
     const photos = await storage.listModelPhotos(req.params.id);
+    res.json({ photos });
+  });
+
+  // Aliases per spec (model account)
+  app.post('/api/models/update-status', requireRole(['model','admin']), async (req, res) => {
+    const { model_id, status, visible } = req.body ?? {};
+    const id = String(model_id || (getReqUser(req)?.id || ''));
+    if (!id) return res.status(400).json({ error: 'model_id required' });
+    if (typeof visible === 'boolean') await storage.setVisible(id, !!visible);
+    if (status === 'online') await storage.setModelOnline(id, true);
+    else if (status === 'offline') await storage.setModelOnline(id, false);
+    else if (status === 'busy') await storage.setModelBusy(id, true);
+    const m = await storage.getModel(id);
+    if (!m) return res.status(404).json({ error: 'Model not found' });
+    res.json(m);
+  });
+  app.post('/api/models/upload-photo', requireRole(['model','admin']), async (req, res) => {
+    const u = getReqUser(req);
+    if (!u) return res.status(403).json({ error: 'forbidden' });
+    const { url } = req.body ?? {};
+    if (!url) return res.status(400).json({ error: 'url required' });
+    const photos = await storage.addModelPhoto(u.id, url);
+    if (!photos) return res.status(404).json({ error: 'Model not found' });
+    res.json({ photos });
+  });
+  app.get('/api/models/gallery', requireRole(['model','admin']), async (req, res) => {
+    const u = getReqUser(req);
+    if (!u) return res.status(403).json({ error: 'forbidden' });
+    const photos = await storage.listModelPhotos(u.id);
     res.json({ photos });
   });
 
@@ -142,15 +204,34 @@ export async function registerRoutes(app: Express, opts?: { version?: string }) 
     res.json(await storage.listReports());
   });
 
-  // ===== Public Chat (simple global chat) =====
+  // ===== Public Chat (per model, with optional moderation stub) =====
   app.get("/api/chat/public", async (req, res) => {
     const limit = Number(req.query.limit || 50);
-    res.json(await storage.listPublicMessages(limit));
+    const modelId = typeof req.query.modelId === 'string' ? String(req.query.modelId) : undefined;
+    res.json(await storage.listPublicMessages(modelId, limit));
   });
   app.post("/api/chat/public", async (req, res) => {
-    const { user, text, userId_B } = req.body ?? {};
+    const { user, text, userId_B, modelId } = req.body ?? {};
     if (!user || !text) return res.status(400).json({ error: "user and text required" });
-    res.json(await storage.postPublicMessage(user, text, userId_B));
+    // Simple moderation stub: block if contains banned word
+    const messageText = String(text);
+    const banned = [/\b(offensive|hate|slur)\b/i];
+    if (banned.some(rx => rx.test(messageText))) {
+      return res.status(403).json({ error: 'message_blocked', reason: 'offensive_content' });
+    }
+    res.json(await storage.postPublicMessage(modelId, user, messageText, userId_B));
+  });
+
+  // Favorites API (optional, complements client local favorites)
+  app.get('/api/favorites', requireRole(['user','model','admin']), async (req, res) => {
+    const u = (req as any).user as ReqUser;
+    const list = await storage.getFavorites(u!.id);
+    res.json({ favorites: list });
+  });
+  app.post('/api/favorites/:modelId', requireRole(['user','model','admin']), async (req, res) => {
+    const u = (req as any).user as ReqUser;
+    const list = await storage.toggleFavorite(u!.id, String(req.params.modelId));
+    res.json({ favorites: list });
   });
 
   // Convenience: allow starting a private show by username (useful from recent public chat list)

@@ -8,12 +8,15 @@ import { useSearch } from "@/lib/searchContext";
 import { useLocation } from "wouter";
 import { useAuth } from "@/lib/authContext";
 import { Button } from "@/components/ui/button";
+import { useQuery } from "@tanstack/react-query";
+import { useFavorites } from "@/lib/favoritesContext";
 
 export default function Home() {
   const [activeFilter, setActiveFilter] = useState("online");
   const { searchTerm, isSearchActive } = useSearch();
   const [, setLocation] = useLocation();
   const { isAuthenticated, user } = useAuth();
+  const { favorites } = useFavorites();
 
   // If user logs out while 'favorites' is active, reset to 'online'
   useEffect(() => {
@@ -106,6 +109,32 @@ export default function Home() {
 
   const config = getFilterConfig();
 
+  // Build ordered ids for home according to spec (favorites first by status, then others)
+  const favsCsv = favorites.join(",");
+  const { data: homeGroups } = useQuery<{ favorites: any; others: any }>({
+    queryKey: ["/api/models/home", favsCsv],
+    queryFn: async () => {
+      const url = favsCsv ? `/api/models/home?favs=${encodeURIComponent(favsCsv)}` : "/api/models/home";
+      const res = await fetch(url);
+      if (!res.ok) return { favorites: { online: [], busy: [], offline: [] }, others: { online: [], busy: [], offline: [] } };
+      return res.json();
+    },
+    staleTime: 5000,
+    refetchInterval: 10000
+  });
+  const orderedIds: string[] | undefined = (() => {
+    if (!homeGroups) return undefined;
+    const pick = (a: any[]) => a.map((x: any) => String(x.id));
+    return [
+      ...pick(homeGroups.favorites?.online || []),
+      ...pick(homeGroups.favorites?.busy || []),
+      ...pick(homeGroups.favorites?.offline || []),
+      ...pick(homeGroups.others?.online || []),
+      ...pick(homeGroups.others?.busy || []),
+      ...pick(homeGroups.others?.offline || []),
+    ];
+  })();
+
   const handleFilterChange = (id: string) => {
     setActiveFilter(id);
     // Ensure the models section is fully visible below sticky header/filters
@@ -153,6 +182,7 @@ export default function Home() {
             )}
           </div>
           <ModelGrid filter={config.filter} showRank={config.showRank} minimal />
+  <ModelGrid filter={config.filter} showRank={config.showRank} minimal orderedIds={orderedIds} refetchIntervalMs={10000} />
         </div>
       </section>
 

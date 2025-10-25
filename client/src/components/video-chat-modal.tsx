@@ -231,7 +231,7 @@ export default function VideoChatModal({ isOpen, onClose, modelName, isModelOnli
     setChat(prev => [{ id: String(Date.now()), user: isPrivate ? 'You (private)' : 'You', text: message, when: new Date().toLocaleTimeString() }, ...prev]);
     setChatInput("");
     if (!isPrivate) {
-      try { await fetch('/api/chat/public', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ user: 'Guest', text: message }) }); } catch {}
+      try { await fetch('/api/chat/public', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ user: 'Guest', text: message, modelId }) }); } catch {}
     }
   };
 

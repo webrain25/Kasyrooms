@@ -27,6 +27,7 @@ export type Model = {
   privateShows?: number;
   hoursOnline?: number;
   createdAt: string;
+  visible?: boolean;
 };
 
 export type Report = { id: string; modelId: string; userId: string; reason: string; details?: string; createdAt: string };
@@ -41,7 +42,10 @@ export class MemStorage {
   sessions: Array<{ id: string; userId_B: string; modelId: string; startAt: string; endAt?: string; durationSec?: number; totalCharged?: number }>=[];
   blocksByModel = new Map<string, Set<string>>(); // modelId -> set of blocked userIds
   reports: Report[] = [];
-  publicChat: Array<{ id: string; user: string; text: string; when: string; userId_B?: string }> = [];
+  // Public chat per model (modelId -> messages)
+  publicChatByModel = new Map<string, Array<{ id: string; user: string; text: string; when: string; userId_B?: string }>>();
+  // Favorites per user (userId -> set of modelIds)
+  favoritesByUser = new Map<string, Set<string>>();
 
   constructor() {
     this.seed();
@@ -71,7 +75,7 @@ export class MemStorage {
     ];
     for (const m of sample) {
       const id = randomUUID();
-      this.models.set(id, { ...m, id, createdAt: new Date().toISOString() });
+      this.models.set(id, { ...m, id, visible: true, createdAt: new Date().toISOString() });
     }
 
     // Ensure a demo model bound to the demo 'modella' user exists with a stable id 'm-001'.
@@ -82,6 +86,7 @@ export class MemStorage {
         ...base,
         id: 'm-001',
         name: 'Modella Demo',
+        visible: true,
         createdAt: new Date().toISOString()
       });
     }
@@ -181,15 +186,20 @@ export class MemStorage {
   async listReports() { return this.reports; }
 
   // public chat (simple in-memory, global)
-  async postPublicMessage(user: string, text: string, userId_B?: string) {
+  // public chat (per-model)
+  async postPublicMessage(modelId: string | undefined, user: string, text: string, userId_B?: string) {
+    const mId = (modelId || 'global');
+    const list = this.publicChatByModel.get(mId) || [];
     const msg = { id: randomUUID(), user, text, when: new Date().toISOString(), userId_B };
-    this.publicChat.unshift(msg);
-    // trim
-    if (this.publicChat.length > 200) this.publicChat.pop();
+    list.unshift(msg);
+    if (list.length > 200) list.pop();
+    this.publicChatByModel.set(mId, list);
     return msg;
   }
-  async listPublicMessages(limit = 50) {
-    return this.publicChat.slice(0, limit);
+  async listPublicMessages(modelId?: string, limit = 50) {
+    const mId = (modelId || 'global');
+    const list = this.publicChatByModel.get(mId) || [];
+    return list.slice(0, limit);
   }
 
   // transaction log
@@ -257,6 +267,44 @@ export class MemStorage {
       if (u.username.toLowerCase() === target) return u;
     }
     return undefined;
+  }
+
+  // favorites helpers
+  async getFavorites(userId: string) {
+    const set = this.favoritesByUser.get(userId);
+    return set ? Array.from(set) : [];
+  }
+  async toggleFavorite(userId: string, modelId: string) {
+    const uid = String(userId);
+    const mid = String(modelId);
+    let set = this.favoritesByUser.get(uid);
+    if (!set) { set = new Set<string>(); this.favoritesByUser.set(uid, set); }
+    if (set.has(mid)) set.delete(mid); else set.add(mid);
+    return Array.from(set);
+  }
+  async setVisible(modelId: string, visible: boolean) {
+    const m = this.models.get(modelId);
+    if (!m) return undefined;
+    m.visible = !!visible;
+    this.models.set(modelId, m);
+    return m;
+  }
+  async listModelsHome(opts: { userId?: string; favoritesOverride?: string[] }) {
+    const all = Array.from(this.models.values());
+    const favIds = new Set((opts.favoritesOverride && opts.favoritesOverride.length>0)
+      ? opts.favoritesOverride.map(String)
+      : (opts.userId ? await this.getFavorites(opts.userId) : []));
+    const make = (models: Model[]) => ({
+      online: models.filter(m => m.isOnline && !m.isBusy).map(m => ({ id: m.id, photo_url: m.profileImage, status: 'online' })),
+      busy: models.filter(m => m.isBusy).map(m => ({ id: m.id, photo_url: m.profileImage, status: 'busy' })),
+      offline: models.filter(m => !m.isOnline && !m.isBusy).map(m => ({ id: m.id, photo_url: m.profileImage, status: 'offline' })),
+    });
+    const favModels = all.filter(m => favIds.has(m.id));
+    const otherModels = all.filter(m => !favIds.has(m.id));
+    return {
+      favorites: make(favModels),
+      others: make(otherModels)
+    };
   }
 }
 

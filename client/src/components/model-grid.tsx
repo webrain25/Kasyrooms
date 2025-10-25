@@ -13,9 +13,11 @@ interface ModelGridProps {
   limit?: number;
   showRank?: boolean;
   minimal?: boolean;
+  orderedIds?: string[]; // Optional explicit ordering by model id
+  refetchIntervalMs?: number; // Optional override for polling interval
 }
 
-export default function ModelGrid({ filter = {}, limit, showRank = false, minimal = false }: ModelGridProps) {
+export default function ModelGrid({ filter = {}, limit, showRank = false, minimal = false, orderedIds, refetchIntervalMs }: ModelGridProps) {
   const { searchTerm, isSearchActive } = useSearch();
   const { t } = useI18n();
   
@@ -27,7 +29,7 @@ export default function ModelGrid({ filter = {}, limit, showRank = false, minima
 
   const { data: models, isLoading, error } = useQuery<Model[]>({
     queryKey: [`/api/models?${queryParams.toString()}`],
-    refetchInterval: 60000, // Refetch every minute for live data
+    refetchInterval: refetchIntervalMs ?? 60000, // Refetch interval (default 1 min)
   });
 
   if (isLoading) {
@@ -70,11 +72,19 @@ export default function ModelGrid({ filter = {}, limit, showRank = false, minima
   }
 
   let displayedModels = limit ? models.slice(0, limit) : models;
-  // Client-side status sort: online > busy > offline
-  displayedModels = displayedModels.sort((a, b) => {
-    const score = (m: Model) => (m.isOnline ? 2 : 0) + (m.isBusy ? 1 : 0);
-    return score(b) - score(a);
-  });
+  if (orderedIds && orderedIds.length > 0) {
+    const idx = new Map<string, number>();
+    orderedIds.forEach((id, i) => idx.set(id, i));
+    displayedModels = displayedModels
+      .filter(m => idx.has(m.id))
+      .sort((a, b) => (idx.get(a.id)! - idx.get(b.id)!));
+  } else {
+    // Default: status sort online > busy > offline
+    displayedModels = displayedModels.sort((a, b) => {
+      const score = (m: Model) => (m.isOnline ? 2 : 0) + (m.isBusy ? 1 : 0);
+      return score(b) - score(a);
+    });
+  }
 
   return (
     <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-4 md:gap-6" data-testid="model-grid">
