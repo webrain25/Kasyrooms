@@ -110,28 +110,25 @@ export default function Home() {
   const config = getFilterConfig();
 
   // Build ordered ids for home according to spec (favorites first by status, then others)
-  const favsCsv = favorites.join(",");
-  const { data: homeGroups } = useQuery<{ favorites: any; others: any }>({
-    queryKey: ["/api/models/home", favsCsv],
+  // Poll full models and compute order locally (works even if /api/models/home is not available)
+  const { data: allModels } = useQuery<any[]>({
+    queryKey: ["/api/models?home-order"],
     queryFn: async () => {
-      const url = favsCsv ? `/api/models/home?favs=${encodeURIComponent(favsCsv)}` : "/api/models/home";
-      const res = await fetch(url);
-      if (!res.ok) return { favorites: { online: [], busy: [], offline: [] }, others: { online: [], busy: [], offline: [] } };
-      return res.json();
+      const res = await fetch("/api/models");
+      return res.ok ? res.json() : [];
     },
-    staleTime: 5000,
     refetchInterval: 10000
   });
   const orderedIds: string[] | undefined = (() => {
-    if (!homeGroups) return undefined;
-    const pick = (a: any[]) => a.map((x: any) => String(x.id));
+    if (!Array.isArray(allModels)) return undefined;
+    const favSet = new Set(favorites.map(String));
+    const status = (m: any) => ({ online: !!m.isOnline && !m.isBusy, busy: !!m.isBusy, offline: !m.isOnline && !m.isBusy });
+    const favs = allModels.filter(m => favSet.has(m.id));
+    const others = allModels.filter(m => !favSet.has(m.id));
+    const pick = (list: any[], key: 'online'|'busy'|'offline') => list.filter(m => status(m)[key]).map(m => String(m.id));
     return [
-      ...pick(homeGroups.favorites?.online || []),
-      ...pick(homeGroups.favorites?.busy || []),
-      ...pick(homeGroups.favorites?.offline || []),
-      ...pick(homeGroups.others?.online || []),
-      ...pick(homeGroups.others?.busy || []),
-      ...pick(homeGroups.others?.offline || []),
+      ...pick(favs, 'online'), ...pick(favs, 'busy'), ...pick(favs, 'offline'),
+      ...pick(others, 'online'), ...pick(others, 'busy'), ...pick(others, 'offline'),
     ];
   })();
 
