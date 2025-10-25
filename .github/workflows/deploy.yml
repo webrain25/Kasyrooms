@@ -18,6 +18,8 @@ jobs:
       VPS_HOST: ${{ secrets.VPS_HOST || vars.VPS_HOST }}
       VPS_USER: ${{ secrets.VPS_USER || vars.VPS_USER }}
       VPS_SSH_KEY: ${{ secrets.VPS_SSH_KEY || vars.VPS_SSH_KEY }}
+      VPS_SSH_PASSPHRASE: ${{ secrets.VPS_SSH_PASSPHRASE || vars.VPS_SSH_PASSPHRASE }}
+      VPS_PASSWORD: ${{ secrets.VPS_PASSWORD || vars.VPS_PASSWORD }}
       VPS_APP_DIR: ${{ secrets.VPS_APP_DIR || vars.VPS_APP_DIR }}
     steps:
       - name: Checkout
@@ -34,12 +36,22 @@ jobs:
           node ./node_modules/vite/bin/vite.js build
           npx --yes esbuild server/index.ts --platform=node --packages=external --bundle --format=esm --outdir=dist
 
-      - name: Preflight: check required variables
+      - name: "Preflight: check required variables"
         shell: bash
         run: |
           set -euo pipefail
           missing=()
           for k in VPS_HOST VPS_USER VPS_SSH_KEY VPS_APP_DIR; do
+            if [ -z "${!k:-}" ]; then
+              missing+=("$k")
+            fi
+          done
+          # Allow password-based auth as a fallback: require either VPS_SSH_KEY or VPS_PASSWORD
+          if [ -z "${VPS_SSH_KEY:-}" ] && [ -z "${VPS_PASSWORD:-}" ]; then
+            missing+=("VPS_SSH_KEY|VPS_PASSWORD (provide one)")
+          fi
+          # VPS_APP_DIR, VPS_HOST and VPS_USER must be present
+          for k in VPS_HOST VPS_USER VPS_APP_DIR; do
             if [ -z "${!k:-}" ]; then
               missing+=("$k")
             fi
@@ -51,22 +63,52 @@ jobs:
             exit 1
           fi
 
-      - name: Upload bundle to VPS
+      - name: Upload bundle to VPS (SSH key)
+        if: ${{ env.VPS_SSH_KEY != '' }}
         uses: appleboy/scp-action@v0.1.7
         with:
           host: ${{ env.VPS_HOST }}
           username: ${{ env.VPS_USER }}
           key: ${{ env.VPS_SSH_KEY }}
+          passphrase: ${{ env.VPS_SSH_PASSPHRASE }}
           port: 22
           source: "dist,ecosystem.config.cjs,package.json,package-lock.json"
           target: "${{ env.VPS_APP_DIR }}"
 
-      - name: Install & reload on VPS (zero-downtime)
+      - name: Upload bundle to VPS (password)
+        if: ${{ env.VPS_SSH_KEY == '' && env.VPS_PASSWORD != '' }}
+        uses: appleboy/scp-action@v0.1.7
+        with:
+          host: ${{ env.VPS_HOST }}
+          username: ${{ env.VPS_USER }}
+          password: ${{ env.VPS_PASSWORD }}
+          port: 22
+          source: "dist,ecosystem.config.cjs,package.json,package-lock.json"
+          target: "${{ env.VPS_APP_DIR }}"
+
+      - name: Install & reload on VPS (SSH key)
+        if: ${{ env.VPS_SSH_KEY != '' }}
         uses: appleboy/ssh-action@v1.2.0
         with:
           host: ${{ env.VPS_HOST }}
           username: ${{ env.VPS_USER }}
           key: ${{ env.VPS_SSH_KEY }}
+          passphrase: ${{ env.VPS_SSH_PASSPHRASE }}
+          port: 22
+          script: |
+            cd ${{ env.VPS_APP_DIR }}
+            npm ci --omit=dev --no-audit --no-fund
+            # Ensure ecosystem changes (cluster/instances) are applied on every deploy
+            pm2 startOrReload ecosystem.config.cjs
+            pm2 save || true
+
+      - name: Install & reload on VPS (password)
+        if: ${{ env.VPS_SSH_KEY == '' && env.VPS_PASSWORD != '' }}
+        uses: appleboy/ssh-action@v1.2.0
+        with:
+          host: ${{ env.VPS_HOST }}
+          username: ${{ env.VPS_USER }}
+          password: ${{ env.VPS_PASSWORD }}
           port: 22
           script: |
             cd ${{ env.VPS_APP_DIR }}
