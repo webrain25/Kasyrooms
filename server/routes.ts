@@ -470,5 +470,21 @@ export async function registerRoutes(app: Express, opts?: { version?: string }) 
   });
 
   const httpServer = createServer(app);
+
+  // TEMP: diagnostics to list registered routes and their order (for prod verification)
+  app.get('/api/_routes', (_req: any, res: any) => {
+    try {
+      const stack: any[] = (app as any)?._router?.stack || [];
+      const routes = stack
+        .filter((l: any) => l.route && l.route.path)
+        .map((l: any) => ({
+          path: l.route.path,
+          methods: Object.keys(l.route.methods || {}),
+        }));
+      res.json({ count: routes.length, routes });
+    } catch (e: any) {
+      res.status(500).json({ error: e?.message || 'diag_failed' });
+    }
+  });
   return httpServer;
 }
