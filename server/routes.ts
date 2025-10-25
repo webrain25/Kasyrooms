@@ -47,6 +47,17 @@ export async function registerRoutes(app: Express, opts?: { version?: string }) 
   // Wallet mode is per-user: if a local user is mapped to an external user (Sirplay/Kasynoir), we use the shared wallet
   // MODELS (demo data for homepage)
   app.get("/api/models", async (req, res) => {
+    // Optional grouping mode to avoid path conflicts in some deployments: /api/models?home=1&favs=a,b,c
+    const homeMode = String(req.query.home || '').toLowerCase();
+    if (homeMode === '1' || homeMode === 'true') {
+      const u = getReqUser(req);
+      const favsOverride = typeof req.query.favs === 'string' && (req.query.favs as string).trim().length > 0
+        ? (req.query.favs as string).split(',').map(s=>s.trim()).filter(Boolean)
+        : undefined;
+      const result = await storage.listModelsHome({ userId: u?.id, favoritesOverride: favsOverride });
+      return res.json(result);
+    }
+
     const filters: any = {};
     if (req.query.online === "true") filters.isOnline = true;
     if (req.query.new === "true") filters.isNew = true;
