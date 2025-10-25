@@ -12,8 +12,6 @@ concurrency:
 jobs:
   deploy:
     runs-on: ubuntu-latest
-    env:
-      VPS_PORT: ${{ secrets.VPS_PORT || 22 }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -35,7 +33,6 @@ jobs:
           host: ${{ secrets.VPS_HOST }}
           username: ${{ secrets.VPS_USER }}
           key: ${{ secrets.VPS_SSH_KEY }}
-          port: ${{ env.VPS_PORT }}
           source: "dist,ecosystem.config.cjs,package.json,package-lock.json"
           target: "${{ secrets.VPS_APP_DIR }}"
 
@@ -45,7 +42,6 @@ jobs:
           host: ${{ secrets.VPS_HOST }}
           username: ${{ secrets.VPS_USER }}
           key: ${{ secrets.VPS_SSH_KEY }}
-          port: ${{ env.VPS_PORT }}
           script: |
             cd ${{ secrets.VPS_APP_DIR }}
             npm ci --omit=dev --no-audit --no-fund
@@ -56,3 +52,28 @@ jobs:
       - name: Verify public /api/version
         run: |
           curl -fsS -L https://www.dev.kasyrooms.com/api/version || curl -fsS -L https://dev.kasyrooms.com/api/version
+
+      - name: Smoke check core APIs return JSON (not HTML)
+        run: |
+          set -e
+          urls=(
+            https://dev.kasyrooms.com/api/healthz
+            https://dev.kasyrooms.com/api/models
+            "https://dev.kasyrooms.com/api/models?home=1"
+          )
+          for url in "${urls[@]}"; do
+            echo "Testing $url"
+            ct=$(curl -sI "$url" | awk -F': ' '/^content-type:/I{print tolower($2)}' | tr -d '\r')
+            body=$(curl -fsSL "$url")
+            echo "Content-Type: $ct"
+            if echo "$ct" | grep -qi 'text/html'; then
+              echo "ERROR: $url returned HTML" >&2
+              exit 1
+            fi
+            first=$(printf "%s" "$body" | head -c1)
+            if ! printf "%s" "$first" | grep -qE '[\{\[]'; then
+              echo "ERROR: $url did not return JSON" >&2
+              echo "$body"
+              exit 1
+            fi
+          done

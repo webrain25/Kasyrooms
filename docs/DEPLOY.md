@@ -1,4 +1,24 @@
-# Deploy (VPS with PM2 + Nginx)
+# Deployment Guide
+
+This project ships a Node API + React SPA build. Use this guide to deploy behind Nginx and (optionally) Cloudflare.
+
+## Node app
+- Runs on port 5000 via PM2 (ecosystem.config.cjs)
+- Serves the SPA from dist/public in production
+- Important: Always proxy /api/* to the Node app; do not let the SPA catch-all handle /api/*.
+
+## Nginx (sample)
+See `ops/nginx.sample.conf` for a complete server block. Key points:
+- Place the `/api/` location before any other `location` blocks.
+- Proxy /api/* to `http://127.0.0.1:5000`.
+- Serve static files from `dist/public`.
+- Use SPA fallback only for non-API routes.
+
+## Cloudflare (recommended rules)
+If you use Cloudflare in front of Nginx:
+- Create a Cache Rule: Bypass cache for `/api/*`.
+- Ensure the cache respects query strings (Cache key includes Query string: Include All).
+- Optionally, cache `/assets/*` aggressively (immutable hashed files).
 
 ## Build on the server
 
@@ -26,12 +46,13 @@ pm2 status
 pm2 logs kasyrooms --lines 200
 ```
 
-## Verify
+## Post-deploy smoke
 
 ```bash
-curl -sS https://www.dev.kasyrooms.com/api/healthz
-curl -sS -L https://www.dev.kasyrooms.com/api/version
-curl -sS -H "Content-Type: application/json" -d '{"username":"admin"}' https://www.dev.kasyrooms.com/api/auth/login
+curl -sS https://dev.kasyrooms.com/api/healthz | head -c 200; echo
+curl -sS -L https://dev.kasyrooms.com/api/version | head -c 200; echo
+curl -sS https://dev.kasyrooms.com/api/models | head -c 200; echo
+curl -sS "https://dev.kasyrooms.com/api/models?home=1" | head -c 200; echo
 ```
 
-If /api/version or /api/auth/login does not return JSON, the running process is not the latest build or the Nginx upstream routes POST /api/* incorrectly. Ensure PM2 reloaded the correct process and Nginx forwards both GET and POST under /api/ to Node.
+If any endpoint returns HTML, Nginx or Cloudflare is serving the SPA or cache instead of the API – fix proxy rules as above.
