@@ -1,4 +1,5 @@
 name: Deploy to VPS (SSH)
+# yaml-language-server: $schema=https://json.schemastore.org/github-workflow.json
 
 on:
   push:
@@ -13,10 +14,11 @@ jobs:
   deploy:
     runs-on: ubuntu-latest
     env:
-      VPS_HOST: ${{ secrets.VPS_HOST }}
-      VPS_USER: ${{ secrets.VPS_USER }}
-      VPS_SSH_KEY: ${{ secrets.VPS_SSH_KEY }}
-      VPS_APP_DIR: ${{ secrets.VPS_APP_DIR }}
+      # Prefer repository Secrets, fall back to repository Variables if provided
+      VPS_HOST: ${{ secrets.VPS_HOST || vars.VPS_HOST }}
+      VPS_USER: ${{ secrets.VPS_USER || vars.VPS_USER }}
+      VPS_SSH_KEY: ${{ secrets.VPS_SSH_KEY || vars.VPS_SSH_KEY }}
+      VPS_APP_DIR: ${{ secrets.VPS_APP_DIR || vars.VPS_APP_DIR }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -31,6 +33,23 @@ jobs:
           npm ci --include=dev --no-audit --no-fund
           node ./node_modules/vite/bin/vite.js build
           npx --yes esbuild server/index.ts --platform=node --packages=external --bundle --format=esm --outdir=dist
+
+      - name: Preflight: check required variables
+        shell: bash
+        run: |
+          set -euo pipefail
+          missing=()
+          for k in VPS_HOST VPS_USER VPS_SSH_KEY VPS_APP_DIR; do
+            if [ -z "${!k:-}" ]; then
+              missing+=("$k")
+            fi
+          done
+          if [ ${#missing[@]} -gt 0 ]; then
+            echo "Missing required variables: ${missing[*]}" >&2
+            echo "Please set them as repository Secrets (preferred) or Variables:" >&2
+            echo "GitHub → Settings → Secrets and variables → Actions → New repository secret/variable" >&2
+            exit 1
+          fi
 
       - name: Upload bundle to VPS
         uses: appleboy/scp-action@v0.1.7

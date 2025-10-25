@@ -1,0 +1,21 @@
+{
+  "css.lint.unknownAtRules": "ignore",
+  "tailwindCSS.includeLanguages": {
+    "typescript": "javascript",
+    "typescriptreact": "javascript"
+  },
+  "editor.quickSuggestions": {
+    "strings": true
+  },
+  "css.validate": false,
+  "scss.validate": false,
+  "less.validate": false
+  ,
+  // Reduce false-positive warnings for GitHub Actions secrets in YAML files
+  "yaml.validate": true,
+  "yaml.schemas": {
+    "https://json.schemastore.org/github-workflow.json": "**/.github/workflows/*"
+  },
+  // Some editors warn about missing secrets; disable the specific rule if present (some extensions show it)
+  "github-actions.disableWorkflowValidation": true
+}
