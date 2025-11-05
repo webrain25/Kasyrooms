@@ -18,7 +18,8 @@ yarn-error.log*
 # OS/editor
 .DS_Store
 Thumbs.db
-.vscode/
+# Commit .vscode for shared workspace settings
+# .vscode/
 .idea/
 
 # TypeScript build info

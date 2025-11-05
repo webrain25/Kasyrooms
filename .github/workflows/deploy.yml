@@ -1,10 +1,16 @@
-name: Deploy to VPS (SSH)
+name: Deploy to VPS
 # yaml-language-server: $schema=https://json.schemastore.org/github-workflow.json
 
 on:
   push:
     branches: ["main"]
   workflow_dispatch:
+    inputs:
+      run_migrations:
+        description: "Run Drizzle DB migrations before deploy"
+        required: false
+        type: boolean
+        default: false
 
 concurrency:
   group: deploy-vps
@@ -15,12 +21,15 @@ jobs:
     runs-on: ubuntu-latest
     env:
       # Prefer repository Secrets, fall back to repository Variables if provided
-      VPS_HOST: ${{ secrets.VPS_HOST || vars.VPS_HOST }}
-      VPS_USER: ${{ secrets.VPS_USER || vars.VPS_USER }}
-      VPS_SSH_KEY: ${{ secrets.VPS_SSH_KEY || vars.VPS_SSH_KEY }}
-      VPS_SSH_PASSPHRASE: ${{ secrets.VPS_SSH_PASSPHRASE || vars.VPS_SSH_PASSPHRASE }}
-      VPS_PASSWORD: ${{ secrets.VPS_PASSWORD || vars.VPS_PASSWORD }}
-      VPS_APP_DIR: ${{ secrets.VPS_APP_DIR || vars.VPS_APP_DIR }}
+      VPS_HOST: ${{ secrets.VPS_HOST }}
+      VPS_USER: ${{ secrets.VPS_USER }}
+      VPS_SSH_KEY: ${{ secrets.VPS_SSH_KEY }}
+      VPS_SSH_PASSPHRASE: ${{ secrets.VPS_SSH_PASSPHRASE }}
+      VPS_PASSWORD: ${{ secrets.VPS_PASSWORD }}
+      VPS_APP_DIR: ${{ secrets.VPS_APP_DIR }}
+      VPS_PORT: ${{ secrets.VPS_PORT }}
+      APP_ENV_FILE: ${{ secrets.APP_ENV_FILE }}
+      DATABASE_URL: ${{ secrets.DATABASE_URL }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -36,12 +45,57 @@ jobs:
           node ./node_modules/vite/bin/vite.js build
           npx --yes esbuild server/index.ts --platform=node --packages=external --bundle --format=esm --outdir=dist
 
+      - name: Resolve DATABASE_URL (from APP_ENV_FILE)
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ -z "${DATABASE_URL:-}" ] && [ -n "${APP_ENV_FILE:-}" ]; then
+            echo "Attempting to parse DATABASE_URL from APP_ENV_FILE"
+            parsed=$(printf "%s\n" "$APP_ENV_FILE" | awk -F '=' '/^DATABASE_URL=/{print substr($0, index($0,$2))}' | head -n1)
+            if [ -n "$parsed" ]; then
+              parsed=${parsed#\"}; parsed=${parsed%\"}
+              echo "DATABASE_URL found"
+              echo "DATABASE_URL=$parsed" >> $GITHUB_ENV
+            fi
+          fi
+          if [ -z "${DATABASE_URL:-}" ]; then
+            echo "No DATABASE_URL detected; migrations will be skipped."
+          fi
+
+      - name: Run DB migrations (drizzle-kit push)
+        if: ${{ env.DATABASE_URL != '' }}
+        run: npm run db:push
+
+      - name: Resolve DATABASE_URL (from APP_ENV_FILE)
+        if: ${{ github.event_name == 'workflow_dispatch' && inputs.run_migrations == true }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ -z "${DATABASE_URL:-}" ] && [ -n "${APP_ENV_FILE:-}" ]; then
+            echo "Attempting to parse DATABASE_URL from APP_ENV_FILE"
+            parsed=$(printf "%s\n" "$APP_ENV_FILE" | awk -F '=' '/^DATABASE_URL=/{print substr($0, index($0,$2))}' | head -n1)
+            if [ -n "$parsed" ]; then
+              parsed=${parsed#\"}; parsed=${parsed%\"}
+              echo "DATABASE_URL found"
+              echo "DATABASE_URL=$parsed" >> $GITHUB_ENV
+            fi
+          fi
+          if [ -z "${DATABASE_URL:-}" ]; then
+            echo "DATABASE_URL is required to run migrations. Provide it via secrets.DATABASE_URL or include it in APP_ENV_FILE." >&2
+            exit 1
+          fi
+
+      - name: Run DB migrations (drizzle-kit push)
+        if: ${{ github.event_name == 'workflow_dispatch' && inputs.run_migrations == true }}
+        run: npm run db:push
+
       - name: "Preflight: check required variables"
         shell: bash
         run: |
           set -euo pipefail
           missing=()
-          for k in VPS_HOST VPS_USER VPS_SSH_KEY VPS_APP_DIR; do
+          # Require core values (host/user/app dir); auth handled separately (key OR password)
+          for k in VPS_HOST VPS_USER VPS_APP_DIR; do
             if [ -z "${!k:-}" ]; then
               missing+=("$k")
             fi
@@ -50,16 +104,102 @@ jobs:
           if [ -z "${VPS_SSH_KEY:-}" ] && [ -z "${VPS_PASSWORD:-}" ]; then
             missing+=("VPS_SSH_KEY|VPS_PASSWORD (provide one)")
           fi
-          # VPS_APP_DIR, VPS_HOST and VPS_USER must be present
-          for k in VPS_HOST VPS_USER VPS_APP_DIR; do
-            if [ -z "${!k:-}" ]; then
-              missing+=("$k")
-            fi
-          done
           if [ ${#missing[@]} -gt 0 ]; then
             echo "Missing required variables: ${missing[*]}" >&2
             echo "Please set them as repository Secrets (preferred) or Variables:" >&2
             echo "GitHub → Settings → Secrets and variables → Actions → New repository secret/variable" >&2
+            exit 1
+          fi
+          # Validate SSH key shape if provided (common mistake: pasting PUBLIC key instead of PRIVATE)
+          if [ -n "${VPS_SSH_KEY:-}" ]; then
+            if echo "$VPS_SSH_KEY" | grep -qE '^(ssh-rsa|ssh-ed25519) '; then
+              echo "It looks like you provided a PUBLIC key in VPS_SSH_KEY. Please paste the PRIVATE key content (-----BEGIN ... PRIVATE KEY-----) instead." >&2
+              exit 1
+            fi
+            if ! echo "$VPS_SSH_KEY" | grep -q 'BEGIN' ; then
+              echo "VPS_SSH_KEY does not look like a PEM/OpenSSH private key. Ensure you paste the full PRIVATE key, including BEGIN/END lines." >&2
+              exit 1
+            fi
+          fi
+          if [ -n "${VPS_SSH_KEY:-}" ]; then echo "Auth mode: SSH key"; else echo "Auth mode: Password"; fi
+
+      - name: "Debug (sanity): show which inputs are present (masked)"
+        shell: bash
+        run: |
+          set -e
+          present() { if [ -n "${1:-}" ]; then echo yes; else echo no; fi; }
+          echo "Has VPS_HOST: $(present "$VPS_HOST")"
+          echo "Has VPS_USER: $(present "$VPS_USER")"
+          echo "Has VPS_APP_DIR: $(present "$VPS_APP_DIR")"
+          echo "Has VPS_SSH_KEY: $(present "$VPS_SSH_KEY")"
+          echo "Has VPS_PASSWORD: $(present "$VPS_PASSWORD")"
+
+      - name: Ensure app directory exists (SSH key)
+        if: ${{ env.VPS_SSH_KEY != '' }}
+        uses: appleboy/ssh-action@v1.2.0
+        with:
+          host: ${{ env.VPS_HOST }}
+          username: ${{ env.VPS_USER }}
+          key: ${{ env.VPS_SSH_KEY }}
+          passphrase: ${{ env.VPS_SSH_PASSPHRASE }}
+          port: ${{ env.VPS_PORT }}
+          script: |
+            mkdir -p "${{ env.VPS_APP_DIR }}"
+
+      - name: Ensure app directory exists (password)
+        if: ${{ env.VPS_SSH_KEY == '' && env.VPS_PASSWORD != '' }}
+        uses: appleboy/ssh-action@v1.2.0
+        with:
+          host: ${{ env.VPS_HOST }}
+          username: ${{ env.VPS_USER }}
+          password: ${{ env.VPS_PASSWORD }}
+          port: ${{ env.VPS_PORT }}
+          script: |
+            mkdir -p "${{ env.VPS_APP_DIR }}"
+
+      - name: Sync .env to VPS (SSH key)
+        if: ${{ env.APP_ENV_FILE != '' && env.VPS_SSH_KEY != '' }}
+        uses: appleboy/ssh-action@v1.2.0
+        with:
+          host: ${{ env.VPS_HOST }}
+          username: ${{ env.VPS_USER }}
+          key: ${{ env.VPS_SSH_KEY }}
+          passphrase: ${{ env.VPS_SSH_PASSPHRASE }}
+          port: ${{ env.VPS_PORT }}
+          script: |
+            set -e
+            cd "${{ env.VPS_APP_DIR }}"
+            # Write secret content to .env (multiline supported)
+            cat > .env << 'EOF__APP_ENV'
+            $APP_ENV_FILE
+            EOF__APP_ENV
+            chmod 600 .env
+
+      - name: Sync .env to VPS (password)
+        if: ${{ env.APP_ENV_FILE != '' && env.VPS_SSH_KEY == '' && env.VPS_PASSWORD != '' }}
+        uses: appleboy/ssh-action@v1.2.0
+        with:
+          host: ${{ env.VPS_HOST }}
+          username: ${{ env.VPS_USER }}
+          password: ${{ env.VPS_PASSWORD }}
+          port: ${{ env.VPS_PORT }}
+          script: |
+            set -e
+            cd "${{ env.VPS_APP_DIR }}"
+            cat > .env << 'EOF__APP_ENV'
+            $APP_ENV_FILE
+            EOF__APP_ENV
+            chmod 600 .env
+
+      - name: Preflight auth
+        shell: bash
+        run: |
+          if [ -n "${VPS_SSH_KEY:-}" ]; then
+            echo "Auth mode: SSH key"
+          elif [ -n "${VPS_PASSWORD:-}" ]; then
+            echo "Auth mode: password"
+          else
+            echo "❌ Nessuna credenziale trovata (manca VPS_SSH_KEY o VPS_PASSWORD)." >&2
             exit 1
           fi
 
@@ -71,7 +211,7 @@ jobs:
           username: ${{ env.VPS_USER }}
           key: ${{ env.VPS_SSH_KEY }}
           passphrase: ${{ env.VPS_SSH_PASSPHRASE }}
-          port: 22
+          port: ${{ env.VPS_PORT }}
           source: "dist,ecosystem.config.cjs,package.json,package-lock.json"
           target: "${{ env.VPS_APP_DIR }}"
 
@@ -82,7 +222,7 @@ jobs:
           host: ${{ env.VPS_HOST }}
           username: ${{ env.VPS_USER }}
           password: ${{ env.VPS_PASSWORD }}
-          port: 22
+          port: ${{ env.VPS_PORT }}
           source: "dist,ecosystem.config.cjs,package.json,package-lock.json"
           target: "${{ env.VPS_APP_DIR }}"
 
@@ -94,13 +234,22 @@ jobs:
           username: ${{ env.VPS_USER }}
           key: ${{ env.VPS_SSH_KEY }}
           passphrase: ${{ env.VPS_SSH_PASSPHRASE }}
-          port: 22
+          port: ${{ env.VPS_PORT }}
           script: |
             cd ${{ env.VPS_APP_DIR }}
+            # Load environment variables from .env if present so ecosystem.config.cjs picks them up
+            if [ -f .env ]; then set -a && . ./.env && set +a; fi
+            # Ensure Node is available; try sourcing nvm if present for non-login shells
+            if ! command -v node >/dev/null 2>&1; then
+              if [ -s "$HOME/.nvm/nvm.sh" ]; then . "$HOME/.nvm/nvm.sh"; fi
+            fi
+            if ! command -v node >/dev/null 2>&1; then echo "Node.js not found on VPS PATH. Install Node 20.x or ensure PATH is set for the 'deploy' user." >&2; exit 1; fi
+            # Determine PM2 runner: use global pm2 if present, else fallback to npx
+            if command -v pm2 >/dev/null 2>&1; then PM2="pm2"; else PM2="npx --yes pm2@latest"; fi
             npm ci --omit=dev --no-audit --no-fund
             # Ensure ecosystem changes (cluster/instances) are applied on every deploy
-            pm2 startOrReload ecosystem.config.cjs
-            pm2 save || true
+            $PM2 startOrReload ecosystem.config.cjs
+            $PM2 save || true
 
       - name: Install & reload on VPS (password)
         if: ${{ env.VPS_SSH_KEY == '' && env.VPS_PASSWORD != '' }}
@@ -109,13 +258,22 @@ jobs:
           host: ${{ env.VPS_HOST }}
           username: ${{ env.VPS_USER }}
           password: ${{ env.VPS_PASSWORD }}
-          port: 22
+          port: ${{ env.VPS_PORT }}
           script: |
             cd ${{ env.VPS_APP_DIR }}
+            # Load environment variables from .env if present so ecosystem.config.cjs picks them up
+            if [ -f .env ]; then set -a && . ./.env && set +a; fi
+            # Ensure Node is available; try sourcing nvm if present for non-login shells
+            if ! command -v node >/dev/null 2>&1; then
+              if [ -s "$HOME/.nvm/nvm.sh" ]; then . "$HOME/.nvm/nvm.sh"; fi
+            fi
+            if ! command -v node >/dev/null 2>&1; then echo "Node.js not found on VPS PATH. Install Node 20.x or ensure PATH is set for the 'deploy' user." >&2; exit 1; fi
+            # Determine PM2 runner: use global pm2 if present, else fallback to npx
+            if command -v pm2 >/dev/null 2>&1; then PM2="pm2"; else PM2="npx --yes pm2@latest"; fi
             npm ci --omit=dev --no-audit --no-fund
             # Ensure ecosystem changes (cluster/instances) are applied on every deploy
-            pm2 startOrReload ecosystem.config.cjs
-            pm2 save || true
+            $PM2 startOrReload ecosystem.config.cjs
+            $PM2 save || true
 
       - name: Verify public /api/version
         run: |

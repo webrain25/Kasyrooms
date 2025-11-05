@@ -7,13 +7,26 @@ interface User {
   role?: 'user' | 'model' | 'admin';
 }
 
+interface RegisterPayload {
+  username: string;
+  email: string;
+  password: string;
+  firstName?: string;
+  lastName?: string;
+  dateOfBirth?: string; // ISO date (yyyy-mm-dd)
+  cardBrand?: string;
+  cardLast4?: string;
+  expMonth?: number;
+  expYear?: number;
+}
+
 interface AuthContextType {
   user: User | null;
   isAuthenticated: boolean;
   isLoading: boolean;
   token: string | null;
   login: (username: string, password: string) => Promise<void>;
-  register: (username: string, email: string, password: string) => Promise<void>;
+  register: (payload: RegisterPayload) => Promise<void>;
   logout: () => void;
 }
 
@@ -60,19 +73,25 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   };
 
-  const register = async (username: string, email: string, password: string) => {
+  const register = async (payload: RegisterPayload) => {
     try {
-      // TODO: Implement actual registration API call
-      const mockUser = {
-        id: "user-" + Date.now(),
-        username,
-        email
-      };
-      
-      setUser(mockUser);
-      localStorage.setItem('user', JSON.stringify(mockUser));
-    } catch (error) {
-      throw new Error('Registration failed');
+      const res = await fetch('/api/auth/register', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+      });
+      if (!res.ok) {
+        const txt = await res.text();
+        throw new Error(txt || 'Registration failed');
+      }
+      const data = await res.json();
+      const u: User = data.user;
+      setUser(u);
+      setToken(data.token);
+      localStorage.setItem('user', JSON.stringify(u));
+      localStorage.setItem('token', data.token);
+    } catch (error: any) {
+      throw new Error(error?.message || 'Registration failed');
     }
   };
 

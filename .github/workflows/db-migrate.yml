@@ -1,0 +1,50 @@
+name: DB Migrate (Drizzle)
+
+on:
+  workflow_dispatch:
+
+concurrency:
+  group: db-migrate
+  cancel-in-progress: false
+
+jobs:
+  migrate:
+    runs-on: ubuntu-latest
+    env:
+      DATABASE_URL: ${{ secrets.DATABASE_URL }}
+      APP_ENV_FILE: ${{ secrets.APP_ENV_FILE }}
+    steps:
+      - name: Preflight DATABASE_URL
+        run: |
+          set -euo pipefail
+          # If DATABASE_URL not provided directly, try extracting it from APP_ENV_FILE multi-line secret
+          if [ -z "${DATABASE_URL:-}" ] && [ -n "${APP_ENV_FILE:-}" ]; then
+            echo "DATABASE_URL not set; attempting to parse from APP_ENV_FILE"
+            # Extract the first non-comment line that sets DATABASE_URL=
+            parsed=$(printf "%s\n" "$APP_ENV_FILE" | awk -F '=' '/^DATABASE_URL=/{print substr($0, index($0,$2))}' | head -n1)
+            if [ -n "$parsed" ]; then
+              # Remove any surrounding quotes
+              parsed=${parsed#\"}
+              parsed=${parsed%\"}
+              echo "Found DATABASE_URL in APP_ENV_FILE"
+              echo "DATABASE_URL=$parsed" >> $GITHUB_ENV
+              export DATABASE_URL="$parsed"
+            fi
+          fi
+          if [ -z "${DATABASE_URL:-}" ]; then
+            echo "DATABASE_URL is missing. Set secrets.DATABASE_URL or include DATABASE_URL=... in APP_ENV_FILE." >&2
+            exit 1
+          fi
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Install dev deps
+        run: npm ci --include=dev --no-audit --no-fund
+
+      - name: Push schema to DB (drizzle-kit push)
+        run: npm run db:push

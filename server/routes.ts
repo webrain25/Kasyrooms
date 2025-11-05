@@ -4,6 +4,8 @@ import { createServer } from "http";
 import jwt from "jsonwebtoken";
 import { storage } from "./storage";
 import crypto from "crypto";
+import { db, schema } from "./db";
+import { eq } from "drizzle-orm";
 
 const JWT_SECRET = process.env.JWT_SECRET || "dev-secret";
 
@@ -62,7 +64,12 @@ export async function registerRoutes(app: Express, opts?: { version?: string }) 
     if (req.query.online === "true") filters.isOnline = true;
     if (req.query.new === "true") filters.isNew = true;
     if (req.query.sortBy === "rating" || req.query.sortBy === "viewers") filters.sortBy = req.query.sortBy;
-    if (req.query.search) filters.search = req.query.search as string;
+    if (req.query.search) {
+      // Require authentication for search feature
+      const u = getReqUser(req);
+      if (!u) return res.status(401).json({ error: 'login_required' });
+      filters.search = req.query.search as string;
+    }
     res.json(await storage.listModels(filters));
   });
 
@@ -437,6 +444,37 @@ export async function registerRoutes(app: Express, opts?: { version?: string }) 
     return res.json({ token, user: { id: found.id, username, role: found.role } });
   });
 
+  // Registration endpoint capturing personal data and initializing wallet/card in DB
+  app.post('/api/auth/register', async (req, res) => {
+    if (!db) return res.status(500).json({ error: 'db_unavailable' });
+    const { username, email, password, firstName, lastName, dateOfBirth, cardBrand, cardLast4, expMonth, expYear } = req.body ?? {};
+    if (!username || !password) return res.status(400).json({ error: 'username_and_password_required' });
+    // basic username uniqueness check
+    try {
+      const existing = await db.select().from(schema.users).where(eq(schema.users.username, username));
+      if (existing && existing.length > 0) {
+        return res.status(409).json({ error: 'username_taken' });
+      }
+    } catch {}
+    try {
+      const id = crypto.randomUUID();
+      // Create user
+      await db.insert(schema.users).values({ id, username, password, email, role: 'user' });
+      // Profile
+      await db.insert(schema.userProfiles).values({ userId: id, firstName, lastName, birthDate: dateOfBirth ? new Date(dateOfBirth) as any : undefined });
+      // Wallet (0 balance)
+      await db.insert(schema.wallets).values({ userId: id, balanceCents: 0, currency: 'EUR' });
+      // Card (metadata only)
+      if (cardLast4 || cardBrand) {
+        await db.insert(schema.cards).values({ id: crypto.randomUUID(), userId: id, brand: cardBrand, last4: cardLast4, expMonth: expMonth ? Number(expMonth) : null as any, expYear: expYear ? Number(expYear) : null as any });
+      }
+      const token = jwt.sign({ uid: id, role: 'user', username }, JWT_SECRET, { expiresIn: '1d' });
+      return res.json({ token, user: { id, username, role: 'user', email } });
+    } catch (e:any) {
+      return res.status(500).json({ error: 'registration_failed', message: e?.message });
+    }
+  });
+
   // Healthcheck
   app.get("/api/healthz", (_req, res) => res.json({ ok: true }));
 
@@ -508,21 +546,5 @@ export async function registerRoutes(app: Express, opts?: { version?: string }) 
   });
 
   const httpServer = createServer(app);
-
-  // TEMP: diagnostics to list registered routes and their order (for prod verification)
-  app.get('/api/_routes', (_req: any, res: any) => {
-    try {
-      const stack: any[] = (app as any)?._router?.stack || [];
-      const routes = stack
-        .filter((l: any) => l.route && l.route.path)
-        .map((l: any) => ({
-          path: l.route.path,
-          methods: Object.keys(l.route.methods || {}),
-        }));
-      res.json({ count: routes.length, routes });
-    } catch (e: any) {
-      res.status(500).json({ error: e?.message || 'diag_failed' });
-    }
-  });
   return httpServer;
 }

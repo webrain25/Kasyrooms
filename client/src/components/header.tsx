@@ -120,7 +120,9 @@ export default function Header() {
               placeholder={t('searchPlaceholder')}
               value={searchTerm}
               onChange={(e) => handleSearchChange(e.target.value)}
-              className="bg-transparent border-none outline-none text-sm text-foreground placeholder-muted w-full"
+              className="bg-transparent border-none outline-none text-sm text-foreground placeholder-muted w-full disabled:opacity-60"
+              disabled={!isAuthenticated}
+              title={!isAuthenticated ? 'Login required to search' : ''}
             />
           </form>
           <div className="flex items-center space-x-2">
@@ -237,7 +239,9 @@ export default function Header() {
               placeholder={t('searchPlaceholder')}
               value={searchTerm}
               onChange={(e) => handleSearchChange(e.target.value)}
-              className="bg-transparent border-none outline-none text-sm text-foreground placeholder-muted w-full"
+              className="bg-transparent border-none outline-none text-sm text-foreground placeholder-muted w-full disabled:opacity-60"
+              disabled={!isAuthenticated}
+              title={!isAuthenticated ? 'Login required to search' : ''}
             />
           </form>
         )}
