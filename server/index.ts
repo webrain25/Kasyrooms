@@ -1,6 +1,8 @@
 
 import express from "express";
 import cors from "cors";
+import helmet from "helmet";
+import rateLimit from "express-rate-limit";
 import path from "path";
 import { fileURLToPath } from "url";
 import fs from "fs/promises";
@@ -8,13 +10,51 @@ import fsSync from "fs";
 import { registerRoutes } from "./routes";
 
 const app = express();
-app.use(cors());
+
+// Security headers (allow cross-origin images for model photos/CDNs)
+app.use(
+  helmet({
+    crossOriginResourcePolicy: { policy: "cross-origin" },
+  })
+);
+
+// CORS: allow only our frontend domains (and credentials)
+app.use(
+  cors({
+    origin: [
+      "https://dev.kasyrooms.com",
+      "https://kasyrooms.com",
+    ],
+    methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+    credentials: true,
+  })
+);
+
+// Global rate limit (optional)
+const globalLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 100,
+  standardHeaders: true,
+  legacyHeaders: false,
+});
+app.use(globalLimiter);
 // Capture raw body for HMAC verification while parsing JSON
 app.use(express.json({
   verify: (req: any, _res, buf) => {
     req.rawBody = buf;
   }
 }));
+
+// Stricter limit for registration attempts
+const registerLimiter = rateLimit({
+  windowMs: 10 * 60 * 1000,
+  max: 5,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: "Troppe richieste, riprova più tardi." },
+});
+// Apply to registration endpoint path (our route is /api/auth/register)
+app.use("/api/auth/register", registerLimiter);
 
 // API routes (pass app version for diagnostics)
 let appVersion = "dev";
