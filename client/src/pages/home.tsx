@@ -119,17 +119,27 @@ export default function Home() {
     },
     refetchInterval: 10000
   });
-  const orderedIds: string[] | undefined = (() => {
+  const buildOrders = () => {
     if (!Array.isArray(allModels)) return undefined;
     const favSet = new Set(favorites.map(String));
     const status = (m: any) => ({ online: !!m.isOnline && !m.isBusy, busy: !!m.isBusy, offline: !m.isOnline && !m.isBusy });
     const favs = allModels.filter(m => favSet.has(m.id));
     const others = allModels.filter(m => !favSet.has(m.id));
     const pick = (list: any[], key: 'online'|'busy'|'offline') => list.filter(m => status(m)[key]).map(m => String(m.id));
-    return [
+    const favoritesOnly = [
       ...pick(favs, 'online'), ...pick(favs, 'busy'), ...pick(favs, 'offline'),
+    ];
+    const fullOrder = [
+      ...favoritesOnly,
       ...pick(others, 'online'), ...pick(others, 'busy'), ...pick(others, 'offline'),
     ];
+    return { favoritesOnly, fullOrder };
+  };
+  const orders = buildOrders();
+  const orderedIds: string[] | undefined = (() => {
+    if (!orders) return undefined;
+    if (activeFilter === 'favorites') return orders.favoritesOnly;
+    return orders.fullOrder;
   })();
 
   const handleFilterChange = (id: string) => {
@@ -178,8 +188,7 @@ export default function Home() {
               </button>
             )}
           </div>
-          <ModelGrid filter={config.filter} showRank={config.showRank} minimal />
-  <ModelGrid filter={config.filter} showRank={config.showRank} minimal orderedIds={orderedIds} refetchIntervalMs={10000} />
+          <ModelGrid filter={config.filter} showRank={config.showRank} minimal orderedIds={orderedIds} refetchIntervalMs={10000} />
         </div>
       </section>
 
