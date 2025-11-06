@@ -1,6 +1,6 @@
 import { createContext, useContext, useEffect, useMemo, useState, ReactNode } from "react";
 
-type Lang = "it" | "en" | "fr" | "de" | "es";
+export type Lang = "it" | "en" | "fr" | "de" | "es";
 
 const translations: Record<Lang, Record<string, string>> = {
   en: {

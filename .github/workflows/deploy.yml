@@ -66,7 +66,7 @@ jobs:
         if: ${{ env.DATABASE_URL != '' }}
         run: npm run db:push
 
-      - name: Resolve DATABASE_URL (from APP_ENV_FILE)
+      - name: "Resolve DATABASE_URL (manual run)"
         if: ${{ github.event_name == 'workflow_dispatch' && inputs.run_migrations == true }}
         shell: bash
         run: |
@@ -166,6 +166,23 @@ jobs:
           username: ${{ env.VPS_USER }}
           key: ${{ env.VPS_SSH_KEY }}
           passphrase: ${{ env.VPS_SSH_PASSPHRASE }}
+          port: ${{ env.VPS_PORT }}
+          script: |
+            set -e
+            mkdir -p "${{ env.VPS_APP_DIR }}"
+            cat > "${{ env.VPS_APP_DIR }}/.env" <<'EOF__APP_ENV'
+            ${{ env.APP_ENV_FILE }}
+            EOF__APP_ENV
+            chmod 600 "${{ env.VPS_APP_DIR }}/.env"
+            chown $USER:$USER "${{ env.VPS_APP_DIR }}/.env"
+
+      - name: Write .env on server (password)
+        if: ${{ env.APP_ENV_FILE != '' && env.VPS_SSH_KEY == '' && env.VPS_PASSWORD != '' }}
+        uses: appleboy/ssh-action@v1.2.0
+        with:
+          host: ${{ env.VPS_HOST }}
+          username: ${{ env.VPS_USER }}
+          password: ${{ env.VPS_PASSWORD }}
           port: ${{ env.VPS_PORT }}
           script: |
             set -e

@@ -168,7 +168,7 @@ export default function Footer() {
               <a href="/18plus" className="text-muted hover:text-gold-primary transition-colors" data-testid="footer-18plus-link">18+</a>
               <button
                 type="button"
-                onClick={() => { const c = getConsent(); if (c) { c.version = "force-open" as any; saveConsent(c); } else { saveConsent({ necessary:true, preferences:false, analytics:false, marketing:false, updatedAt:new Date().toISOString(), version:"force-open" }); } window.dispatchEvent(new Event('storage')); }}
+                onClick={() => { const c = getConsent(); if (c) { c.version = "force-open"; saveConsent(c); } else { saveConsent({ necessary:true, preferences:false, analytics:false, marketing:false, updatedAt:new Date().toISOString(), version:"force-open" }); } window.dispatchEvent(new Event('storage')); }}
                 className="text-muted hover:text-gold-primary transition-colors"
               >
                 {t('cookies.preferences.title')}
@@ -181,7 +181,7 @@ export default function Footer() {
                   aria-haspopup="listbox"
                   aria-expanded={open}
                 >
-                  <FlagIcon code={lang as any} />
+                  <FlagIcon code={lang} />
                   <span className="hidden sm:inline text-xs uppercase tracking-wide">{lang}</span>
                   <i className="fas fa-chevron-up text-xs transition-transform" style={{transform: open ? 'rotate(180deg)' : 'rotate(0deg)'}}></i>
                 </button>

@@ -40,7 +40,12 @@ export default function ModelCard({ model, showRank = false, rank, minimal = fal
         sessionStorage.setItem(key, '1');
         apiRequest('POST', `/api/models/${model.id}/view`).then(()=>{
           // Refresh listings to update viewerCount
-          queryClient.invalidateQueries({ predicate: (q) => String((q.queryKey as any[])[0] ?? '').startsWith('/api/models') });
+          queryClient.invalidateQueries({
+            predicate: (q) => {
+              const k = Array.isArray(q.queryKey) ? q.queryKey[0] : q.queryKey as unknown;
+              return String(k ?? '').startsWith('/api/models');
+            }
+          });
         }).catch(()=>{});
       }
     } catch {}
@@ -54,7 +59,12 @@ export default function ModelCard({ model, showRank = false, rank, minimal = fal
     try {
       await apiRequest('POST', `/api/models/${model.id}/rate`, { stars });
       // Refresh listings to reflect new average rating
-      queryClient.invalidateQueries({ predicate: (q) => String((q.queryKey as any[])[0] ?? '').startsWith('/api/models') });
+      queryClient.invalidateQueries({
+        predicate: (q) => {
+          const k = Array.isArray(q.queryKey) ? q.queryKey[0] : q.queryKey as unknown;
+          return String(k ?? '').startsWith('/api/models');
+        }
+      });
     } catch {}
   };
 

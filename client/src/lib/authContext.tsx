@@ -90,8 +90,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setToken(data.token);
       localStorage.setItem('user', JSON.stringify(u));
       localStorage.setItem('token', data.token);
-    } catch (error: any) {
-      throw new Error(error?.message || 'Registration failed');
+    } catch (error: unknown) {
+      const message = (error instanceof Error && error.message) ? error.message : 'Registration failed';
+      throw new Error(message);
     }
   };
 

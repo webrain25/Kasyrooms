@@ -1,6 +1,7 @@
 import React from 'react';
+import type { Lang } from '@/lib/i18n';
 
-type FlagCode = 'it' | 'en' | 'fr' | 'de' | 'es';
+type FlagCode = Lang;
 
 interface FlagIconProps {
   code: FlagCode;
@@ -15,7 +16,7 @@ export const FlagIcon: React.FC<FlagIconProps> = ({ code, className = 'w-5 h-4',
     className: `${className} ${rounded ? 'rounded-sm overflow-hidden' : ''}`,
     role: 'img',
     'aria-label': code,
-  } as any;
+  } as React.SVGProps<SVGSVGElement>;
 
   switch (code) {
     case 'it':

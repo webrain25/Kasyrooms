@@ -4,6 +4,7 @@ import { useAuth } from "@/lib/authContext";
 import { useFavorites } from "@/lib/favoritesContext";
 // Use logo from public root so it can be swapped without rebuilding
 import { useI18n } from "@/lib/i18n";
+import type { Model } from "@shared/schema";
 import { BRAND } from "@/lib/brand";
 import { useQuery } from "@tanstack/react-query";
 
@@ -15,25 +16,25 @@ export default function Header() {
   const { user, isAuthenticated, isLoading, logout } = useAuth();
   const { favorites } = useFavorites();
   // Fetch models to validate favorites against actual existing IDs
-  const { data: allModels = [] } = useQuery({
+  const { data: allModels = [] } = useQuery<Model[]>({
     queryKey: ["models", "for-favorites-badge"],
-    queryFn: async () => {
+    queryFn: async (): Promise<Model[]> => {
       const res = await fetch("/api/models");
       if (!res.ok) return [];
       return res.json();
     },
     enabled: isAuthenticated // don't fetch when logged out
   });
-  const validIds = new Set((allModels as any[]).map((m) => m.id));
+  const validIds = new Set(allModels.map((m) => m.id));
   const validFavoritesCount = favorites.filter((id) => validIds.has(id)).length;
 
   // For models, show a small "Live" badge when online
-  const { data: modelMe } = useQuery({
+  const { data: modelMe } = useQuery<Model | null>({
     queryKey: ['model-me-status', user?.id],
-    queryFn: async () => {
-      if (!user?.id || user?.role !== 'model') return null as any;
+    queryFn: async (): Promise<Model | null> => {
+      if (!user?.id || user?.role !== 'model') return null;
       const res = await fetch(`/api/models/${user.id}`);
-      if (!res.ok) return null as any;
+      if (!res.ok) return null;
       return res.json();
     },
     enabled: !!user?.id && user?.role === 'model',
