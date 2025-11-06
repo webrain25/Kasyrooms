@@ -77,6 +77,7 @@ const isProd = process.env.NODE_ENV === "production";
 
 const clientRoot = path.resolve(__dirname, "..", "client");
 const clientDist = path.resolve(__dirname, "..", "dist", "public");
+const uploadsRoot = path.resolve(__dirname, "..", "uploads");
 
 if (!isProd) {
   // Vite dev server in middleware mode for a smooth DX
@@ -102,6 +103,21 @@ if (!isProd) {
   });
 } else {
   // Production: serve built assets
+  // Also serve uploaded assets under /uploads
+  try { fsSync.mkdirSync(uploadsRoot, { recursive: true }); } catch {}
+  app.use("/uploads", express.static(uploadsRoot, {
+    etag: true,
+    lastModified: true,
+    setHeaders: (res, p) => {
+      const rel = p.replace(/\\/g, "/");
+      // Cache uploads moderately
+      if (/(\/models\/).+\.(jpg|jpeg|png|webp|gif|avif|svg)$/i.test(rel)) {
+        res.setHeader("Cache-Control", "public, max-age=86400"); // 1 day
+      } else {
+        res.setHeader("Cache-Control", "public, max-age=300");
+      }
+    }
+  }));
   // Static assets: cache aggressively for hashed asset files; avoid caching for index.html
   app.use(express.static(clientDist, {
     etag: true,

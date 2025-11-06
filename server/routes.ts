@@ -5,6 +5,9 @@ import jwt from "jsonwebtoken";
 import { storage } from "./storage";
 import crypto from "crypto";
 import { db, schema } from "./db";
+import multer from "multer";
+import path from "path";
+import fs from "fs";
 import { and, eq } from "drizzle-orm";
 
 const JWT_SECRET = process.env.JWT_SECRET || "dev-secret";
@@ -27,6 +30,30 @@ export async function registerRoutes(app: Express, opts?: { version?: string }) 
     if (role && uid) return { id: String(uid), role: role as any };
     return null;
   }
+  // ===== File uploads (model photos) =====
+  const uploadsRoot = path.resolve(path.dirname(new URL(import.meta.url).pathname), "..", "uploads");
+  const uploadStorage = (multer as any).diskStorage({
+    destination: (req: any, _file: any, cb: any) => {
+      const modelId = String(req.params?.id || (req as any).user?.id || "misc");
+      const dir = path.join(uploadsRoot, "models", modelId);
+      try { fs.mkdirSync(dir, { recursive: true }); } catch {}
+      cb(null, dir);
+    },
+    filename: (_req: any, file: any, cb: any) => {
+      const safe = file.originalname.replace(/[^a-zA-Z0-9._-]+/g, "_");
+      const name = `${Date.now()}_${safe}`;
+      cb(null, name);
+    }
+  });
+  const upload = (multer as any)({
+    storage: uploadStorage,
+    limits: { fileSize: 8 * 1024 * 1024 }, // 8MB
+    fileFilter: (_req: any, file: any, cb: any) => {
+      if (/^image\/(jpeg|png|webp|gif|avif|svg\+xml)$/.test(file.mimetype)) cb(null, true);
+      else cb(new Error("invalid_file_type"));
+    }
+  });
+
 
   function requireRole(roles: Array<'user'|'model'|'admin'>) {
     return (req: any, res: any, next: any) => {
@@ -186,6 +213,20 @@ export async function registerRoutes(app: Express, opts?: { version?: string }) 
     if (!photos) return res.status(404).json({ error: "Model not found" });
     res.json({ photos });
   });
+  // Upload photo from local file
+  app.post("/api/models/:id/photos/upload", requireModelSelfOrAdmin(), (upload as any).single('photo'), async (req: any, res) => {
+    try {
+      const file = req.file;
+      if (!file) return res.status(400).json({ error: 'photo file required' });
+      const modelId = String(req.params.id);
+      const relUrl = `/uploads/models/${modelId}/${file.filename}`;
+      const photos = await storage.addModelPhoto(modelId, relUrl);
+      if (!photos) return res.status(404).json({ error: 'Model not found' });
+      return res.json({ photos });
+    } catch (e: any) {
+      return res.status(400).json({ error: 'upload_failed', reason: e?.message || String(e) });
+    }
+  });
   app.get("/api/models/:id/photos", async (req, res) => {
     const photos = await storage.listModelPhotos(req.params.id);
     res.json({ photos });
@@ -212,6 +253,21 @@ export async function registerRoutes(app: Express, opts?: { version?: string }) 
     const photos = await storage.addModelPhoto(u.id, url);
     if (!photos) return res.status(404).json({ error: 'Model not found' });
     res.json({ photos });
+  });
+  // Upload by logged-in model
+  app.post('/api/models/upload-photo-file', requireRole(['model','admin']), (upload as any).single('photo'), async (req: any, res) => {
+    const u = (req as any).user as ReqUser;
+    if (!u) return res.status(403).json({ error: 'forbidden' });
+    try {
+      const file = req.file;
+      if (!file) return res.status(400).json({ error: 'photo file required' });
+      const relUrl = `/uploads/models/${u.id}/${file.filename}`;
+      const photos = await storage.addModelPhoto(u.id, relUrl);
+      if (!photos) return res.status(404).json({ error: 'Model not found' });
+      res.json({ photos });
+    } catch (e: any) {
+      return res.status(400).json({ error: 'upload_failed', reason: e?.message || String(e) });
+    }
   });
   app.get('/api/models/gallery', requireRole(['model','admin']), async (req, res) => {
     const u = getReqUser(req);

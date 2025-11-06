@@ -7,6 +7,7 @@ import { useI18n } from "@/lib/i18n";
 import type { Model } from "@shared/schema";
 import { BRAND } from "@/lib/brand";
 import { useQuery } from "@tanstack/react-query";
+import MessagesHistoryButton from "./messages-history";
 
 export default function Header() {
   const { t } = useI18n();
@@ -151,6 +152,9 @@ export default function Header() {
                   </span>
                 )}
               </a>
+            )}
+            {(!isLoading && isAuthenticated) && (
+              <MessagesHistoryButton />
             )}
             {!isAuthenticated && !isLoading && (
               <div className="flex items-center space-x-2">

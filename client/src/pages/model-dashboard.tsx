@@ -12,6 +12,7 @@ export default function ModelDashboard() {
   const [profile, setProfile] = useState<{ displayName?: string } | null>(null);
   const [photoUrl, setPhotoUrl] = useState("");
   const [photos, setPhotos] = useState<string[]>([]);
+  const [photoFile, setPhotoFile] = useState<File | null>(null);
   const [busy, setBusy] = useState(false);
   const [isOnline, setIsOnline] = useState<boolean>(false);
   const [chat, setChat] = useState<Array<{ user: string; text: string; when?: string; userId_B?: string }>>([]);
@@ -36,11 +37,11 @@ export default function ModelDashboard() {
           setProfile({ displayName: m.name });
           setIsOnline(!!m.isOnline);
         }
-        const p = await fetch(`/api/models/${user.id}/photos`, { headers });
+    const p = await fetch(`/api/models/${user.id}/photos`, { headers });
         const pj = await p.json();
         setPhotos(Array.isArray(pj.photos) ? pj.photos : []);
         // load public chat
-  const c = await fetch(`/api/chat/public?limit=50&modelId=${encodeURIComponent(user.id)}`);
+  const c = await fetch(`/api/chat/public?limit=50`);
         const cj = await c.json();
         if (Array.isArray(cj)) setChat(cj);
         // preferences
@@ -101,6 +102,26 @@ export default function ModelDashboard() {
     } finally { setBusy(false); }
   };
 
+  const uploadPhotoFile = async () => {
+    if (!user || !photoFile) return;
+    if (user.role !== 'model') { alert('Solo modella può aggiungere foto'); return; }
+    setBusy(true);
+    try {
+      const fd = new FormData();
+      fd.append('photo', photoFile);
+      const headers: Record<string,string> = { 'x-user-id': user.id, 'x-role': user.role || '' };
+      if (token) headers['Authorization'] = `Bearer ${token}`;
+      const r = await fetch(`/api/models/${user.id}/photos/upload`, { method:'POST', headers, body: fd as any });
+      const j = await r.json();
+      setPhotos(Array.isArray(j.photos) ? j.photos : []);
+      setPhotoFile(null);
+      try {
+        const el = document.getElementById('photo-file') as HTMLInputElement | null;
+        if (el) el.value = '';
+      } catch {}
+    } finally { setBusy(false); }
+  };
+
   const toggleOnline = async (next: boolean) => {
     if (!user) return;
     setBusy(true);
@@ -115,7 +136,7 @@ export default function ModelDashboard() {
   const sendChat = async () => {
     if (!chatText.trim()) return;
     try {
-  const r = await fetch('/api/chat/public', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ user: displayName, text: chatText.trim(), userId_B: user?.id, modelId: user?.id })});
+  const r = await fetch('/api/chat/public', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ user: displayName, text: chatText.trim(), userId_B: user?.id })});
       if (r.ok) {
         const msg = await r.json();
         setChat(prev => [msg, ...prev].slice(0, 50));
@@ -244,6 +265,10 @@ export default function ModelDashboard() {
             <div className="flex gap-2">
               <input value={photoUrl} onChange={e=>setPhotoUrl(e.target.value)} placeholder="Image URL" className="flex-1 px-3 py-2 rounded-md bg-card border border-border text-sm" />
               <Button onClick={addPhoto} disabled={busy || !photoUrl.trim()}>Add</Button>
+            </div>
+            <div className="flex gap-2 items-center">
+              <input id="photo-file" type="file" accept="image/*" onChange={e=>setPhotoFile(e.target.files?.[0] || null)} className="flex-1 text-sm" />
+              <Button onClick={uploadPhotoFile} disabled={busy || !photoFile}>Upload</Button>
             </div>
             <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
               {photos.map((p,i) => (
