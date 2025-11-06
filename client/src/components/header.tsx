@@ -100,6 +100,7 @@ export default function Header() {
               />
             </a>
           </div>
+          {isAuthenticated && (
           <form onSubmit={handleSearchSubmit} className="hidden md:flex items-center bg-card rounded-lg px-4 py-2 w-64">
             <svg
               xmlns="http://www.w3.org/2000/svg"
@@ -121,10 +122,10 @@ export default function Header() {
               value={searchTerm}
               onChange={(e) => handleSearchChange(e.target.value)}
               className="bg-transparent border-none outline-none text-sm text-foreground placeholder-muted w-full disabled:opacity-60"
-              disabled={!isAuthenticated}
-              title={!isAuthenticated ? 'Login required to search' : ''}
+              // authenticated-only render, no need to disable
             />
           </form>
+          )}
           <div className="flex items-center space-x-2">
             {/* Hide favorites link until auth resolved to avoid flash when logged out */}
             {(!isLoading && isAuthenticated) && favorites && (
@@ -200,6 +201,7 @@ export default function Header() {
                 </>
               )}
             {/* Guest language selector removed; handled in footer now */}
+            {isAuthenticated && (
             <button type="button" aria-label="Toggle search" className="md:hidden p-3 min-h-[44px] min-w-[44px]" onClick={()=>setIsSearchVisible(v=>!v)}>
               <svg
                 xmlns="http://www.w3.org/2000/svg"
@@ -216,9 +218,10 @@ export default function Header() {
                 <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
               </svg>
             </button>
+            )}
           </div>
         </div>
-        {isSearchVisible && (
+        {isAuthenticated && isSearchVisible && (
           <form onSubmit={handleSearchSubmit} className="md:hidden mt-2 flex items-center bg-card rounded-lg px-3 py-2">
             <svg
               xmlns="http://www.w3.org/2000/svg"
@@ -240,8 +243,7 @@ export default function Header() {
               value={searchTerm}
               onChange={(e) => handleSearchChange(e.target.value)}
               className="bg-transparent border-none outline-none text-sm text-foreground placeholder-muted w-full disabled:opacity-60"
-              disabled={!isAuthenticated}
-              title={!isAuthenticated ? 'Login required to search' : ''}
+              // authenticated-only render, no need to disable
             />
           </form>
         )}
