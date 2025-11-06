@@ -2,6 +2,9 @@ import { Model } from "@shared/schema";
 import { Link } from "wouter";
 import { useFavorites } from "@/lib/favoritesContext";
 import { useState } from "react";
+import { useAuth } from "@/lib/authContext";
+import { useLocation } from "wouter";
+import { apiRequest, queryClient } from "@/lib/queryClient";
 import VideoChatModal from "./video-chat-modal";
 import { useI18n } from "@/lib/i18n";
 
@@ -16,6 +19,9 @@ export default function ModelCard({ model, showRank = false, rank, minimal = fal
   const [isVideoChatOpen, setIsVideoChatOpen] = useState(false);
   const { isFavorite, toggleFavorite } = useFavorites();
   const { t } = useI18n();
+  const { isAuthenticated } = useAuth();
+  const [, setLocation] = useLocation();
+  const [hoverStars, setHoverStars] = useState<number | null>(null);
   const isOffline = !model.isOnline;
   const statusColor = model.isOnline ? (model.isBusy ? 'bg-red-500 status-busy' : 'bg-online status-online') : 'bg-yellow-400 status-offline';
   
@@ -26,7 +32,30 @@ export default function ModelCard({ model, showRank = false, rank, minimal = fal
   const handleStartChat = (e: React.MouseEvent) => {
     e.stopPropagation();
     e.preventDefault();
+    // Record a view once per session for this model
+    try {
+      const key = `viewed:${model.id}`;
+      const seen = sessionStorage.getItem(key);
+      if (!seen) {
+        sessionStorage.setItem(key, '1');
+        apiRequest('POST', `/api/models/${model.id}/view`).then(()=>{
+          // Refresh listings to update viewerCount
+          queryClient.invalidateQueries({ predicate: (q) => String((q.queryKey as any[])[0] ?? '').startsWith('/api/models') });
+        }).catch(()=>{});
+      }
+    } catch {}
     setIsVideoChatOpen(true);
+  };
+
+  const currentStars = Math.max(0, Math.min(5, Math.round((model.rating || 0) / 10)));
+  const displayedStars = hoverStars ?? currentStars;
+  const onRate = async (stars: number) => {
+    if (!isAuthenticated) { setLocation('/login'); return; }
+    try {
+      await apiRequest('POST', `/api/models/${model.id}/rate`, { stars });
+      // Refresh listings to reflect new average rating
+      queryClient.invalidateQueries({ predicate: (q) => String((q.queryKey as any[])[0] ?? '').startsWith('/api/models') });
+    } catch {}
   };
 
   return (
@@ -99,6 +128,29 @@ export default function ModelCard({ model, showRank = false, rank, minimal = fal
             <p className="text-xs text-muted line-clamp-2" data-testid={`model-specialties-${model.id}`}>
               {model.specialties.join(", ")}
             </p>
+            {/* Star rating control */}
+            <div className="mt-2 flex items-center gap-1" aria-label="Rate model">
+              {Array.from({ length: 5 }).map((_, i) => {
+                const star = i + 1;
+                const filled = star <= displayedStars;
+                return (
+                  <button
+                    key={star}
+                    type="button"
+                    title={`${star} ${star===1?'star':'stars'}`}
+                    onMouseEnter={() => setHoverStars(star)}
+                    onMouseLeave={() => setHoverStars(null)}
+                    onClick={(e) => { e.preventDefault(); e.stopPropagation(); onRate(star); }}
+                    className={`w-6 h-6 inline-flex items-center justify-center ${filled ? 'text-gold-primary' : 'text-muted'} hover:scale-110 transition-transform`}
+                  >
+                    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" className="w-4 h-4">
+                      <path d="M12 .587l3.668 7.431 8.2 1.192-5.934 5.787 1.401 8.168L12 18.896l-7.335 3.869 1.401-8.168L.132 9.21l8.2-1.192L12 .587z"/>
+                    </svg>
+                  </button>
+                );
+              })}
+              <span className="text-xs text-muted ml-2">{(model.rating ? formatRating(model.rating) : '0.0')}</span>
+            </div>
           </div>
           <button
             onClick={handleStartChat}

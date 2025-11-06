@@ -5,7 +5,7 @@ import jwt from "jsonwebtoken";
 import { storage } from "./storage";
 import crypto from "crypto";
 import { db, schema } from "./db";
-import { eq } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 
 const JWT_SECRET = process.env.JWT_SECRET || "dev-secret";
 
@@ -218,6 +218,49 @@ export async function registerRoutes(app: Express, opts?: { version?: string }) 
     if (!u) return res.status(403).json({ error: 'forbidden' });
     const photos = await storage.listModelPhotos(u.id);
     res.json({ photos });
+  });
+
+  // ===== Ratings & Views (real-time, persisted where possible) =====
+  // Increment view counter (throttling handled client-side per session)
+  app.post('/api/models/:id/view', async (req, res) => {
+    const id = String(req.params.id);
+    const m = await storage.getModel(id);
+    if (!m) return res.status(404).json({ error: 'Model not found' });
+    m.viewerCount = (m.viewerCount || 0) + 1;
+    // Try to persist in DB as well (best-effort)
+    try { if (db) { await db.update(schema.models).set({ viewerCount: m.viewerCount }).where(eq(schema.models.id, id)); } } catch {}
+    return res.json({ viewerCount: m.viewerCount });
+  });
+
+  // Set or update a star rating (1..5) for the current user
+  app.post('/api/models/:id/rate', requireRole(['user','model','admin']), async (req, res) => {
+    const id = String(req.params.id);
+    const u = (req as any).user as ReqUser;
+    if (!u) return res.status(401).json({ error: 'unauthorized' });
+    const starsRaw = (req.body?.stars);
+    const stars = Number(starsRaw);
+    if (!Number.isFinite(stars) || stars < 1 || stars > 5) return res.status(400).json({ error: 'invalid_stars' });
+    const m = await storage.getModel(id);
+    if (!m) return res.status(404).json({ error: 'Model not found' });
+    if (!db) return res.status(500).json({ error: 'db_unavailable' });
+    try {
+      // Upsert rating per user
+      const existing = await db.select().from(schema.modelRatings).where(and(eq(schema.modelRatings.modelId, id), eq(schema.modelRatings.userId, u.id)));
+      if (existing && existing.length > 0) {
+        await db.update(schema.modelRatings).set({ stars, updatedAt: new Date() as any }).where(and(eq(schema.modelRatings.modelId, id), eq(schema.modelRatings.userId, u.id)));
+      } else {
+        await db.insert(schema.modelRatings).values({ modelId: id, userId: u.id, stars });
+      }
+      // Recompute average and update in-memory + try to persist derived integer rating (avg*10)
+  const all = await db.select().from(schema.modelRatings).where(eq(schema.modelRatings.modelId, id));
+  const avg = all.length ? all.reduce((a: number, r: any) => a + (Number(r.stars) || 0), 0) / all.length : 0;
+      const ratingInt = Math.max(0, Math.min(50, Math.round(avg * 10)));
+      m.rating = ratingInt;
+      try { await db.update(schema.models).set({ rating: ratingInt }).where(eq(schema.models.id, id)); } catch {}
+      return res.json({ rating: avg, ratingInt, count: all.length });
+    } catch (e:any) {
+      return res.status(500).json({ error: 'rating_failed', message: e?.message });
+    }
   });
 
   // ===== Moderation =====

@@ -1,5 +1,5 @@
 import { sql } from "drizzle-orm";
-import { pgTable, text, varchar, integer, boolean, timestamp, date } from "drizzle-orm/pg-core";
+import { pgTable, text, varchar, integer, boolean, timestamp, date, primaryKey } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
 
@@ -62,6 +62,21 @@ export const cards = pgTable("cards", {
   createdAt: timestamp("created_at").default(sql`now()`),
 });
 
+// Per-user star ratings for models (1..5 stars). Primary key is (modelId, userId)
+export const modelRatings = pgTable(
+  "model_ratings",
+  {
+    modelId: varchar("model_id").notNull().references(() => models.id),
+    userId: varchar("user_id").notNull().references(() => users.id),
+    stars: integer("stars").notNull(),
+    createdAt: timestamp("created_at").default(sql`now()`),
+    updatedAt: timestamp("updated_at").default(sql`now()`),
+  },
+  (t) => ({
+    pk: primaryKey({ columns: [t.modelId, t.userId] }),
+  })
+);
+
 export const insertUserSchema = createInsertSchema(users).pick({
   username: true,
   password: true,
@@ -80,3 +95,4 @@ export type Model = typeof models.$inferSelect;
 export type UserProfile = typeof userProfiles.$inferSelect;
 export type Wallet = typeof wallets.$inferSelect;
 export type Card = typeof cards.$inferSelect;
+export type ModelRating = typeof modelRatings.$inferSelect;
