@@ -1,7 +1,8 @@
 // Centralized brand configuration
 // Swap these paths when you update the logo assets in the public root
 export const BRAND = {
-  LOGO_SVG: "/logo_final.svg",
+  // Use the homepage logo asset for all placements
+  LOGO_SVG: "/logo_final.png",
   LOGO_PNG: "/logo_final.png",
   ALT: "Kasyrooms",
 };
