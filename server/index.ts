@@ -14,7 +14,10 @@ const app = express();
 // Security headers (allow cross-origin images for model photos/CDNs)
 app.use(
   helmet({
+    // Allow other origins to embed our resources
     crossOriginResourcePolicy: { policy: "cross-origin" },
+    // Disable COEP which otherwise blocks cross-origin images/videos/fonts unless they send CORP/CORS
+    crossOriginEmbedderPolicy: false,
   })
 );
 
@@ -23,7 +26,9 @@ app.use(
   cors({
     origin: [
       "https://dev.kasyrooms.com",
+      "https://www.dev.kasyrooms.com",
       "https://kasyrooms.com",
+      "https://www.kasyrooms.com",
     ],
     methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
     credentials: true,
