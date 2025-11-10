@@ -34,6 +34,20 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+      # 🔹 Load environment variables from secret (write .env in workspace)
+      - name: Load environment variables from secret
+        id: load_env
+        run: |
+          echo "${{ secrets.app_env_file || env.APP_ENV_FILE }}" > .env
+          echo "✅ Environment file (.env) created from GitHub secret"
+
+      # (Optional) verify key variables are present in the loaded .env
+      - name: Verify env file (optional)
+        run: |
+          echo "Checking required variables..."
+          grep -E 'DATABASE_URL|JWT_SECRET|BASE_URL|SIRPLAY' .env || true
+          echo "✅ .env loaded successfully"
+
       - name: Setup Node
         uses: actions/setup-node@v4
         with:

@@ -11,7 +11,6 @@ module.exports = {
         NODE_ENV: 'production',
         HOST: '127.0.0.1',
         PORT: '5000',
-        JWT_SECRET: process.env.JWT_SECRET || 'dev-secret',
         // Serve all external images via our proxy to comply with strict CSP (img-src 'self' data:)
         FORCE_PROXY_IMAGES: process.env.FORCE_PROXY_IMAGES || '1',
         // Keep CSP strict by default; set to '1' to allow https: images directly (not recommended when proxy is enabled)
