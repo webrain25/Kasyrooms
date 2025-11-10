@@ -18,6 +18,23 @@ const getJWTSecret = () => process.env.JWT_SECRET || "dev-secret";
 
 export async function registerRoutes(app: Express, opts?: { version?: string }) {
   const appVersion = opts?.version || "dev";
+  // Force proxying of external images at API level when enabled, so the client always receives self-origin URLs
+  const FORCE_PROXY_IMAGES = process.env.FORCE_PROXY_IMAGES === '1';
+  const proxifyImage = (u?: string) => {
+    if (!u) return u;
+    if (u.startsWith('/')) return u;
+    try { const url = new URL(u); if (url.protocol === 'http:' || url.protocol === 'https:') {
+      return `/api/proxy/img?u=${encodeURIComponent(u)}`;
+    } } catch {}
+    return u;
+  };
+  const proxifyModel = (m: any) => {
+    if (!FORCE_PROXY_IMAGES || !m) return m;
+    const copy = { ...m };
+    if (typeof copy.profileImage === 'string') copy.profileImage = proxifyImage(copy.profileImage);
+    if (Array.isArray(copy.photos)) copy.photos = copy.photos.map((p: string) => proxifyImage(p));
+    return copy;
+  };
   // Simple auth extraction: prefer JWT; fallback to dev headers x-user-id/x-role
   type ReqUser = { id: string; role: 'user'|'model'|'admin'; username?: string } | null;
   function getReqUser(req: any): ReqUser {
@@ -110,7 +127,8 @@ export async function registerRoutes(app: Express, opts?: { version?: string }) 
     if (typeof req.query.country === 'string' && req.query.country.trim().length>0) filters.country = String(req.query.country);
     if (typeof req.query.language === 'string' && req.query.language.trim().length>0) filters.language = String(req.query.language);
     if (typeof req.query.specialty === 'string' && req.query.specialty.trim().length>0) filters.specialty = String(req.query.specialty);
-    res.json(await storage.listModels(filters));
+    const list = await storage.listModels(filters);
+    res.json(FORCE_PROXY_IMAGES ? list.map(proxifyModel) : list);
   });
 
   // Home grouping endpoint: favorites vs others, grouped by status
@@ -121,7 +139,11 @@ export async function registerRoutes(app: Express, opts?: { version?: string }) 
       ? (req.query.favs as string).split(',').map(s=>s.trim()).filter(Boolean)
       : undefined;
     const result = await storage.listModelsHome({ userId: u?.id, favoritesOverride: favsOverride });
-    res.json(result);
+    res.json(FORCE_PROXY_IMAGES ? result.map((g: any) => ({
+      ...g,
+      favorites: Array.isArray(g.favorites) ? g.favorites.map(proxifyModel) : g.favorites,
+      others: Array.isArray(g.others) ? g.others.map(proxifyModel) : g.others
+    })) : result);
   });
   // Aliases to avoid potential route-order conflicts on some deployments
   app.get("/api/models-home", async (req, res) => {
@@ -130,7 +152,11 @@ export async function registerRoutes(app: Express, opts?: { version?: string }) 
       ? (req.query.favs as string).split(',').map(s=>s.trim()).filter(Boolean)
       : undefined;
     const result = await storage.listModelsHome({ userId: u?.id, favoritesOverride: favsOverride });
-    res.json(result);
+    res.json(FORCE_PROXY_IMAGES ? result.map((g: any) => ({
+      ...g,
+      favorites: Array.isArray(g.favorites) ? g.favorites.map(proxifyModel) : g.favorites,
+      others: Array.isArray(g.others) ? g.others.map(proxifyModel) : g.others
+    })) : result);
   });
   app.get("/api/home/models", async (req, res) => {
     const u = getReqUser(req);
@@ -138,7 +164,11 @@ export async function registerRoutes(app: Express, opts?: { version?: string }) 
       ? (req.query.favs as string).split(',').map(s=>s.trim()).filter(Boolean)
       : undefined;
     const result = await storage.listModelsHome({ userId: u?.id, favoritesOverride: favsOverride });
-    res.json(result);
+    res.json(FORCE_PROXY_IMAGES ? result.map((g: any) => ({
+      ...g,
+      favorites: Array.isArray(g.favorites) ? g.favorites.map(proxifyModel) : g.favorites,
+      others: Array.isArray(g.others) ? g.others.map(proxifyModel) : g.others
+    })) : result);
   });
 
   // Online models count (used by filters bar)
@@ -160,7 +190,7 @@ export async function registerRoutes(app: Express, opts?: { version?: string }) 
   app.get("/api/models/:id", async (req, res) => {
     const m = await storage.getModel(req.params.id);
     if (!m) return res.status(404).json({ error: "Model not found" });
-    res.json(m);
+    res.json(FORCE_PROXY_IMAGES ? proxifyModel(m) : m);
   });
 
   app.patch("/api/models/:id/status", requireModelSelfOrAdmin(), async (req, res) => {
