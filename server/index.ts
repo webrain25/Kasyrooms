@@ -9,6 +9,7 @@ import path from "path";
 import { fileURLToPath } from "url";
 import fs from "fs/promises";
 import fsSync from "fs";
+import crypto from "crypto";
 import { registerRoutes } from "./routes";
 import { requestLogger, errorLogger } from './middleware/request-logger';
 import { logger } from './logger';
@@ -41,34 +42,56 @@ const app = express();
 // Structured request logging
 app.use(requestLogger);
 
+// Per-request CSP nonce
+app.use((req: any, res: any, next: any) => {
+  try { (res as any).locals = (res as any).locals || {}; } catch {}
+  (res as any).locals.cspNonce = crypto.randomBytes(16).toString("base64");
+  next();
+});
+
 // Security headers
 app.use(
   helmet({
     // Allow other origins to embed our resources (for public image consumption/CDN)
     crossOriginResourcePolicy: { policy: "cross-origin" },
-    // Disable COEP to avoid breaking cross-origin media fonts/images in browsers without proper CORP/CORS
+    // Disable COEP to avoid breaking cross-origin media/fonts in browsers without proper CORP/CORS
     crossOriginEmbedderPolicy: false,
-    // Apply a conservative CSP in production; allow CDN images and basic connections
-    contentSecurityPolicy: process.env.NODE_ENV === 'production' ? (() => {
-      const allowAll = process.env.CSP_IMG_ALLOW_ALL === '1';
-      const imgSrc = allowAll
-        ? ["'self'", 'data:', 'https:']
-        : ["'self'", 'data:', 'https://images.unsplash.com', 'https://plus.unsplash.com', 'https://images.pexels.com', 'https://cdn.pixabay.com'];
-      return {
-        useDefaults: true,
-        directives: {
-          defaultSrc: ["'self'"],
-          imgSrc,
-          mediaSrc: ["'self'", 'blob:', 'https:'],
-          styleSrc: ["'self'", "'unsafe-inline'", 'https:'],
-          scriptSrc: ["'self'"],
-          connectSrc: ["'self'", 'https:', 'wss:'],
-          frameAncestors: ["'self'"],
-            objectSrc: ["'none'"],
-          baseUri: ["'self'"]
-        }
-      };
-    })() : false
+    // CSP with nonce and explicit allowlists; active only in production
+    contentSecurityPolicy: process.env.NODE_ENV === 'production' ? {
+      useDefaults: true,
+      directives: {
+        defaultSrc: ["'self'"],
+        baseUri: ["'self'"],
+        objectSrc: ["'none'"],
+        frameAncestors: ["'none'"],
+        // Images: self/data/blob + specific CDNs; optionally allow all https if flag set
+        imgSrc: (() => {
+          const allowAll = process.env.CSP_IMG_ALLOW_ALL === '1';
+          const list = [
+            "'self'", 'data:', 'blob:',
+            'https://images.unsplash.com', 'https://*.unsplash.com',
+            'https://cdn.kasyrooms.com',
+            'https://*.r2.cloudflarestorage.com'
+          ];
+          return allowAll ? ["'self'", 'data:', 'blob:', 'https:'] : list;
+        })(),
+        mediaSrc: ["'self'", 'https:', 'blob:'],
+        fontSrc: ["'self'", 'https:', 'data:', 'https://fonts.gstatic.com'],
+        styleSrc: ["'self'", "'unsafe-inline'", 'https:', 'https://fonts.googleapis.com'],
+        // Inline scripts should include: <script nonce="${res.locals.cspNonce}">
+        scriptSrc: ["'self'", 'https:', (req: any, res: any) => `'nonce-${(res as any).locals?.cspNonce}'`],
+        connectSrc: [
+          "'self'", 'https:', 'wss:',
+          'https://api.kasyrooms.com',
+          'https://cdn.kasyrooms.com',
+          'https://*.ingest.sentry.io'
+        ],
+        workerSrc: ["'self'", 'blob:'],
+        frameSrc: ["'self'", 'https:'],
+        formAction: ["'self'"],
+        upgradeInsecureRequests: []
+      }
+    } : false
   })
 );
 
