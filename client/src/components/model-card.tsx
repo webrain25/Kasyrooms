@@ -138,7 +138,10 @@ export default function ModelCard({ model, showRank = false, rank, minimal = fal
 
   {/* Hover Overlay; hidden in minimal mode */}
   {!minimal && (
-  <div className="model-overlay absolute inset-0 bg-gradient-to-t from-background via-background/80 to-transparent flex flex-col justify-end p-4" data-testid={`overlay-${model.id}`}>
+  <div
+    className="model-overlay absolute inset-0 bg-gradient-to-t from-background/90 via-background/70 to-transparent flex flex-col justify-end p-4 opacity-0 group-hover:opacity-100 transition-opacity duration-300 pointer-events-none"
+    data-testid={`overlay-${model.id}`}
+  >
           <div className="mb-3">
             <div className="flex items-center space-x-2 text-xs text-muted mb-2">
               <span data-testid={`model-age-${model.id}`}>{model.age}</span>
