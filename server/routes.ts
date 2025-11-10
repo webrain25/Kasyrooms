@@ -994,7 +994,7 @@ export async function registerRoutes(app: Express, opts?: { version?: string }) 
       res.setHeader('Cache-Control', 'public, max-age=86400');
       res.setHeader('Cross-Origin-Resource-Policy', 'cross-origin');
       // Allow fetching displayed images when CSP uses self only (proxy path is self)
-      res.setHeader('Content-Security-Policy', "img-src 'self' data:");
+  // Do not override page CSP from subresource responses
       const body = await upstream.arrayBuffer();
       // Persist to cache
       try { await ensureCacheDir(); const cached = await getCachedImage(target.toString()); if (!cached.exists) { await fs.promises.writeFile(cached.path, Buffer.from(body)); } } catch {}

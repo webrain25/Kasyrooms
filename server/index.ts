@@ -28,21 +28,26 @@ app.use(
     // Disable COEP to avoid breaking cross-origin media fonts/images in browsers without proper CORP/CORS
     crossOriginEmbedderPolicy: false,
     // Apply a conservative CSP in production; allow CDN images and basic connections
-    contentSecurityPolicy: process.env.NODE_ENV === 'production' ? {
-      useDefaults: true,
-      directives: {
-        defaultSrc: ["'self'"],
-        // Allow our domain, data URIs, and specific external image CDNs we proxy or may load directly
-        imgSrc: ["'self'", "data:", "https://images.unsplash.com", "https://plus.unsplash.com", "https://images.pexels.com", "https://cdn.pixabay.com"],
-        mediaSrc: ["'self'", "blob:", "https:"],
-        styleSrc: ["'self'", "'unsafe-inline'", "https:"],
-        scriptSrc: ["'self'"],
-        connectSrc: ["'self'", "https:", "wss:"],
-        frameAncestors: ["'self'"],
-        objectSrc: ["'none'"],
-        baseUri: ["'self'"]
-      }
-    } : false
+    contentSecurityPolicy: process.env.NODE_ENV === 'production' ? (() => {
+      const allowAll = process.env.CSP_IMG_ALLOW_ALL === '1';
+      const imgSrc = allowAll
+        ? ["'self'", 'data:', 'https:']
+        : ["'self'", 'data:', 'https://images.unsplash.com', 'https://plus.unsplash.com', 'https://images.pexels.com', 'https://cdn.pixabay.com'];
+      return {
+        useDefaults: true,
+        directives: {
+          defaultSrc: ["'self'"],
+          imgSrc,
+          mediaSrc: ["'self'", 'blob:', 'https:'],
+          styleSrc: ["'self'", "'unsafe-inline'", 'https:'],
+          scriptSrc: ["'self'"],
+          connectSrc: ["'self'", 'https:', 'wss:'],
+          frameAncestors: ["'self'"],
+            objectSrc: ["'none'"],
+          baseUri: ["'self'"]
+        }
+      };
+    })() : false
   })
 );
 
