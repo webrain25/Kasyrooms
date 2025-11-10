@@ -1,5 +1,4 @@
 // Load environment variables early
-import 'dotenv/config';
 import dotenv from 'dotenv';
 import express from "express";
 import cors from "cors";
@@ -18,23 +17,34 @@ import { db, schema } from "./db";
 import { eq } from "drizzle-orm";
 import { initSignaling } from "./rtc/signaling";
 
-// If the platform provides an inline env file content via APP_ENV_FILE, parse it and merge into process.env
+// Prefer loading env from APP_ENV_FILE (inline content or file path). Fallback to local .env only if absent.
 (() => {
   const inline = process.env.APP_ENV_FILE;
-  if (!inline) return;
-  try {
-    // If APP_ENV_FILE looks like a path, read it; otherwise treat as inline .env content
-    const isPath = inline.startsWith('file://') || inline.startsWith('/') || /^[a-zA-Z]:\\/.test(inline);
-    const content = isPath ? fsSync.readFileSync(inline.replace(/^file:\/\//, ''), 'utf8') : inline;
-    const parsed = dotenv.parse(content);
-    for (const [k, v] of Object.entries(parsed)) {
-      if (process.env[k] == null) process.env[k] = v as string;
+  const loadFromAppEnv = () => {
+    if (!inline) return false;
+    try {
+      const isPath = inline.startsWith('file://') || inline.startsWith('/') || /^[a-zA-Z]:\\/.test(inline);
+      const content = isPath ? fsSync.readFileSync(inline.replace(/^file:\/\//, ''), 'utf8') : inline;
+      const parsed = dotenv.parse(content);
+      for (const [k, v] of Object.entries(parsed)) {
+        process.env[k] = v as string; // override to ensure source of truth is APP_ENV_FILE
+      }
+      // eslint-disable-next-line no-console
+      console.log('[env] APP_ENV_FILE loaded');
+      return true;
+    } catch (e) {
+      // eslint-disable-next-line no-console
+      console.error('[env] Failed to load APP_ENV_FILE:', (e as Error).message);
+      return false;
     }
-    // eslint-disable-next-line no-console
-    console.log('[env] APP_ENV_FILE loaded');
-  } catch (e) {
-    // eslint-disable-next-line no-console
-    console.error('[env] Failed to load APP_ENV_FILE:', (e as Error).message);
+  };
+  const ok = loadFromAppEnv();
+  if (!ok) {
+    const res = dotenv.config();
+    if (res.parsed) {
+      // eslint-disable-next-line no-console
+      console.log('[env] .env loaded');
+    }
   }
 })();
 
