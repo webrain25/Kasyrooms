@@ -35,6 +35,23 @@ export async function registerRoutes(app: Express, opts?: { version?: string }) 
     if (Array.isArray(copy.photos)) copy.photos = copy.photos.map((p: string) => proxifyImage(p));
     return copy;
   };
+  // Transform the grouped home structure returned by storage.listModelsHome
+  const proxifyHomeGroups = (groups: any) => {
+    if (!FORCE_PROXY_IMAGES || !groups) return groups;
+    const transformGroup = (g: any) => {
+      if (!g) return g;
+      const tx = (arr: any[]) => Array.isArray(arr) ? arr.map(m => ({ ...m, photo_url: proxifyImage(m.photo_url) })) : [];
+      return {
+        online: tx(g.online),
+        busy: tx(g.busy),
+        offline: tx(g.offline)
+      };
+    };
+    return {
+      favorites: transformGroup(groups.favorites),
+      others: transformGroup(groups.others)
+    };
+  };
   // Simple auth extraction: prefer JWT; fallback to dev headers x-user-id/x-role
   type ReqUser = { id: string; role: 'user'|'model'|'admin'; username?: string } | null;
   function getReqUser(req: any): ReqUser {
@@ -139,11 +156,7 @@ export async function registerRoutes(app: Express, opts?: { version?: string }) 
       ? (req.query.favs as string).split(',').map(s=>s.trim()).filter(Boolean)
       : undefined;
     const result = await storage.listModelsHome({ userId: u?.id, favoritesOverride: favsOverride });
-    res.json(FORCE_PROXY_IMAGES ? result.map((g: any) => ({
-      ...g,
-      favorites: Array.isArray(g.favorites) ? g.favorites.map(proxifyModel) : g.favorites,
-      others: Array.isArray(g.others) ? g.others.map(proxifyModel) : g.others
-    })) : result);
+    res.json(proxifyHomeGroups(result));
   });
   // Aliases to avoid potential route-order conflicts on some deployments
   app.get("/api/models-home", async (req, res) => {
@@ -152,11 +165,7 @@ export async function registerRoutes(app: Express, opts?: { version?: string }) 
       ? (req.query.favs as string).split(',').map(s=>s.trim()).filter(Boolean)
       : undefined;
     const result = await storage.listModelsHome({ userId: u?.id, favoritesOverride: favsOverride });
-    res.json(FORCE_PROXY_IMAGES ? result.map((g: any) => ({
-      ...g,
-      favorites: Array.isArray(g.favorites) ? g.favorites.map(proxifyModel) : g.favorites,
-      others: Array.isArray(g.others) ? g.others.map(proxifyModel) : g.others
-    })) : result);
+    res.json(proxifyHomeGroups(result));
   });
   app.get("/api/home/models", async (req, res) => {
     const u = getReqUser(req);
@@ -164,11 +173,7 @@ export async function registerRoutes(app: Express, opts?: { version?: string }) 
       ? (req.query.favs as string).split(',').map(s=>s.trim()).filter(Boolean)
       : undefined;
     const result = await storage.listModelsHome({ userId: u?.id, favoritesOverride: favsOverride });
-    res.json(FORCE_PROXY_IMAGES ? result.map((g: any) => ({
-      ...g,
-      favorites: Array.isArray(g.favorites) ? g.favorites.map(proxifyModel) : g.favorites,
-      others: Array.isArray(g.others) ? g.others.map(proxifyModel) : g.others
-    })) : result);
+    res.json(proxifyHomeGroups(result));
   });
 
   // Online models count (used by filters bar)
