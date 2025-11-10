@@ -1,5 +1,6 @@
 // Load environment variables early
 import 'dotenv/config';
+import dotenv from 'dotenv';
 import express from "express";
 import cors from "cors";
 import helmet from "helmet";
@@ -15,6 +16,26 @@ import { storage } from "./storage";
 import { db, schema } from "./db";
 import { eq } from "drizzle-orm";
 import { initSignaling } from "./rtc/signaling";
+
+// If the platform provides an inline env file content via APP_ENV_FILE, parse it and merge into process.env
+(() => {
+  const inline = process.env.APP_ENV_FILE;
+  if (!inline) return;
+  try {
+    // If APP_ENV_FILE looks like a path, read it; otherwise treat as inline .env content
+    const isPath = inline.startsWith('file://') || inline.startsWith('/') || /^[a-zA-Z]:\\/.test(inline);
+    const content = isPath ? fsSync.readFileSync(inline.replace(/^file:\/\//, ''), 'utf8') : inline;
+    const parsed = dotenv.parse(content);
+    for (const [k, v] of Object.entries(parsed)) {
+      if (process.env[k] == null) process.env[k] = v as string;
+    }
+    // eslint-disable-next-line no-console
+    console.log('[env] APP_ENV_FILE loaded');
+  } catch (e) {
+    // eslint-disable-next-line no-console
+    console.error('[env] Failed to load APP_ENV_FILE:', (e as Error).message);
+  }
+})();
 
 const app = express();
 // Structured request logging
