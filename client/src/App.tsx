@@ -9,6 +9,8 @@ import { FavoritesProvider } from "@/lib/favoritesContext";
 import { I18nProvider } from "@/lib/i18n";
 import { AuthProvider } from "@/lib/authContext";
 import { withRole } from "@/components/route-guards";
+// Use relative import to avoid IDE path alias glitches
+import AgeGateGuard from "./components/age-gate-guard";
 const NotFound = lazy(() => import("@/pages/not-found"));
 const Home = lazy(() => import("@/pages/home"));
 const ModelProfile = lazy(() => import("@/pages/model-profile"));
@@ -25,11 +27,15 @@ const CookiesPage = lazy(() => import("@/pages/cookies"));
 const SupportLanding = lazy(() => import("@/pages/support"));
 const FAQPage = lazy(() => import("@/pages/support/faq"));
 const DmcaPage = lazy(() => import("@/pages/dmca"));
+const DmcaSubmitPage = lazy(() => import("@/pages/dmca-submit"));
 const GuidelinesPage = lazy(() => import("@/pages/guidelines"));
 const RefundPolicyPage = lazy(() => import("@/pages/refund"));
 const AdminDashboard = lazy(() => import("@/pages/admin"));
 const ModelDashboard = lazy(() => import("@/pages/model-dashboard"));
 const AgeCompliance = lazy(() => import("@/pages/age-compliance"));
+const KycOnboardingPage = lazy(() => import("@/pages/kyc"));
+// Debug tools (non-production) lazy import
+const DebugImages = lazy(() => import("@/pages/debug-images"));
 
 function Router() {
   const AdminOnly = withRole(['admin'], AdminDashboard);
@@ -50,6 +56,8 @@ function Router() {
         <Route path="/privacy" component={PrivacyPage} />
         <Route path="/cookies" component={CookiesPage} />
         <Route path="/dmca" component={DmcaPage} />
+  <Route path="/dmca-submit" component={DmcaSubmitPage} />
+  <Route path="/kyc" component={KycOnboardingPage} />
         <Route path="/guidelines" component={GuidelinesPage} />
         <Route path="/refund" component={RefundPolicyPage} />
   <Route path="/18plus" component={AgeCompliance} />
@@ -58,6 +66,8 @@ function Router() {
         <Route path="/model/:id" component={ModelProfile} />
         <Route path="/login" component={Login} />
         <Route path="/register" component={Register} />
+  {/* Debug image loading page (omit from production menus) */}
+  <Route path="/debug/images" component={DebugImages} />
         <Route component={NotFound} />
       </Switch>
     </Suspense>
@@ -73,7 +83,9 @@ function App() {
             <I18nProvider>
           <TooltipProvider>
             <Toaster />
-            <Router />
+            <AgeGateGuard>
+              <Router />
+            </AgeGateGuard>
           </TooltipProvider>
             </I18nProvider>
           </FavoritesProvider>

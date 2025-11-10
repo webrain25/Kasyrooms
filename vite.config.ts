@@ -30,6 +30,8 @@ export default defineConfig({
   build: {
     outDir: path.resolve(import.meta.dirname, "dist/public"),
     emptyOutDir: true,
+    // Disable source maps in production to reduce bundle size and leak risk
+    sourcemap: false,
     chunkSizeWarningLimit: 1200,
     rollupOptions: {
       output: {

@@ -1,6 +1,8 @@
 import Header from "@/components/header";
 import Footer from "@/components/footer";
 import { useI18n } from "@/lib/i18n";
+import { Button } from "@/components/ui/button";
+import { Link } from "wouter";
 
 export default function DmcaPage() {
   const { t } = useI18n();
@@ -32,6 +34,9 @@ export default function DmcaPage() {
         <section>
           <h2>{t('dmca.contact.title')}</h2>
           <p>{t('dmca.contact.content')}</p>
+          <div className="not-prose mt-4">
+            <Link href="/dmca-submit"><Button>Submit a DMCA Notice</Button></Link>
+          </div>
         </section>
       </main>
       <Footer />

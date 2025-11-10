@@ -8,6 +8,7 @@ import type { Model } from "@shared/schema";
 import { BRAND } from "@/lib/brand";
 import { useQuery } from "@tanstack/react-query";
 import MessagesHistoryButton from "./messages-history";
+import { useQuery as useRQ } from "@tanstack/react-query";
 
 export default function Header() {
   const { t } = useI18n();
@@ -28,6 +29,20 @@ export default function Header() {
   });
   const validIds = new Set(allModels.map((m) => m.id));
   const validFavoritesCount = favorites.filter((id) => validIds.has(id)).length;
+
+  // Wallet balance for authenticated users (shared or local)
+  const { data: walletInfo } = useRQ<{ balance: number } | null>({
+    queryKey: ["/api/wallet/balance", user?.id],
+    queryFn: async () => {
+      if (!user?.id) return null;
+      const url = `/api/wallet/balance?userId=${encodeURIComponent(user.id)}`;
+      const res = await fetch(url);
+      if (!res.ok) return null;
+      return res.json();
+    },
+    enabled: !!user?.id,
+    refetchInterval: 20000,
+  });
 
   // For models, show a small "Live" badge when online
   const { data: modelMe } = useQuery<Model | null>({
@@ -169,6 +184,11 @@ export default function Header() {
             {isAuthenticated && (
               <>
                 <span className="text-sm text-muted">{t('welcome')}, {user?.username}</span>
+                {walletInfo && (
+                  <span className="px-2 py-1 text-xs rounded-md bg-card border border-border ml-1">
+                    €{Number(walletInfo.balance ?? 0).toFixed(2)}
+                  </span>
+                )}
                 {/* Role shortcuts */}
                 {user?.role === 'model' && (
                   <a href="/dashboard/model" className="px-3 py-2 rounded-lg hover:bg-accent text-sm inline-flex items-center gap-2">

@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import Header from "@/components/header";
 import Footer from "@/components/footer";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -6,6 +6,8 @@ import { Button } from "@/components/ui/button";
 import { useAuth } from "@/lib/authContext";
 import { Switch } from "@/components/ui/switch";
 import { useToast } from "@/hooks/use-toast";
+import { useRTC } from "@/components/rtc/useRTC";
+import { LocalPreview } from "@/components/rtc/LocalPreview";
 
 export default function ModelDashboard() {
   const { user, isAuthenticated, token } = useAuth();
@@ -21,8 +23,14 @@ export default function ModelDashboard() {
   const [autoOnline, setAutoOnline] = useState<boolean>(false);
   const [initialized, setInitialized] = useState(false);
   const [clearedAt, setClearedAt] = useState<number>(0);
+  const lastChatSentAtRef = useRef<number>(0);
+  const bannedRx = useRef<RegExp[]>([/(offensive|hate|slur)/i]);
   const displayName = useMemo(()=> profile?.displayName || user?.username || "Modella", [profile?.displayName, user?.username]);
   const { toast } = useToast();
+  const [roomId, setRoomId] = useState<string>(user ? `model:${user.id}` : "");
+  const rtc = useRTC(roomId, 'model');
+  const isLive = !!rtc.localStream;
+  const dialedRef = useRef<Set<string>>(new Set());
 
   useEffect(() => {
     if (!user) return;
@@ -62,6 +70,39 @@ export default function ModelDashboard() {
     if (autoOnline && !isOnline) toggleOnline(true);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [initialized]);
+
+  // When going online, auto-join signaling room so viewers can connect
+  useEffect(() => {
+    if (!user) return;
+    if (isOnline) {
+      try { rtc.join(); } catch {}
+    }
+  }, [isOnline, user?.id]);
+
+  // Switch to private session room when a session is active; otherwise public room
+  useEffect(() => {
+    if (!user) return;
+    const targetRoom = sessionId ? `session:${sessionId}` : `model:${user.id}`;
+    if (targetRoom !== roomId) {
+      setRoomId(targetRoom);
+      try { rtc.switchRoom(targetRoom); } catch {}
+      // Attempt to (re)join to ensure we advertise presence
+      try { rtc.join(); } catch {}
+      // Reset dialed peers so we re-offer on new room
+      dialedRef.current.clear();
+    }
+  }, [sessionId, user?.id]);
+
+  // When we are live (have local stream), proactively call any peers present
+  useEffect(() => {
+    if (!isLive) { dialedRef.current.clear(); return; }
+    rtc.peers.forEach(p => {
+      if (!dialedRef.current.has(p.id)) {
+        dialedRef.current.add(p.id);
+        rtc.callPeer(p.id);
+      }
+    });
+  }, [isLive, rtc.peers]);
 
   if (!isAuthenticated) {
     return (
@@ -135,6 +176,15 @@ export default function ModelDashboard() {
 
   const sendChat = async () => {
     if (!chatText.trim()) return;
+    // Client-side bad-words filter
+    if (bannedRx.current.some(rx => rx.test(chatText))) {
+      toast({ title: 'Messaggio non inviato', description: 'Contiene parole vietate', variant: 'destructive' });
+      return;
+    }
+    // Simple client-side rate limit: 1 message / 2s
+    const now = Date.now();
+    if (now - lastChatSentAtRef.current < 2000) return;
+    lastChatSentAtRef.current = now;
     try {
   const r = await fetch('/api/chat/public', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ user: displayName, text: chatText.trim(), userId_B: user?.id })});
       if (r.ok) {
@@ -162,6 +212,22 @@ export default function ModelDashboard() {
       if (token) headers['Authorization'] = `Bearer ${token}`;
       await fetch(`/api/models/${user.id}/busy`, { method:'PATCH', headers, body: JSON.stringify({ isBusy: true }) });
     } finally { setBusy(false); }
+  };
+
+  const panic = async () => {
+    if (!user) return;
+    try {
+      // Stop live stream immediately
+      rtc.stopLocal();
+      // Set busy false and go offline
+      const headers: Record<string,string> = { 'Content-Type':'application/json', 'x-user-id': user.id, 'x-role': user.role || '' };
+      if (token) headers['Authorization'] = `Bearer ${token}`;
+      await fetch(`/api/models/${user.id}/busy`, { method:'PATCH', headers, body: JSON.stringify({ isBusy: false }) });
+      await fetch(`/api/models/${user.id}/status`, { method:'PATCH', headers, body: JSON.stringify({ isOnline: false }) });
+      // Create a moderation report entry for audit
+      await fetch('/api/moderation/report', { method:'POST', headers:{ 'Content-Type':'application/json' }, body: JSON.stringify({ modelId: user.id, userId: user.id, reason: 'panic', details: `panic at ${new Date().toISOString()}` }) });
+      toast({ title: 'Modalità panico attivata', description: 'Live fermata e segnalazione inviata' });
+    } catch {}
   };
 
   const endPrivate = async () => {
@@ -232,6 +298,36 @@ export default function ModelDashboard() {
         </Card>
 
         <Card>
+          <CardHeader className="pb-2"><CardTitle className="text-sm font-semibold">Live Stream</CardTitle></CardHeader>
+          <CardContent className="space-y-3">
+            <div className="grid md:grid-cols-2 gap-4 items-start">
+              <div className="rounded-lg bg-black aspect-video overflow-hidden">
+                <LocalPreview stream={rtc.localStream} />
+              </div>
+              <div className="space-y-3">
+                <div className="text-sm text-muted">Stato: {isLive ? 'LIVE' : 'Spento'} | Peers connessi: {rtc.peers.length}</div>
+                <div className="flex gap-2">
+                  {!isLive ? (
+                    <Button onClick={async ()=>{ await rtc.startLocal(); try { rtc.join(); } catch {}; dialedRef.current.clear(); }} disabled={!isOnline}>
+                      Avvia Live
+                    </Button>
+                  ) : (
+                    <Button variant="destructive" onClick={()=>{ rtc.stopLocal(); dialedRef.current.clear(); }}>
+                      Ferma Live
+                    </Button>
+                  )}
+                  <Button variant="outline" onClick={panic}>
+                    Panic
+                  </Button>
+                  {!isOnline && <span className="text-xs text-destructive self-center">Devi essere Online per avviare la Live.</span>}
+                </div>
+                <div className="text-xs text-muted">Suggerimento: la Live invia la tua webcam ai visitatori collegati alla tua Room. Usa un TURN server per una migliore compatibilità NAT.</div>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+
+        <Card>
           <CardHeader className="pb-2"><CardTitle className="text-sm font-semibold">Preferenze</CardTitle></CardHeader>
           <CardContent className="flex items-center justify-between gap-3">
             <div className="text-sm">
@@ -272,7 +368,15 @@ export default function ModelDashboard() {
             </div>
             <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
               {photos.map((p,i) => (
-                <img key={i} src={p} className="w-full aspect-square object-cover rounded" />
+                <img
+                  key={i}
+                  src={p.startsWith('http') ? `/api/proxy/img?u=${encodeURIComponent(p)}` : p}
+                  className="w-full aspect-square object-cover rounded"
+                  loading="lazy"
+                  referrerPolicy="no-referrer"
+                  crossOrigin="anonymous"
+                  onError={(e)=>{ const el=e.currentTarget; el.onerror=null; el.src='/logo.png'; }}
+                />
               ))}
               {photos.length === 0 && <p className="text-sm text-muted">No photos yet</p>}
             </div>

@@ -77,6 +77,70 @@ export const modelRatings = pgTable(
   })
 );
 
+// Transactions ledger (amount in cents)
+export const transactions = pgTable("transactions", {
+  id: varchar("id").primaryKey(),
+  userId_B: varchar("user_id_b"), // local user id (B) if applicable
+  userId_A: varchar("user_id_a"), // external/shared wallet id (A) if applicable
+  type: varchar("type", { length: 24 }).notNull(), // DEPOSIT | WITHDRAWAL | HOLD | RELEASE | CHARGE
+  amountCents: integer("amount_cents").notNull(),
+  currency: varchar("currency", { length: 8 }).default("EUR").notNull(),
+  source: text("source"),
+  externalRef: text("external_ref"),
+  createdAt: timestamp("created_at").default(sql`now()`),
+});
+
+// Live/private sessions for operator insights and billing
+export const sessions = pgTable("sessions", {
+  id: varchar("id").primaryKey(),
+  userId_B: varchar("user_id_b").notNull().references(() => users.id),
+  modelId: varchar("model_id").notNull().references(() => models.id),
+  startedAt: timestamp("started_at").default(sql`now()`),
+  endedAt: timestamp("ended_at"),
+  durationSec: integer("duration_sec").default(0),
+  totalChargedCents: integer("total_charged_cents").default(0),
+});
+
+// DMCA notices (simplified)
+export const dmcaNotices = pgTable("dmca_notices", {
+  id: varchar("id").primaryKey(),
+  reporterName: text("reporter_name").notNull(),
+  reporterEmail: text("reporter_email").notNull(),
+  originalContentUrl: text("original_content_url").notNull(),
+  infringingUrls: text("infringing_urls").array().notNull(),
+  signature: text("signature").notNull(),
+  status: varchar("status", { length: 16 }).default('open').notNull(),
+  notes: text("notes"),
+  createdAt: timestamp("created_at").default(sql`now()`),
+});
+
+// KYC applications (simplified)
+export const kycApplications = pgTable("kyc_applications", {
+  id: varchar("id").primaryKey(),
+  userId: varchar("user_id").references(() => users.id),
+  fullName: text("full_name").notNull(),
+  dateOfBirth: date("date_of_birth"),
+  country: text("country"),
+  documentType: varchar("document_type", { length: 32 }),
+  documentFrontUrl: text("document_front_url"),
+  documentBackUrl: text("document_back_url"),
+  selfieUrl: text("selfie_url"),
+  status: varchar("status", { length: 16 }).default('pending').notNull(),
+  notes: text("notes"),
+  createdAt: timestamp("created_at").default(sql`now()`),
+});
+
+// Audit events
+export const auditEvents = pgTable("audit_events", {
+  id: varchar("id").primaryKey(),
+  when: timestamp("when").default(sql`now()`),
+  actor: varchar("actor", { length: 64 }),
+  role: varchar("role", { length: 16 }),
+  action: varchar("action", { length: 64 }).notNull(),
+  target: text("target"),
+  meta: text("meta"), // JSON serialized string
+});
+
 export const insertUserSchema = createInsertSchema(users).pick({
   username: true,
   password: true,
@@ -96,3 +160,8 @@ export type UserProfile = typeof userProfiles.$inferSelect;
 export type Wallet = typeof wallets.$inferSelect;
 export type Card = typeof cards.$inferSelect;
 export type ModelRating = typeof modelRatings.$inferSelect;
+export type Transaction = typeof transactions.$inferSelect;
+export type Session = typeof sessions.$inferSelect;
+export type DmcaNoticeRow = typeof dmcaNotices.$inferSelect;
+export type KycApplicationRow = typeof kycApplications.$inferSelect;
+export type AuditEventRow = typeof auditEvents.$inferSelect;

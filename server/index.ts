@@ -1,4 +1,5 @@
-
+// Load environment variables early
+import 'dotenv/config';
 import express from "express";
 import cors from "cors";
 import helmet from "helmet";
@@ -8,16 +9,40 @@ import { fileURLToPath } from "url";
 import fs from "fs/promises";
 import fsSync from "fs";
 import { registerRoutes } from "./routes";
+import { requestLogger, errorLogger } from './middleware/request-logger';
+import { logger } from './logger';
+import { storage } from "./storage";
+import { db, schema } from "./db";
+import { eq } from "drizzle-orm";
+import { initSignaling } from "./rtc/signaling";
 
 const app = express();
+// Structured request logging
+app.use(requestLogger);
 
-// Security headers (allow cross-origin images for model photos/CDNs)
+// Security headers
 app.use(
   helmet({
-    // Allow other origins to embed our resources
+    // Allow other origins to embed our resources (for public image consumption/CDN)
     crossOriginResourcePolicy: { policy: "cross-origin" },
-    // Disable COEP which otherwise blocks cross-origin images/videos/fonts unless they send CORP/CORS
+    // Disable COEP to avoid breaking cross-origin media fonts/images in browsers without proper CORP/CORS
     crossOriginEmbedderPolicy: false,
+    // Apply a conservative CSP in production; allow CDN images and basic connections
+    contentSecurityPolicy: process.env.NODE_ENV === 'production' ? {
+      useDefaults: true,
+      directives: {
+        defaultSrc: ["'self'"],
+        // Allow our domain, data URIs, and specific external image CDNs we proxy or may load directly
+        imgSrc: ["'self'", "data:", "https://images.unsplash.com", "https://plus.unsplash.com", "https://images.pexels.com", "https://cdn.pixabay.com"],
+        mediaSrc: ["'self'", "blob:", "https:"],
+        styleSrc: ["'self'", "'unsafe-inline'", "https:"],
+        scriptSrc: ["'self'"],
+        connectSrc: ["'self'", "https:", "wss:"],
+        frameAncestors: ["'self'"],
+        objectSrc: ["'none'"],
+        baseUri: ["'self'"]
+      }
+    } : false
   })
 );
 
@@ -35,7 +60,7 @@ app.use(
   })
 );
 
-// Global rate limit (optional)
+// Global rate limit (baseline)
 const globalLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
   max: 100,
@@ -50,16 +75,40 @@ app.use(express.json({
   }
 }));
 
-// Stricter limit for registration attempts
-const registerLimiter = rateLimit({
-  windowMs: 10 * 60 * 1000,
-  max: 5,
-  standardHeaders: true,
-  legacyHeaders: false,
-  message: { error: "Troppe richieste, riprova più tardi." },
-});
-// Apply to registration endpoint path (our route is /api/auth/register)
+// Targeted rate limits per backlog quick wins
+const authLimiter = rateLimit({ windowMs: 10 * 60 * 1000, max: 50, standardHeaders: true, legacyHeaders: false });
+const registerLimiter = rateLimit({ windowMs: 10 * 60 * 1000, max: 5, standardHeaders: true, legacyHeaders: false, message: { error: "Troppe richieste, riprova più tardi." } });
+const chatLimiter = rateLimit({ windowMs: 60 * 1000, max: 30, standardHeaders: true, legacyHeaders: false });
+const modelsLimiter = rateLimit({ windowMs: 60 * 1000, max: 300, standardHeaders: true, legacyHeaders: false });
+app.use("/api/auth/login", authLimiter);
 app.use("/api/auth/register", registerLimiter);
+app.use(["/api/chat", "/api/chat/public"], chatLimiter);
+app.use(["/api/models", "/api/home/models", "/api/models-home"], modelsLimiter);
+// Optional heuristics: log if the same IP hammers the models list unusually often
+const ipHitCounter = new Map<string, { count: number; ts: number }>();
+app.use(["/api/models", "/api/home/models", "/api/models-home"], (req, _res, next) => {
+  try {
+    const key = String((req.headers['x-forwarded-for'] as string) || req.socket.remoteAddress || 'unknown');
+    const now = Date.now();
+    const rec = ipHitCounter.get(key) || { count: 0, ts: now };
+    if (now - rec.ts > 60_000) { rec.count = 0; rec.ts = now; }
+    rec.count++;
+    ipHitCounter.set(key, rec);
+    if (rec.count > 500) {
+      // Log once per window
+      storage.addAudit({ action: 'anti_scrape_suspect', meta: { ip: key, count: rec.count } }).catch(()=>{});
+      rec.count = 0; rec.ts = now;
+    }
+  } catch {}
+  next();
+});
+// New: targeted limits for DMCA, KYC and Tip to protect from abuse
+const dmcaLimiter = rateLimit({ windowMs: 60 * 60 * 1000, max: 10, standardHeaders: true, legacyHeaders: false });
+const kycLimiter = rateLimit({ windowMs: 60 * 60 * 1000, max: 10, standardHeaders: true, legacyHeaders: false });
+const tipLimiter = rateLimit({ windowMs: 60 * 1000, max: 30, standardHeaders: true, legacyHeaders: false });
+app.use("/api/dmca/report", dmcaLimiter);
+app.use("/api/kyc/apply", kycLimiter);
+app.use("/api/models/:id/tip", tipLimiter);
 
 // API routes (pass app version for diagnostics)
 let appVersion = "dev";
@@ -69,6 +118,9 @@ try {
   if (pkg?.version) appVersion = String(pkg.version);
 } catch {}
 const server = await registerRoutes(app, { version: appVersion });
+// Initialize WebSocket signaling server for WebRTC rooms
+initSignaling(server);
+logger.info('signaling.initialized');
 
 // In development, mount Vite dev middleware; in production, serve static from /dist/public
 const __filename = fileURLToPath(import.meta.url);
@@ -172,3 +224,103 @@ function listenWithRetry(port: number, attemptsLeft: number, host: string) {
 }
 
 listenWithRetry(basePort, 10, baseHost);
+logger.info('server.starting', { host: baseHost, port: basePort });
+
+// -------------------
+// Server-side billing loop for private sessions
+// Charges per minute and auto-ends on insufficient funds
+// -------------------
+(function startBillingLoop(){
+  const RATE_PER_MIN = Number.parseFloat(process.env.RATE_PER_MIN || "5.99");
+  const TICK_MS = Number.parseInt(process.env.BILLING_TICK_MS || "10000", 10); // default 10s
+  if (!Number.isFinite(RATE_PER_MIN) || RATE_PER_MIN <= 0) return;
+
+  setInterval(async () => {
+    const now = Date.now();
+    // Iterate active sessions (no endAt)
+    for (const s of storage.sessions) {
+      if (s.endAt) continue;
+      const lastChargeAt = Date.parse(s.lastChargeAt || s.startAt);
+      if (!Number.isFinite(lastChargeAt)) continue;
+      const elapsedMs = now - lastChargeAt;
+      const minutesToCharge = Math.floor(elapsedMs / 60000);
+      if (minutesToCharge <= 0) continue;
+
+      // Resolve user and wallet mode
+      const user = await storage.getUser(s.userId_B);
+      if (!user) continue;
+      const isShared = !!user.externalUserId;
+      const walletIdA = user.externalUserId!;
+
+      let chargedMinutes = 0;
+      for (let i = 0; i < minutesToCharge; i++) {
+        try {
+          // Pre-check balance to avoid going negative
+          const currentBalance = isShared
+            ? await storage.getBalance(walletIdA)
+            : await storage.getLocalBalance(user.id);
+          if (currentBalance < RATE_PER_MIN) {
+            // End session due to insufficient funds
+            const durationSec = Math.max(1, Math.floor((Date.now() - Date.parse(s.startAt)) / 1000));
+            await storage.endSession(s.id, { durationSec, totalCharged: s.totalCharged || 0 });
+            // Persist to DB if available
+            try {
+              if (db) {
+                await db.update(schema.sessions)
+                  .set({ endedAt: new Date() as any, durationSec, totalChargedCents: Math.round((s.totalCharged || 0) * 100) })
+                  .where(eq(schema.sessions.id, s.id));
+              }
+            } catch {}
+            // Reset model busy state best-effort
+            try { await storage.setModelBusy(s.modelId, false); } catch {}
+            break; // stop charging this session
+          }
+
+          // Withdraw funds and log transaction
+          if (isShared) {
+            await storage.withdraw(walletIdA, RATE_PER_MIN);
+            const tx = await storage.addTransaction({ userId_A: walletIdA, type: 'CHARGE', amount: RATE_PER_MIN, source: 'server-billing' });
+            try { if (db) { await db.insert(schema.transactions).values({ id: tx.id, userId_A: walletIdA, type: 'CHARGE', amountCents: Math.round(RATE_PER_MIN * 100), currency: 'EUR', source: 'server-billing' }); } } catch {}
+          } else {
+            try {
+              await storage.localWithdraw(user.id, RATE_PER_MIN);
+            } catch {
+              // Local insufficient, end session
+              const durationSec = Math.max(1, Math.floor((Date.now() - Date.parse(s.startAt)) / 1000));
+              await storage.endSession(s.id, { durationSec, totalCharged: s.totalCharged || 0 });
+              try { if (db) { await db.update(schema.sessions).set({ endedAt: new Date() as any, durationSec, totalChargedCents: Math.round((s.totalCharged || 0) * 100) }).where(eq(schema.sessions.id, s.id)); } } catch {}
+              try { await storage.setModelBusy(s.modelId, false); } catch {}
+              break;
+            }
+            const tx = await storage.addTransaction({ userId_B: user.id, type: 'CHARGE', amount: RATE_PER_MIN, source: 'server-billing' });
+            try { if (db) { await db.insert(schema.transactions).values({ id: tx.id, userId_B: user.id, type: 'CHARGE', amountCents: Math.round(RATE_PER_MIN * 100), currency: 'EUR', source: 'server-billing' }); } } catch {}
+          }
+
+          // Update session in-memory and persist aggregate charge best-effort
+          s.totalCharged = (s.totalCharged || 0) + RATE_PER_MIN;
+          chargedMinutes++;
+        } catch {
+          // Best effort: skip on unexpected errors
+          break;
+        }
+      }
+
+      if (chargedMinutes > 0) {
+        // Advance lastChargeAt by charged minutes to avoid drift
+        const nextTs = lastChargeAt + chargedMinutes * 60000;
+        s.lastChargeAt = new Date(nextTs).toISOString();
+        // Optionally sync running total in DB
+        try {
+          if (db) {
+            await db.update(schema.sessions)
+              .set({ totalChargedCents: Math.round((s.totalCharged || 0) * 100) })
+              .where(eq(schema.sessions.id, s.id));
+          }
+        } catch {}
+      }
+    }
+  }, TICK_MS);
+})();
+
+// Error logger middleware (after routes)
+app.use(errorLogger);

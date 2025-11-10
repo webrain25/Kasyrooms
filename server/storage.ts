@@ -1,5 +1,6 @@
 
 import { randomUUID } from "crypto";
+import { db, schema } from "./db";
 
 export type User = {
   id: string;           // local B id
@@ -32,24 +33,57 @@ export type Model = {
 
 export type Report = { id: string; modelId: string; userId: string; reason: string; details?: string; createdAt: string };
 
+// DMCA and KYC types
+export type DmcaNotice = {
+  id: string;
+  reporterName: string;
+  reporterEmail: string;
+  originalContentUrl: string;
+  infringingUrls: string[];
+  signature: string; // attestation of truth
+  createdAt: string;
+  status: 'open'|'closed'|'rejected';
+  notes?: string;
+};
+
+export type KycApplication = {
+  id: string;
+  userId?: string;
+  fullName: string;
+  dateOfBirth?: string;
+  country?: string;
+  documentType?: 'passport'|'id_card'|'driver_license';
+  documentFrontUrl?: string;
+  documentBackUrl?: string;
+  selfieUrl?: string;
+  createdAt: string;
+  status: 'pending'|'approved'|'rejected';
+  notes?: string;
+};
+
 export class MemStorage {
   users = new Map<string, User>();
   models = new Map<string, Model>();
   balances = new Map<string, number>(); // key: userId_A
   localBalances = new Map<string, number>(); // key: local user id
   // Transaction log and private sessions tracking
-  transactions: Array<{ id: string; userId_A?: string; userId_B?: string; type: 'DEPOSIT'|'WITHDRAWAL'; amount: number; source?: string; createdAt: string; externalRef?: string }>=[];
-  sessions: Array<{ id: string; userId_B: string; modelId: string; startAt: string; endAt?: string; durationSec?: number; totalCharged?: number }>=[];
+  transactions: Array<{ id: string; userId_A?: string; userId_B?: string; type: 'DEPOSIT'|'WITHDRAWAL'|'CHARGE'; amount: number; source?: string; createdAt: string; externalRef?: string }>=[];
+  sessions: Array<{ id: string; userId_B: string; modelId: string; startAt: string; endAt?: string; durationSec?: number; totalCharged?: number; lastChargeAt?: string; billedMinutes?: number }>=[];
   blocksByModel = new Map<string, Set<string>>(); // modelId -> set of blocked userIds
   reports: Report[] = [];
+  dmcaNotices: DmcaNotice[] = [];
+  kycApplications: KycApplication[] = [];
+  audit: Array<{ id: string; when: string; actor?: string; role?: string; action: string; target?: string; meta?: any }> = [];
   // Public chat per model (modelId -> messages)
   publicChatByModel = new Map<string, Array<{ id: string; user: string; text: string; when: string; userId_B?: string }>>();
   // Favorites per user (userId -> set of modelIds)
   favoritesByUser = new Map<string, Set<string>>();
+  // Idempotency keys for webhooks (in-memory)
+  processedRefs = new Set<string>();
 
   constructor() {
     this.seed();
-    // Account di prova
+  // Account di prova
     const testUser = {
       username: "testuser",
       email: "test@example.com",
@@ -104,10 +138,22 @@ export class MemStorage {
     return undefined;
   }
 
-  async listModels(filters?: { isOnline?: boolean; isNew?: boolean; sortBy?: 'rating'|'viewers'; search?: string }) {
+  async listModels(filters?: { isOnline?: boolean; isNew?: boolean; sortBy?: 'rating'|'viewers'; search?: string; country?: string; language?: string; specialty?: string }) {
     let arr = Array.from(this.models.values());
     if (filters?.isOnline !== undefined) arr = arr.filter(m=>m.isOnline===filters.isOnline);
     if (filters?.isNew !== undefined) arr = arr.filter(m=>m.isNew===filters.isNew);
+    if (filters?.country) {
+      const cc = filters.country.toLowerCase();
+      arr = arr.filter(m => m.country.toLowerCase() === cc);
+    }
+    if (filters?.language) {
+      const lc = filters.language.toLowerCase();
+      arr = arr.filter(m => m.languages.some(l => l.toLowerCase() === lc));
+    }
+    if (filters?.specialty) {
+      const sc = filters.specialty.toLowerCase();
+      arr = arr.filter(m => m.specialties.some(s => s.toLowerCase().includes(sc)));
+    }
     if (filters?.search) {
       const searchTerm = filters.search.toLowerCase();
       arr = arr.filter(m => 
@@ -181,9 +227,107 @@ export class MemStorage {
   async addReport(modelId: string, userId: string, reason: string, details?: string) {
     const r: Report = { id: randomUUID(), modelId, userId, reason, details, createdAt: new Date().toISOString() };
     this.reports.unshift(r);
+    // Audit trail
+    this.audit.unshift({ id: randomUUID(), when: new Date().toISOString(), actor: userId, action: 'report', target: modelId, meta: { reason } });
     return r;
   }
   async listReports() { return this.reports; }
+
+  // DMCA helpers
+  async addDmcaNotice(data: Omit<DmcaNotice, 'id'|'createdAt'|'status'> & { status?: DmcaNotice['status'] }) {
+    const n: DmcaNotice = {
+      id: randomUUID(),
+      createdAt: new Date().toISOString(),
+      status: data.status ?? 'open',
+      reporterName: data.reporterName,
+      reporterEmail: data.reporterEmail,
+      originalContentUrl: data.originalContentUrl,
+      infringingUrls: data.infringingUrls,
+      signature: data.signature,
+      notes: data.notes,
+    };
+    this.dmcaNotices.unshift(n);
+    try { await this.addAudit({ action: 'dmca_report', meta: { id: n.id, reporterEmail: n.reporterEmail } }); } catch {}
+    return n;
+  }
+  async listDmcaNotices(status?: DmcaNotice['status']) {
+    return typeof status === 'string' ? this.dmcaNotices.filter(n=>n.status===status) : this.dmcaNotices;
+  }
+  async updateDmcaStatus(id: string, status: DmcaNotice['status'], notes?: string) {
+    const n = this.dmcaNotices.find(x => x.id === id);
+    if (!n) return undefined;
+    n.status = status;
+    if (typeof notes === 'string') n.notes = notes;
+    try { await this.addAudit({ action: 'dmca_status', target: id, meta: { status } }); } catch {}
+    return n;
+  }
+
+  // KYC helpers
+  async addKycApplication(data: Omit<KycApplication, 'id'|'createdAt'|'status'> & { status?: KycApplication['status'] }) {
+    const k: KycApplication = {
+      id: randomUUID(),
+      createdAt: new Date().toISOString(),
+      status: data.status ?? 'pending',
+      userId: data.userId,
+      fullName: data.fullName,
+      dateOfBirth: data.dateOfBirth,
+      country: data.country,
+      documentType: data.documentType,
+      documentFrontUrl: data.documentFrontUrl,
+      documentBackUrl: data.documentBackUrl,
+      selfieUrl: data.selfieUrl,
+      notes: data.notes,
+    };
+    this.kycApplications.unshift(k);
+    try { await this.addAudit({ actor: data.userId, action: 'kyc_apply', target: k.id }); } catch {}
+    return k;
+  }
+  async listKycApplications(status?: KycApplication['status']) {
+    return typeof status === 'string' ? this.kycApplications.filter(a=>a.status===status) : this.kycApplications;
+  }
+  async updateKycStatus(id: string, status: KycApplication['status'], notes?: string) {
+    const a = this.kycApplications.find(x => x.id === id);
+    if (!a) return undefined;
+    a.status = status;
+    if (typeof notes === 'string') a.notes = notes;
+    try { await this.addAudit({ action: 'kyc_status', target: id, meta: { status } }); } catch {}
+    return a;
+  }
+
+  // Update KYC application document URLs (front/back/selfie). Each field is optional.
+  async updateKycDocuments(id: string, docs: { documentFrontUrl?: string; documentBackUrl?: string; selfieUrl?: string }) {
+    const a = this.kycApplications.find(x => x.id === id);
+    if (!a) return undefined;
+    let changed = false;
+    if (docs.documentFrontUrl) { a.documentFrontUrl = docs.documentFrontUrl; changed = true; }
+    if (docs.documentBackUrl) { a.documentBackUrl = docs.documentBackUrl; changed = true; }
+    if (docs.selfieUrl) { a.selfieUrl = docs.selfieUrl; changed = true; }
+    if (changed) {
+      try { await this.addAudit({ action: 'kyc_docs_update', target: id, meta: { front: !!docs.documentFrontUrl, back: !!docs.documentBackUrl, selfie: !!docs.selfieUrl } }); } catch {}
+    }
+    return a;
+  }
+
+  async addAudit(ev: { actor?: string; role?: string; action: string; target?: string; meta?: any }) {
+    const entry = { id: randomUUID(), when: new Date().toISOString(), ...ev };
+    this.audit.unshift(entry);
+    if (this.audit.length > 2000) this.audit.pop();
+    // Persist best-effort
+    try {
+      if (db) {
+        await db.insert(schema.auditEvents).values({
+          id: entry.id,
+          when: new Date(entry.when) as any,
+          actor: entry.actor,
+          role: entry.role,
+          action: entry.action,
+          target: entry.target,
+          meta: entry.meta ? JSON.stringify(entry.meta) : null as any,
+        });
+      }
+    } catch {}
+  }
+  async listAudit(limit = 200) { return this.audit.slice(0, limit); }
 
   // public chat (simple in-memory, global)
   // public chat (per-model)
@@ -203,7 +347,7 @@ export class MemStorage {
   }
 
   // transaction log
-  async addTransaction(t: { userId_A?: string; userId_B?: string; type: 'DEPOSIT'|'WITHDRAWAL'; amount: number; source?: string; externalRef?: string }) {
+  async addTransaction(t: { userId_A?: string; userId_B?: string; type: 'DEPOSIT'|'WITHDRAWAL'|'CHARGE'; amount: number; source?: string; externalRef?: string }) {
     const tx = { id: randomUUID(), createdAt: new Date().toISOString(), ...t };
     this.transactions.unshift(tx);
     if (this.transactions.length > 1000) this.transactions.pop();
@@ -211,9 +355,14 @@ export class MemStorage {
   }
   async listTransactions(limit = 100) { return this.transactions.slice(0, limit); }
 
+  // webhook idempotency helpers
+  async isRefProcessed(ref?: string) { return !!(ref && this.processedRefs.has(ref)); }
+  async markRefProcessed(ref?: string) { if (ref) this.processedRefs.add(ref); }
+
   // private session tracking
   async startSession(userId_B: string, modelId: string) {
-    const s = { id: randomUUID(), userId_B, modelId, startAt: new Date().toISOString() };
+    const now = new Date().toISOString();
+    const s = { id: randomUUID(), userId_B, modelId, startAt: now, lastChargeAt: now, billedMinutes: 0, totalCharged: 0 };
     this.sessions.unshift(s);
     return s;
   }

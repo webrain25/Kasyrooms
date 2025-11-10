@@ -8,6 +8,7 @@ import { Model } from "@shared/schema";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Input } from "@/components/ui/input";
 import { useFavorites } from "@/lib/favoritesContext";
 import { useAuth } from "@/lib/authContext";
 
@@ -21,6 +22,8 @@ export default function ModelProfile() {
   const [reporting, setReporting] = useState(false);
   const [reportReason, setReportReason] = useState("");
   const [blockBusy, setBlockBusy] = useState(false);
+  const [tipAmount, setTipAmount] = useState<string>("");
+  const [tipping, setTipping] = useState(false);
 
   const { data: model, isLoading, error } = useQuery<Model>({
     queryKey: [`/api/models/${modelId}`],
@@ -103,6 +106,24 @@ export default function ModelProfile() {
       setReporting(false);
     }
   };
+  const handleTip = async () => {
+    if (!isAuthenticated) return (window.location.href = '/login');
+    const amount = Number(tipAmount);
+    if (!Number.isFinite(amount) || amount <= 0) return alert('Enter a valid amount');
+    setTipping(true);
+    try {
+      const r = await fetch(`/api/models/${modelId}/tip`, { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ amount }) });
+      if (!r.ok) {
+        const j = await r.json().catch(()=>({}));
+        if (j?.error === 'INSUFFICIENT_FUNDS') return alert('Insufficient funds');
+        return alert('Tip failed');
+      }
+  alert('Thanks for tipping!');
+  // Notify wallet listeners to refresh balance
+  try { window.dispatchEvent(new CustomEvent('wallet:changed')); } catch {}
+      setTipAmount('');
+    } finally { setTipping(false); }
+  }
   const handleBlock = async () => {
     if (!isAuthenticated) return (window.location.href = '/login');
     if (!modelId) return;
@@ -122,11 +143,20 @@ export default function ModelProfile() {
         <div className="grid md:grid-cols-2 gap-8">
           {/* Model Image */}
           <div className="relative">
-            <img
-              src={model.profileImage}
-              alt={`${model.name}'s profile`}
-              className="w-full aspect-[3/4] object-cover rounded-lg"
-            />
+            <picture>
+              {model.profileImage.startsWith('http') && (
+                <source srcSet={`/api/proxy/img?fmt=webp&u=${encodeURIComponent(model.profileImage)}`} type="image/webp" />
+              )}
+              <img
+                src={model.profileImage.startsWith('http') ? `/api/proxy/img?u=${encodeURIComponent(model.profileImage)}` : model.profileImage}
+                alt={`${model.name}'s profile`}
+                className="w-full aspect-[3/4] object-cover rounded-lg"
+                loading="lazy"
+                referrerPolicy="no-referrer"
+                crossOrigin="anonymous"
+                onError={(e)=>{ const el=e.currentTarget; el.onerror=null; el.src='/logo.png'; }}
+              />
+            </picture>
             
             {/* Status and Badges Overlay */}
             <div className="absolute top-4 left-4 flex gap-2">
@@ -215,6 +245,16 @@ export default function ModelProfile() {
                 <i className="fas fa-comment mr-2"></i>
                 Send Message
               </Button>
+
+              {/* Tip UI */}
+              <div className="p-3 border border-border rounded-lg space-y-2">
+                <div className="text-sm font-semibold">Send a Tip</div>
+                <div className="flex gap-2">
+                  <Input type="number" step="0.5" min="1" value={tipAmount} onChange={e=>setTipAmount(e.target.value)} placeholder="Amount (EUR)" />
+                  <Button onClick={handleTip} disabled={tipping}>{tipping ? 'Sending…' : 'Tip'}</Button>
+                </div>
+                <div className="text-xs text-muted">Tips are charged from your wallet balance.</div>
+              </div>
 
               {/* Moderation: report / block */}
               <div className="p-3 border border-border rounded-lg space-y-2">

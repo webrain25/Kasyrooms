@@ -3,6 +3,9 @@ import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } f
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { useAuth } from "@/lib/authContext";
+import { useRTC } from "./rtc/useRTC";
+import { RemoteGrid } from "./rtc/RemoteGrid";
+import { LocalPreview } from "./rtc/LocalPreview";
 
 interface VideoChatModalProps {
   isOpen: boolean;
@@ -33,6 +36,12 @@ export default function VideoChatModal({ isOpen, onClose, modelName, isModelOnli
   const sessionIdRef = useRef<string | null>(null);
   const sessionStartRef = useRef<number | null>(null);
   const chargedTotalRef = useRef<number>(0);
+  const lastChatSentAtRef = useRef<number>(0);
+  const bannedRx = useRef<RegExp[]>([/(offensive|hate|slur)/i]);
+
+  // RTC setup: start in public room; can switch to private session room
+  const [roomId, setRoomId] = useState<string>(`model:${modelId}`);
+  const rtc = useRTC(roomId, 'user');
 
   // Start/stop preview lifecycle
   useEffect(() => {
@@ -64,10 +73,12 @@ export default function VideoChatModal({ isOpen, onClose, modelName, isModelOnli
     // Auto-connect preview if model online
     if (isModelOnline) {
       setIsConnecting(true);
+      try { rtc.join(); } catch {}
+      // consider connected for UI purposes; remote stream may arrive later
       setTimeout(() => {
         setIsConnecting(false);
         setIsConnected(true);
-      }, 800);
+      }, 500);
     }
   }, [isOpen, isModelOnline, user?.id]);
 
@@ -121,6 +132,11 @@ export default function VideoChatModal({ isOpen, onClose, modelName, isModelOnli
           if (resp.ok) {
             const data = await resp.json();
             if (data?.id) sessionIdRef.current = data.id as string;
+            if (data?.id) {
+              const sRoom = `session:${data.id}`;
+              setRoomId(sRoom);
+              try { rtc.switchRoom(sRoom); } catch {}
+            }
           }
           sessionStartRef.current = Date.now();
           chargedTotalRef.current = 0;
@@ -212,6 +228,10 @@ export default function VideoChatModal({ isOpen, onClose, modelName, isModelOnli
         body: JSON.stringify({ isBusy: false })
       });
     } catch {}
+    // switch back to public room
+    const pub = `model:${modelId}`;
+    setRoomId(pub);
+    try { rtc.switchRoom(pub); } catch {}
     onClose();
   };
 
@@ -228,6 +248,17 @@ export default function VideoChatModal({ isOpen, onClose, modelName, isModelOnli
     }
     if (!chatInput.trim()) return;
     const message = chatInput.trim();
+    // Client-side bad-words filter
+    if (bannedRx.current.some(rx => rx.test(message))) {
+      alert('Your message contains prohibited words.');
+      return;
+    }
+    // Simple client-side rate limit: 1 message / 2s
+    const now = Date.now();
+    if (now - lastChatSentAtRef.current < 2000) {
+      return;
+    }
+    lastChatSentAtRef.current = now;
     setChat(prev => [{ id: String(Date.now()), user: isPrivate ? 'You (private)' : 'You', text: message, when: new Date().toLocaleTimeString() }, ...prev]);
     setChatInput("");
     if (!isPrivate) {
@@ -290,12 +321,17 @@ export default function VideoChatModal({ isOpen, onClose, modelName, isModelOnli
         <div className="flex-1 grid grid-cols-1 lg:grid-cols-3 gap-4">
           {/* Video area */}
           <div className="lg:col-span-2 space-y-4">
-            <div className="bg-black rounded-lg aspect-video flex items-center justify-center relative">
-              <div className="text-center text-white">
-                <i className="fas fa-video text-6xl mb-4 opacity-50"></i>
-                <p className="text-lg">{previewActive ? 'Live Preview' : isPrivate ? 'Private Show' : isLocked ? 'Preview Ended' : 'Waiting...'}</p>
-                <p className="text-sm opacity-75">This is a simulated video stream</p>
-              </div>
+            <div className="rounded-lg aspect-video flex items-center justify-center relative bg-black">
+              {/* Prefer real remote streams when available during preview/private */}
+              {(rtc.remoteStreams.size > 0) ? (
+                <RemoteGrid streams={rtc.remoteStreams} />
+              ) : (
+                <div className="text-center text-white">
+                  <i className="fas fa-video text-6xl mb-4 opacity-50"></i>
+                  <p className="text-lg">{previewActive ? 'Live Preview' : isPrivate ? 'Private Show' : isLocked ? 'Preview Ended' : 'Waiting...'}</p>
+                  <p className="text-sm opacity-75">Waiting for live stream…</p>
+                </div>
+              )}
 
               {/* Overlay controls */}
               <div className="absolute bottom-4 left-1/2 transform -translate-x-1/2 flex space-x-4">

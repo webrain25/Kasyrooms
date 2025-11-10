@@ -78,12 +78,22 @@ export default function ModelCard({ model, showRank = false, rank, minimal = fal
         data-testid={`model-card-${model.id}`}
       >
       <div className="relative aspect-[3/4]">
-        <img
-          src={model.profileImage}
-          alt={`Model ${model.name}`}
-          className="w-full h-full object-cover"
-          data-testid={`model-image-${model.id}`}
-        />
+        <picture>
+          {/* Modern formats first if the source uses unsplash */}
+          {model.profileImage.includes('images.unsplash.com') && (
+            <source srcSet={`/api/proxy/img?fmt=webp&u=${encodeURIComponent(model.profileImage)}`} type="image/webp" />
+          )}
+          <img
+            src={model.profileImage.startsWith('http') ? `/api/proxy/img?u=${encodeURIComponent(model.profileImage)}` : model.profileImage}
+            alt={`Model ${model.name}`}
+            className="w-full h-full object-cover"
+            data-testid={`model-image-${model.id}`}
+            loading="lazy"
+            referrerPolicy="no-referrer"
+            crossOrigin="anonymous"
+            onError={(e)=>{ const el = e.currentTarget; el.onerror = null; el.src = '/logo.png'; }}
+          />
+        </picture>
         {/* minimal mode has no additional badges here */}
         
         {/* New Badge - Right */}
