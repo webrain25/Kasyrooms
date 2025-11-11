@@ -1,8 +1,9 @@
 // Centralized brand configuration
 // Swap these paths when you update the logo assets in the public root
 export const BRAND = {
-  // Primary raster logo (final)
-  LOGO_SVG: "/logo_final.png", // repurpose field for simplicity
+  // Primary vector logo (SVG) served from public root
+  LOGO_SVG: "/logo_final.svg",
+  // Fallback raster logo if needed for contexts that reject SVG (OG/Twitter cards etc.)
   LOGO_PNG: "/logo_final.png",
   ALT: "Kasyrooms",
 };
