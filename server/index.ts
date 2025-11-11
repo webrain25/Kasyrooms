@@ -50,11 +50,14 @@ import { initSignaling } from "./rtc/signaling";
 })();
 
 const app = express();
+const IS_PROD = process.env.NODE_ENV === 'production';
 app.set('trust proxy', 1);
 // Structured request logging
 app.use(requestLogger);
-// Base limiter for API and skip static
-app.use(limiterMiddleware);
+// Base limiter only in production
+if (IS_PROD) {
+  app.use(limiterMiddleware);
+}
 
 // Per-request CSP nonce
 app.use((req: any, res: any, next: any) => {
@@ -130,40 +133,40 @@ app.use(express.json({
   }
 }));
 
-// Targeted rate limits per backlog quick wins
-const authLimiter = rateLimit({ windowMs: 10 * 60 * 1000, max: 50, standardHeaders: true, legacyHeaders: false });
-const registerLimiter = rateLimit({ windowMs: 10 * 60 * 1000, max: 5, standardHeaders: true, legacyHeaders: false, message: { error: "Troppe richieste, riprova più tardi." } });
-const chatLimiter = rateLimit({ windowMs: 60 * 1000, max: 30, standardHeaders: true, legacyHeaders: false });
-const modelsLimiter = rateLimit({ windowMs: 60 * 1000, max: 300, standardHeaders: true, legacyHeaders: false });
-app.use("/api/auth/login", authLimiter);
-app.use("/api/auth/register", registerLimiter);
-app.use(["/api/chat", "/api/chat/public"], chatLimiter);
-app.use(["/api/models", "/api/home/models", "/api/models-home"], modelsLimiter);
-// Optional heuristics: log if the same IP hammers the models list unusually often
-const ipHitCounter = new Map<string, { count: number; ts: number }>();
-app.use(["/api/models", "/api/home/models", "/api/models-home"], (req, _res, next) => {
-  try {
-    const key = String((req.headers['x-forwarded-for'] as string) || req.socket.remoteAddress || 'unknown');
-    const now = Date.now();
-    const rec = ipHitCounter.get(key) || { count: 0, ts: now };
-    if (now - rec.ts > 60_000) { rec.count = 0; rec.ts = now; }
-    rec.count++;
-    ipHitCounter.set(key, rec);
-    if (rec.count > 500) {
-      // Log once per window
-      storage.addAudit({ action: 'anti_scrape_suspect', meta: { ip: key, count: rec.count } }).catch(()=>{});
-      rec.count = 0; rec.ts = now;
-    }
-  } catch {}
-  next();
-});
-// New: targeted limits for DMCA, KYC and Tip to protect from abuse
-const dmcaLimiter = rateLimit({ windowMs: 60 * 60 * 1000, max: 10, standardHeaders: true, legacyHeaders: false });
-const kycLimiter = rateLimit({ windowMs: 60 * 60 * 1000, max: 10, standardHeaders: true, legacyHeaders: false });
-const tipLimiter = rateLimit({ windowMs: 60 * 1000, max: 30, standardHeaders: true, legacyHeaders: false });
-app.use("/api/dmca/report", dmcaLimiter);
-app.use("/api/kyc/apply", kycLimiter);
-app.use("/api/models/:id/tip", tipLimiter);
+// Targeted rate limits (production only)
+if (IS_PROD) {
+  const authLimiter = rateLimit({ windowMs: 10 * 60 * 1000, max: 50, standardHeaders: true, legacyHeaders: false });
+  const registerLimiter = rateLimit({ windowMs: 10 * 60 * 1000, max: 5, standardHeaders: true, legacyHeaders: false, message: { error: "Troppe richieste, riprova più tardi." } });
+  const chatLimiter = rateLimit({ windowMs: 60 * 1000, max: 30, standardHeaders: true, legacyHeaders: false });
+  const modelsLimiter = rateLimit({ windowMs: 60 * 1000, max: 300, standardHeaders: true, legacyHeaders: false });
+  app.use("/api/auth/login", authLimiter);
+  app.use("/api/auth/register", registerLimiter);
+  app.use(["/api/chat", "/api/chat/public"], chatLimiter);
+  app.use(["/api/models", "/api/home/models", "/api/models-home"], modelsLimiter);
+  // Optional heuristics (production only)
+  const ipHitCounter = new Map<string, { count: number; ts: number }>();
+  app.use(["/api/models", "/api/home/models", "/api/models-home"], (req, _res, next) => {
+    try {
+      const key = String((req.headers['x-forwarded-for'] as string) || req.socket.remoteAddress || 'unknown');
+      const now = Date.now();
+      const rec = ipHitCounter.get(key) || { count: 0, ts: now };
+      if (now - rec.ts > 60_000) { rec.count = 0; rec.ts = now; }
+      rec.count++;
+      ipHitCounter.set(key, rec);
+      if (rec.count > 500) {
+        storage.addAudit({ action: 'anti_scrape_suspect', meta: { ip: key, count: rec.count } }).catch(()=>{});
+        rec.count = 0; rec.ts = now;
+      }
+    } catch {}
+    next();
+  });
+  const dmcaLimiter = rateLimit({ windowMs: 60 * 60 * 1000, max: 10, standardHeaders: true, legacyHeaders: false });
+  const kycLimiter = rateLimit({ windowMs: 60 * 60 * 1000, max: 10, standardHeaders: true, legacyHeaders: false });
+  const tipLimiter = rateLimit({ windowMs: 60 * 1000, max: 30, standardHeaders: true, legacyHeaders: false });
+  app.use("/api/dmca/report", dmcaLimiter);
+  app.use("/api/kyc/apply", kycLimiter);
+  app.use("/api/models/:id/tip", tipLimiter);
+}
 
 // API routes (pass app version for diagnostics)
 let appVersion = "dev";
