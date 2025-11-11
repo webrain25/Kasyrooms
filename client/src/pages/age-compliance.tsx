@@ -1,10 +1,11 @@
 import LegalPage from "./legal-page";
 import { acceptAge, isAgeOK } from "@/lib/ageGate";
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import { useLocation } from "wouter";
 
 export default function AgeCompliance() {
   const [location, navigate] = useLocation();
+  const [blocked, setBlocked] = useState(false);
   useEffect(() => {
     if (isAgeOK()) {
       // If already accepted, send them home
@@ -13,21 +14,49 @@ export default function AgeCompliance() {
   }, [navigate]);
 
   return (
-    <div className="min-h-screen bg-background">
-      {/* Compose the existing legal page content */}
+    <div className="min-h-screen bg-background relative">
+      {/* Background legal content (scorrevole) */}
       <LegalPage slug="18plus" titleKey="ageCompliance.title" />
-      {/* Sticky CTA to confirm age */}
-      <div className="fixed bottom-0 inset-x-0 bg-background/95 border-t border-border backdrop-blur">
-        <div className="container mx-auto px-4 py-4 flex flex-col md:flex-row items-center gap-3 justify-between">
-          <div className="text-sm text-muted">
-            Confermo di avere almeno 18 anni (o età legale nel mio Paese) per accedere a contenuti per adulti.
-          </div>
-          <button
-            onClick={() => { acceptAge(); navigate("/", { replace: true }); }}
-            className="inline-flex items-center justify-center rounded-md bg-gold-primary text-background px-4 py-2 text-sm font-semibold shadow hover:opacity-90"
-          >
-            Ho più di 18 anni – Entra
-          </button>
+
+      {/* Full-screen blocking overlay with centered banner */}
+      <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60">
+        <div className="bg-card border border-border rounded-xl shadow-xl w-[90%] max-w-md p-6 text-center">
+          <h2 className="text-2xl font-semibold mb-3">Conferma età</h2>
+          {!blocked ? (
+            <>
+              <p className="text-muted mb-5">
+                Questo sito contiene contenuti per adulti. Confermi di avere almeno 18 anni (o l'età legale nel tuo Paese)?
+              </p>
+              <div className="flex items-center justify-center gap-3">
+                <button
+                  onClick={() => { acceptAge(); navigate("/", { replace: true }); }}
+                  className="inline-flex items-center justify-center rounded-md bg-gold-primary text-background px-4 py-2 text-sm font-semibold shadow hover:opacity-90"
+                >
+                  Sì, ho 18+
+                </button>
+                <button
+                  onClick={() => setBlocked(true)}
+                  className="inline-flex items-center justify-center rounded-md bg-muted text-foreground px-4 py-2 text-sm font-semibold border border-border hover:bg-muted/80"
+                >
+                  No
+                </button>
+              </div>
+            </>
+          ) : (
+            <>
+              <p className="text-muted mb-5">
+                Accesso negato. Non puoi proseguire senza confermare di avere 18 anni o più.
+              </p>
+              <div className="flex items-center justify-center gap-3">
+                <button
+                  onClick={() => setBlocked(false)}
+                  className="inline-flex items-center justify-center rounded-md bg-accent text-foreground px-4 py-2 text-sm font-semibold border border-border hover:bg-accent/80"
+                >
+                  Torna indietro
+                </button>
+              </div>
+            </>
+          )}
         </div>
       </div>
     </div>

@@ -104,21 +104,21 @@ export default function LegalPage({ slug, titleKey, title }: { slug: LegalSlug; 
 
   useEffect(() => {
     const primary = `${slug}-${lang}.txt`;
-    const extra = slug === '18plus' ? `2257-${lang}.txt` : null;
+    // Per richiesta: nessun controllo/documento aggiuntivo per 18+, niente 2257 in questa pagina
+    const extra = null as string | null;
     const load = async () => {
       try {
         const res1 = await fetch(`/legal/${primary}`);
         if (!res1.ok) throw new Error(`HTTP ${res1.status}`);
         const t1 = await res1.text();
         if (extra) {
+          // In questo flusso non dovremmo entrare, extra è null
           const res2 = await fetch(`/legal/${extra}`);
           if (res2.ok) {
             const t2 = await res2.text();
             const nodes = [
-              <h2 key="h-18" className="mt-2 mb-3 text-gold-primary">18+</h2>,
               ...formatTextToJSX(t1),
               <hr key="hr-merge" className="my-6 border-border" />,
-              <h2 key="h-2257" className="mt-2 mb-3 text-gold-primary">2257</h2>,
               ...formatTextToJSX(t2)
             ];
             setContent(<>{nodes}</>);

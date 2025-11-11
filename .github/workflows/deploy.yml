@@ -10,32 +10,7 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  build:
-    runs-on: ubuntu-24.04
-    env:
-      NODE_ENV: production
-      TZ: Europe/Rome
-    steps:
-      - uses: actions/checkout@v4
-
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 20
-          cache: 'npm'
-
-      - name: Install dev deps
-        run: npm ci --include=dev --no-audit --no-fund
-
-      - name: Typecheck
-        run: npm run check
-
-      - name: Build (vite + esbuild)
-        run: |
-          node ./node_modules/vite/bin/vite.js build
-          npx --yes esbuild server/index.ts --platform=node --packages=external --bundle --format=esm --outdir=dist
-
   deploy:
-    needs: build
     runs-on: ubuntu-24.04
     env:
       TZ: Europe/Rome
@@ -44,13 +19,20 @@ jobs:
       VPS_APP_DIR: ${{ secrets.VPS_APP_DIR }}
       VPS_SSH_KEY: ${{ secrets.VPS_SSH_KEY }}
       APP_ENV_FILE: ${{ secrets.APP_ENV_FILE }}
-    steps:
-      - uses: actions/checkout@v4
 
-      - name: Preflight .env (required keys)
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      # Verifica delle chiavi
+      - name: Preflight .env keys presence
         run: |
           set -euo pipefail
-          required=(DATABASE_URL JWT_SECRET BASE_URL SIRPLAY_BASE_URL SIRPLAY_API_KEY SIRPLAY_HMAC_SECRET SIRPLAY_WEBHOOK_SECRET SIRPLAY_CUSTOMER_ID SIRPLAY_PARTNER_ID)
+          required=(
+            DATABASE_URL JWT_SECRET BASE_URL
+            SIRPLAY_BASE_URL SIRPLAY_API_KEY SIRPLAY_HMAC_SECRET SIRPLAY_WEBHOOK_SECRET
+            SIRPLAY_CUSTOMER_ID SIRPLAY_PARTNER_ID
+          )
           missing=0
           for k in "${required[@]}"; do
             if echo "${{ env.APP_ENV_FILE }}" | grep -q "^$k="; then
@@ -72,7 +54,7 @@ jobs:
           remote_user: ${{ env.VPS_USER }}
           remote_key: ${{ env.VPS_SSH_KEY }}
 
-      - name: Write .env on VPS
+      - name: Write .env on VPS (from APP_ENV_FILE secret)
         uses: appleboy/ssh-action@v1.2.0
         with:
           host: ${{ env.VPS_HOST }}
@@ -86,7 +68,7 @@ jobs:
             EOF__APP_ENV
             chmod 600 "${{ env.VPS_APP_DIR }}/.env"
 
-      - name: Install deps, build on VPS, and reload PM2
+      - name: Install deps, build on VPS, prune and reload PM2
         uses: appleboy/ssh-action@v1.2.0
         with:
           host: ${{ env.VPS_HOST }}
@@ -95,18 +77,21 @@ jobs:
           script: |
             set -e
             cd "${{ env.VPS_APP_DIR }}"
+
+            # Node 20 via nvm (se presente)
+            if [ -s "$HOME/.nvm/nvm.sh" ]; then . "$HOME/.nvm/nvm.sh"; fi
+            if command -v nvm >/dev/null 2>&1; then nvm install 20 >/dev/null; nvm use 20; fi
+            node -v
+
+            # Carica env per build/runtime
             if [ -f .env ]; then set -a && . ./.env && set +a; fi
-            # Ensure Node is available (prefer Node 20 via nvm if present)
-            if [ -s "$HOME/.nvm/nvm.sh" ]; then 
-              . "$HOME/.nvm/nvm.sh"
-              nvm install 20 >/dev/null 2>&1 || true
-              nvm use 20 >/dev/null 2>&1 || true
-            fi
-            # Install with dev deps to build, then prune
+
+            # deps + build + prune (runtime only)
             npm ci --include=dev --no-audit --no-fund
             npm run build
             npm prune --omit=dev --no-audit --no-fund
-            # Ensure pm2 is available
+
+            # PM2
             command -v pm2 >/dev/null 2>&1 || npm i -g pm2
             if [ -f pm2.config.cjs ]; then
               pm2 reload pm2.config.cjs --update-env || pm2 start pm2.config.cjs
@@ -117,7 +102,7 @@ jobs:
             fi
             pm2 save || true
 
-      - name: Smoke check
+      - name: Smoke check /api/healthz
         run: |
           set -e
-          curl -fsS -L https://dev.kasyrooms.com/api/healthz > /dev/null
+          curl -fsS -L https://dev.kasyrooms.com/api/healthz >/dev/null
