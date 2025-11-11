@@ -123,14 +123,6 @@ app.use(
   })
 );
 
-// Global rate limit (baseline)
-const globalLimiter = rateLimit({
-  windowMs: 15 * 60 * 1000,
-  max: 100,
-  standardHeaders: true,
-  legacyHeaders: false,
-});
-app.use(globalLimiter);
 // Capture raw body for HMAC verification while parsing JSON
 app.use(express.json({
   verify: (req: any, _res, buf) => {
