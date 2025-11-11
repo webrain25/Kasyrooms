@@ -28,6 +28,11 @@ jobs:
       - name: Preflight .env keys presence
         run: |
           set -euo pipefail
+          # Ensure the multi-line secret is available in the environment
+          if [ -z "${APP_ENV_FILE:-}" ]; then
+            echo "APP_ENV_FILE secret is empty or not provided" >&2
+            exit 1
+          fi
           required=(
             DATABASE_URL JWT_SECRET BASE_URL
             SIRPLAY_BASE_URL SIRPLAY_API_KEY SIRPLAY_HMAC_SECRET SIRPLAY_WEBHOOK_SECRET
@@ -35,7 +40,8 @@ jobs:
           )
           missing=0
           for k in "${required[@]}"; do
-            if echo "${{ env.APP_ENV_FILE }}" | grep -q "^$k="; then
+            # Use the runtime environment variable and tolerate optional whitespace around '='
+            if printf "%s\n" "$APP_ENV_FILE" | grep -Eq "^[[:space:]]*$k[[:space:]]*="; then
               echo "OK $k"
             else
               echo "MISSING $k" >&2
