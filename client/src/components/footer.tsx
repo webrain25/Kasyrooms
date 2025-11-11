@@ -48,7 +48,9 @@ export default function Footer() {
               <img
                 src={BRAND.LOGO_SVG}
                 alt={BRAND.ALT}
-                className="w-full h-auto max-w-[160px] sm:max-w-[180px] md:max-w-[200px] lg:max-w-[220px] select-none pointer-events-none"
+                width={150}
+                height={50}
+                className="bg-transparent h-auto w-auto select-none pointer-events-none"
                 loading="lazy"
                 decoding="async"
                 draggable="false"

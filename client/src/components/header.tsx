@@ -110,7 +110,9 @@ export default function Header() {
               <img
                 src={BRAND.LOGO_SVG}
                 alt={BRAND.ALT}
-                className="h-16 sm:h-20 w-auto select-none [filter:drop-shadow(0_0_1px_rgba(0,0,0,0.5))]"
+                width={150}
+                height={50}
+                className="bg-transparent h-auto w-auto select-none [filter:drop-shadow(0_0_1px_rgba(0,0,0,0.5))]"
                 loading="eager"
                 fetchPriority="high"
                 decoding="async"
