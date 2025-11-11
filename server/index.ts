@@ -10,6 +10,7 @@ import fs from "fs/promises";
 import fsSync from "fs";
 import crypto from "crypto";
 import { registerRoutes } from "./routes";
+import limiterMiddleware from './middleware/limiter';
 import { requestLogger, errorLogger } from './middleware/request-logger';
 import { logger } from './logger';
 import { storage } from "./storage";
@@ -49,8 +50,11 @@ import { initSignaling } from "./rtc/signaling";
 })();
 
 const app = express();
+app.set('trust proxy', 1);
 // Structured request logging
 app.use(requestLogger);
+// Base limiter for API and skip static
+app.use(limiterMiddleware);
 
 // Per-request CSP nonce
 app.use((req: any, res: any, next: any) => {
