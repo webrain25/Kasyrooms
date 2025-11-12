@@ -2,7 +2,8 @@ const AGE_KEY = "kasyrooms_age_ok";
 
 export function isAgeOK(): boolean {
   try {
-    const v = localStorage.getItem(AGE_KEY);
+    // Show the banner at every new site open: store consent only for the current tab/session
+    const v = sessionStorage.getItem(AGE_KEY);
     return v === "1";
   } catch {
     return false;
@@ -11,15 +12,13 @@ export function isAgeOK(): boolean {
 
 export function acceptAge(): void {
   try {
-    localStorage.setItem(AGE_KEY, "1");
-    // best-effort cookie for server-rendered assets/CDN if needed
-    document.cookie = `${AGE_KEY}=1; path=/; max-age=${60*60*24*365}; SameSite=Lax`;
+    sessionStorage.setItem(AGE_KEY, "1");
+    // No persistent cookie: consent resets on browser/tab close
   } catch {}
 }
 
 export function clearAgeConsent(): void {
   try {
-    localStorage.removeItem(AGE_KEY);
-    document.cookie = `${AGE_KEY}=; path=/; max-age=0; SameSite=Lax`;
+    sessionStorage.removeItem(AGE_KEY);
   } catch {}
 }

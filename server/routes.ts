@@ -1013,8 +1013,25 @@ export async function registerRoutes(app: Express, opts?: { version?: string }) 
       if (cachedPath) {
         try {
           const data = await fs.promises.readFile(cachedPath);
-          res.setHeader('Content-Type', 'image/jpeg');
+          // Best-effort content type sniffing for cached files
+          const ct = (() => {
+            if (data.length > 12) {
+              // JPEG
+              if (data[0] === 0xFF && data[1] === 0xD8 && data[2] === 0xFF) return 'image/jpeg';
+              // PNG
+              if (data[0] === 0x89 && data[1] === 0x50 && data[2] === 0x4E && data[3] === 0x47) return 'image/png';
+              // WEBP (RIFF....WEBP)
+              if (data[0] === 0x52 && data[1] === 0x49 && data[2] === 0x46 && data[3] === 0x46 &&
+                  data[8] === 0x57 && data[9] === 0x45 && data[10] === 0x42 && data[11] === 0x50) return 'image/webp';
+              // AVIF (ftypavif)
+              if (data[4] === 0x66 && data[5] === 0x74 && data[6] === 0x79 && data[7] === 0x70 &&
+                  data[8] === 0x61 && data[9] === 0x76 && data[10] === 0x69 && data[11] === 0x66) return 'image/avif';
+            }
+            return 'image/jpeg';
+          })();
+          res.setHeader('Content-Type', ct);
           res.setHeader('Cache-Control', 'public, max-age=86400');
+          res.setHeader('Cross-Origin-Resource-Policy', 'cross-origin');
           return res.status(200).end(data);
         } catch {}
       }
@@ -1024,7 +1041,7 @@ export async function registerRoutes(app: Express, opts?: { version?: string }) 
       } as any);
       if (!upstream.ok) return res.status(upstream.status).end();
       // Propagate basic content-type; default to image/jpeg
-      const ct = upstream.headers.get('content-type') || 'image/jpeg';
+  const ct = upstream.headers.get('content-type') || 'image/jpeg';
       res.setHeader('Content-Type', ct);
       res.setHeader('Cache-Control', 'public, max-age=86400');
       res.setHeader('Cross-Origin-Resource-Policy', 'cross-origin');
