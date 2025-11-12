@@ -14,6 +14,7 @@
     "test:images": "tsx tests/image-proxy.ts",
     "selftest:images": "tsx tests/selftest-images.ts",
     "test:models:proxied": "tsx tests/models-images-proxied.ts",
+  "smoke:sirplay": "tsx tests/sirplay-smoke.ts",
     "pm2:start": "pm2 start ecosystem.config.cjs",
     "pm2:restart": "pm2 restart kasyrooms",
     "test:demo:ps": "powershell -NoLogo -NoProfile -ExecutionPolicy Bypass -File scripts/test-demo.ps1",
