@@ -89,8 +89,8 @@ jobs:
             if command -v nvm >/dev/null 2>&1; then nvm install 20 >/dev/null; nvm use 20; fi
             node -v
 
-            # Carica env per build/runtime
-            if [ -f .env ]; then set -a && . ./.env && set +a; fi
+            # Non eseguire il sourcing della .env nello shell: valori con spazi/JSON possono rompere la build.
+            # L'app carica la .env da Node (dotenv) all'avvio.
 
             # deps + build + prune (runtime only)
             npm ci --include=dev --no-audit --no-fund
@@ -108,7 +108,20 @@ jobs:
             fi
             pm2 save || true
 
-      - name: Smoke check /api/healthz
+      - name: Smoke check /api/healthz (with retries)
         run: |
           set -e
-          curl -fsS -L https://dev.kasyrooms.com/api/healthz >/dev/null
+          url="https://dev.kasyrooms.com/api/healthz"
+          attempts=10
+          delay=3
+          for i in $(seq 1 $attempts); do
+            if curl -fsS -L "$url" >/dev/null; then
+              echo "Health check OK on attempt $i"
+              exit 0
+            fi
+            echo "Health check failed (attempt $i/$attempts). Waiting ${delay}s..."
+            sleep $delay
+          done
+          echo "Health check failed after $attempts attempts"
+          curl -v "$url" || true
+          exit 1
