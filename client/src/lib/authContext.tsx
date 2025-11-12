@@ -25,7 +25,8 @@ interface AuthContextType {
   isAuthenticated: boolean;
   isLoading: boolean;
   token: string | null;
-  login: (username: string, password: string) => Promise<void>;
+  // Demo accounts ignore password; keep param for future real auth but do not send to API
+  login: (username: string, password?: string) => Promise<void>;
   register: (payload: RegisterPayload) => Promise<void>;
   logout: () => void;
 }
@@ -58,9 +59,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     checkAuth();
   }, []);
 
-  const login = async (username: string, password: string) => {
+  const login = async (username: string, _password?: string) => {
     try {
-      const res = await fetch('/api/auth/login', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ username, password }) });
+      // Backend expects only { username }
+      const res = await fetch('/api/auth/login', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ username }) });
       if (!res.ok) throw new Error('Invalid credentials');
       const data = await res.json();
       const u: User = data.user;
@@ -69,7 +71,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       localStorage.setItem('user', JSON.stringify(u));
       localStorage.setItem('token', data.token);
     } catch (error) {
-      throw new Error('Login failed: use "utente", "modella" o "admin" con qualsiasi password');
+      throw new Error('Login failed: usa "utente", "modella" o "admin"');
     }
   };
 

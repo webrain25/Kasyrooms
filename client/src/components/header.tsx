@@ -104,15 +104,15 @@ export default function Header() {
   return (
     <header ref={headerRef} className="bg-transparent">
       <div className="container mx-auto px-4">
-        <div className="flex items-center justify-between h-20">
+        <div className="flex items-center justify-between h-28">
           <div className="flex items-center space-x-3">
             <a href="/" className="flex items-center space-x-2">
               <img
                 src={BRAND.LOGO_SVG}
                 alt={BRAND.ALT}
-                width={40}
-                height={40}
-                className="bg-transparent h-10 w-10 object-contain select-none [filter:drop-shadow(0_0_1px_rgba(0,0,0,0.5))]"
+                width={100}
+                height={100}
+                className="bg-transparent h-[100px] w-[100px] object-contain select-none [filter:drop-shadow(0_0_1px_rgba(0,0,0,0.5))]"
                 loading="eager"
                 fetchPriority="high"
                 decoding="async"

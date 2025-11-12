@@ -26,7 +26,7 @@ export default function Login() {
     setIsLoading(true);
 
     try {
-      await login(formData.username, formData.password);
+  await login(formData.username, formData.password);
       
       toast({
         title: t('loginSuccessful'),
@@ -80,7 +80,7 @@ export default function Login() {
               </div>
               
               <div className="space-y-2">
-                <Label htmlFor="password">{t('password')}</Label>
+                <Label htmlFor="password">{t('password')} <span className="opacity-60 text-xs">(per le utenze demo puoi lasciare vuoto)</span></Label>
                 <Input
                   id="password"
                   name="password"
@@ -88,7 +88,6 @@ export default function Login() {
                   placeholder={t('enterPassword')}
                   value={formData.password}
                   onChange={handleChange}
-                  required
                 />
               </div>
               

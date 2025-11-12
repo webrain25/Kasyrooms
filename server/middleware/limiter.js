@@ -33,6 +33,14 @@ export default function limiterMiddleware(req, res, next) {
   );
   if (isPublicPoll) return next();
 
+  // High-traffic media and RTC config should not be throttled by the base limiter
+  const isMediaOrRtcBypass = req.method === 'GET' && (
+    p === '/api/proxy/img' ||
+    p.startsWith('/api/proxy/img') ||
+    p === '/api/rtc/config'
+  );
+  if (isMediaOrRtcBypass) return next();
+
   // Optional global disable of base API limiter
   if (process.env.RATE_LIMIT_DISABLE === '1') return next();
 

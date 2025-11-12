@@ -1,5 +1,5 @@
 import LegalPage from "./legal-page";
-import { acceptAge, isAgeOK } from "@/lib/ageGate";
+import { acceptAge, isAgeOK, clearAgeConsent } from "@/lib/ageGate";
 import { useEffect, useState } from "react";
 import { useLocation } from "wouter";
 
@@ -35,7 +35,7 @@ export default function AgeCompliance() {
                   Sì, ho 18+
                 </button>
                 <button
-                  onClick={() => setBlocked(true)}
+                  onClick={() => { clearAgeConsent(); setBlocked(true); }}
                   className="inline-flex items-center justify-center rounded-md bg-muted text-foreground px-4 py-2 text-sm font-semibold border border-border hover:bg-muted/80"
                 >
                   No
@@ -45,15 +45,15 @@ export default function AgeCompliance() {
           ) : (
             <>
               <p className="text-muted mb-5">
-                Accesso negato. Non puoi proseguire senza confermare di avere 18 anni o più.
+                Sessione terminata. Per accedere ai contenuti devi avere almeno 18 anni.
               </p>
               <div className="flex items-center justify-center gap-3">
-                <button
-                  onClick={() => setBlocked(false)}
+                <a
+                  href="https://www.google.com"
                   className="inline-flex items-center justify-center rounded-md bg-accent text-foreground px-4 py-2 text-sm font-semibold border border-border hover:bg-accent/80"
                 >
-                  Torna indietro
-                </button>
+                  Esci
+                </a>
               </div>
             </>
           )}

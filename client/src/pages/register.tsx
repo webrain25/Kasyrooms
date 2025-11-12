@@ -22,10 +22,6 @@ export default function Register() {
     firstName: "",
     lastName: "",
     dateOfBirth: "", // yyyy-mm-dd
-    cardBrand: "",
-    cardLast4: "",
-    expMonth: "",
-    expYear: "",
   });
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -50,10 +46,6 @@ export default function Register() {
         firstName: formData.firstName || undefined,
         lastName: formData.lastName || undefined,
         dateOfBirth: formData.dateOfBirth || undefined,
-        cardBrand: formData.cardBrand || undefined,
-        cardLast4: formData.cardLast4 || undefined,
-        expMonth: formData.expMonth ? Number(formData.expMonth) : undefined,
-        expYear: formData.expYear ? Number(formData.expYear) : undefined,
       });
       
       toast({
@@ -120,29 +112,7 @@ export default function Register() {
                   required
                 />
               </div>
-              <div className="mt-6">
-                <div className="text-sm font-semibold mb-2">Payment card (optional)</div>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  <div className="space-y-2">
-                    <Label htmlFor="cardBrand">Brand</Label>
-                    <Input id="cardBrand" name="cardBrand" placeholder="Visa/Mastercard" value={formData.cardBrand} onChange={handleChange} />
-                  </div>
-                  <div className="space-y-2">
-                    <Label htmlFor="cardLast4">Last 4 digits</Label>
-                    <Input id="cardLast4" name="cardLast4" placeholder="1234" maxLength={4} value={formData.cardLast4} onChange={handleChange} />
-                  </div>
-                </div>
-                <div className="grid grid-cols-2 gap-4 mt-2">
-                  <div className="space-y-2">
-                    <Label htmlFor="expMonth">Exp. month</Label>
-                    <Input id="expMonth" name="expMonth" type="number" min={1} max={12} placeholder="1-12" value={formData.expMonth} onChange={handleChange} />
-                  </div>
-                  <div className="space-y-2">
-                    <Label htmlFor="expYear">Exp. year</Label>
-                    <Input id="expYear" name="expYear" type="number" min={2024} max={2100} placeholder="2028" value={formData.expYear} onChange={handleChange} />
-                  </div>
-                </div>
-              </div>
+              {/* Payment card section removed as requested */}
               
               <div className="space-y-2">
                 <Label htmlFor="email">Email</Label>
