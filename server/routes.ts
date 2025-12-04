@@ -498,10 +498,40 @@ export async function registerRoutes(app: Express, opts?: { version?: string }) 
 
   // 1) Registrazione utente da Sirplay -> Operatore (B)
   app.post("/api/user/register", async (req, res) => {
-    const parsed = z.object({ externalUserId: z.string().min(1), email: z.string().email().optional(), name: z.string().optional() }).safeParse(req.body ?? {});
+    const parsed = z.object({
+      externalUserId: z.string().min(1),
+      email: z.string().email().optional(),
+      name: z.string().optional(),
+      firstName: z.string().optional(),
+      lastName: z.string().optional(),
+      dob: z.string().optional(),
+      country: z.string().optional(),
+      phoneNumber: z.string().optional(),
+    }).safeParse(req.body ?? {});
     if (!parsed.success) return res.status(400).json({ error: 'invalid_payload', details: parsed.error.flatten() });
-    const { externalUserId, email, name } = parsed.data;
+    const { externalUserId, email, name, firstName, lastName, dob, country, phoneNumber } = parsed.data;
     const user = await storage.createUser({ username: name || `user_${externalUserId}`, email, externalUserId });
+    // Persist into DB if available with extended fields
+    try {
+      if (db) {
+        await db.insert(schema.users).values({
+          id: user.id,
+          username: user.username,
+          password: '-',
+          email,
+          role: 'user',
+          externalUserId,
+          firstName,
+          lastName,
+          dob: dob ? new Date(dob) as any : undefined,
+          country,
+          phoneNumber,
+          status: 'active',
+          lastLogin: new Date() as any,
+        });
+        await db.insert(schema.wallets).values({ userId: user.id, balanceCents: 0, currency: 'EUR' });
+      }
+    } catch {}
     return res.json({ userId: user.id, externalUserId, status: "CREATED" });
   });
 
@@ -663,7 +693,7 @@ export async function registerRoutes(app: Express, opts?: { version?: string }) 
     return res.json({ token, user: { id: found.id, username, role: found.role } });
   });
 
-  // Registration endpoint capturing personal data and initializing wallet/card in DB
+  // Registration endpoint capturing personal data and initializing wallet in DB
   app.post('/api/auth/register', async (req, res) => {
     if (!db) return res.status(500).json({ error: 'db_unavailable' });
     const parsed = z.object({
@@ -673,13 +703,11 @@ export async function registerRoutes(app: Express, opts?: { version?: string }) 
       firstName: z.string().optional(),
       lastName: z.string().optional(),
       dateOfBirth: z.string().optional(),
-      cardBrand: z.string().optional(),
-      cardLast4: z.string().max(4).optional(),
-      expMonth: z.union([z.string(), z.number()]).optional(),
-      expYear: z.union([z.string(), z.number()]).optional(),
+      country: z.string().optional(),
+      phoneNumber: z.string().optional(),
     }).safeParse(req.body ?? {});
     if (!parsed.success) return res.status(400).json({ error: 'invalid_payload', details: parsed.error.flatten() });
-    const { username, email, password, firstName, lastName, dateOfBirth, cardBrand, cardLast4, expMonth, expYear } = parsed.data;
+    const { username, email, password, firstName, lastName, dateOfBirth, country, phoneNumber } = parsed.data;
     // basic username uniqueness check
     try {
       const existing = await db.select().from(schema.users).where(eq(schema.users.username, username));
@@ -690,15 +718,24 @@ export async function registerRoutes(app: Express, opts?: { version?: string }) 
     try {
       const id = crypto.randomUUID();
       // Create user
-      await db.insert(schema.users).values({ id, username, password, email, role: 'user' });
+      await db.insert(schema.users).values({
+        id,
+        username,
+        password,
+        email,
+        role: 'user',
+        firstName,
+        lastName,
+        dob: dateOfBirth ? new Date(dateOfBirth) as any : undefined,
+        country,
+        phoneNumber,
+        status: 'active',
+        lastLogin: new Date() as any,
+      });
       // Profile
       await db.insert(schema.userProfiles).values({ userId: id, firstName, lastName, birthDate: dateOfBirth ? new Date(dateOfBirth) as any : undefined });
       // Wallet (0 balance)
       await db.insert(schema.wallets).values({ userId: id, balanceCents: 0, currency: 'EUR' });
-      // Card (metadata only)
-      if (cardLast4 || cardBrand) {
-        await db.insert(schema.cards).values({ id: crypto.randomUUID(), userId: id, brand: cardBrand, last4: cardLast4, expMonth: expMonth ? Number(expMonth) : null as any, expYear: expYear ? Number(expYear) : null as any });
-      }
       const token = jwt.sign({ uid: id, role: 'user', username }, getJWTSecret(), { expiresIn: '1d' });
       return res.json({ token, user: { id, username, role: 'user', email } });
     } catch (e:any) {

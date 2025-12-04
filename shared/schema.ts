@@ -11,6 +11,14 @@ export const users = pgTable("users", {
   email: text("email"),
   role: varchar("role", { length: 16 }).default("user"),
   externalUserId: text("external_user_id"),
+  // Extended profile fields per new schema
+  firstName: text("first_name"),
+  lastName: text("last_name"),
+  dob: date("dob"), // YYYY-MM-DD
+  country: text("country"),
+  phoneNumber: text("phone_number"),
+  status: varchar("status", { length: 16 }).default('active'), // active/banned/...
+  lastLogin: timestamp("last_login"),
   createdAt: timestamp("created_at").default(sql`now()`),
 });
 
