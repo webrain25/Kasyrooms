@@ -144,11 +144,11 @@ export default function ModelProfile() {
           {/* Model Image */}
           <div className="relative">
             <picture>
-              {model.profileImage.startsWith('http') && (
-                <source srcSet={`/api/proxy/img?fmt=webp&u=${encodeURIComponent(model.profileImage)}`} type="image/webp" />
+              {model.profileImage && (
+                <source srcSet={buildImageUrl(model.profileImage, { preferWebp: true })} type="image/webp" />
               )}
               <img
-                src={model.profileImage.startsWith('http') ? `/api/proxy/img?u=${encodeURIComponent(model.profileImage)}` : model.profileImage}
+                src={buildImageUrl(model.profileImage)}
                 alt={`${model.name}'s profile`}
                 className="w-full aspect-[3/4] object-cover rounded-lg"
                 loading="lazy"

@@ -3,6 +3,7 @@ import Header from "@/components/header";
 import Footer from "@/components/footer";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
+import { buildImageUrl } from "@/lib/utils";
 import { useAuth } from "@/lib/authContext";
 import { Switch } from "@/components/ui/switch";
 import { useToast } from "@/hooks/use-toast";
@@ -370,7 +371,7 @@ export default function ModelDashboard() {
               {photos.map((p,i) => (
                 <img
                   key={i}
-                  src={p.startsWith('http') ? `/api/proxy/img?u=${encodeURIComponent(p)}` : p}
+                  src={buildImageUrl(p)}
                   className="w-full aspect-square object-cover rounded"
                   loading="lazy"
                   referrerPolicy="no-referrer"

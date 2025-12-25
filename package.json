@@ -12,6 +12,7 @@
     "smoke": "tsx tests/smoke.ts",
     "test": "tsx tests/integrity.ts",
     "test:images": "tsx tests/image-proxy.ts",
+    "test:images:nested": "tsx tests/image-proxy-nested.ts",
     "selftest:images": "tsx tests/selftest-images.ts",
     "test:models:proxied": "tsx tests/models-images-proxied.ts",
   "smoke:sirplay": "tsx tests/sirplay-smoke.ts",

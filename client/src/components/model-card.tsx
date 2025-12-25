@@ -6,6 +6,7 @@ import { useAuth } from "@/lib/authContext";
 import { useLocation } from "wouter";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import VideoChatModal from "./video-chat-modal";
+import { buildImageUrl } from "@/lib/utils";
 import { useI18n } from "@/lib/i18n";
 
 interface ModelCardProps {
@@ -81,10 +82,10 @@ export default function ModelCard({ model, showRank = false, rank, minimal = fal
         <picture>
           {/* Modern formats first if the source uses unsplash */}
           {model.profileImage.includes('images.unsplash.com') && (
-            <source srcSet={`/api/proxy/img?fmt=webp&u=${encodeURIComponent(model.profileImage)}`} type="image/webp" />
+            <source srcSet={buildImageUrl(model.profileImage, { preferWebp: true })} type="image/webp" />
           )}
           <img
-            src={model.profileImage.startsWith('http') ? `/api/proxy/img?u=${encodeURIComponent(model.profileImage)}` : model.profileImage}
+            src={buildImageUrl(model.profileImage)}
             alt={`Model ${model.name}`}
             className="w-full h-full object-cover"
             data-testid={`model-image-${model.id}`}

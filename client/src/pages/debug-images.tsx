@@ -1,3 +1,4 @@
+import { buildImageUrl } from '@/lib/utils';
 import { useEffect, useState } from 'react';
 import Header from '@/components/header';
 import Footer from '@/components/footer';
@@ -46,12 +47,12 @@ export default function DebugImagesPage() {
         <div className="grid md:grid-cols-3 gap-6">
           {samples.map((s, i) => {
             const st = states[i];
-            const proxied = `/api/proxy/img?u=${encodeURIComponent(s.raw)}`;
+            const proxied = buildImageUrl(s.raw);
             return (
               <div key={s.raw} className="p-3 border border-border rounded-md bg-card space-y-2">
                 <div className="font-semibold text-sm truncate" title={s.raw}>{s.label}</div>
                 <picture>
-                  <source srcSet={`/api/proxy/img?fmt=webp&u=${encodeURIComponent(s.raw)}`} type="image/webp" />
+                  <source srcSet={buildImageUrl(s.raw, { preferWebp: true })} type="image/webp" />
                   <img
                     src={proxied}
                     alt={s.label}

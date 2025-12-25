@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import Header from "@/components/header";
 import Footer from "@/components/footer";
+import { buildImageUrl } from '@/lib/utils';
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Model } from "@shared/schema";
@@ -102,7 +103,7 @@ export default function AdminDashboard() {
                   <div key={m.id} className="p-3 border border-border rounded-md flex items-center justify-between">
                     <div className="flex items-center gap-3">
                       <img
-                        src={m.profileImage?.startsWith('http') ? `/api/proxy/img?u=${encodeURIComponent(m.profileImage)}` : (m.profileImage || '/logo.png')}
+                        src={buildImageUrl(m.profileImage || '/logo.png')}
                         className="w-12 h-12 rounded object-cover"
                         loading="lazy"
                         referrerPolicy="no-referrer"

@@ -22,10 +22,19 @@ export async function registerRoutes(app: Express, opts?: { version?: string }) 
   const FORCE_PROXY_IMAGES = process.env.FORCE_PROXY_IMAGES === '1';
   const proxifyImage = (u?: string) => {
     if (!u) return u;
+    // Do not re-proxy already proxied or local asset paths
+    if (u.includes('/api/proxy/img')) return u;
+    if (u.startsWith('/uploads/') || u.startsWith('/attached_assets/')) return u;
     if (u.startsWith('/')) return u;
-    try { const url = new URL(u); if (url.protocol === 'http:' || url.protocol === 'https:') {
-      return `/api/proxy/img?u=${encodeURIComponent(u)}`;
-    } } catch {}
+    try {
+      const url = new URL(u);
+      if (url.protocol === 'http:' || url.protocol === 'https:') {
+        // Avoid re-proxy if path already targets proxy endpoint
+        if (url.pathname.startsWith('/api/proxy/img')) return u;
+        if (url.pathname.startsWith('/uploads/') || url.pathname.startsWith('/attached_assets/')) return u;
+        return `/api/proxy/img?u=${encodeURIComponent(u)}`;
+      }
+    } catch {}
     return u;
   };
   const proxifyModel = (m: any) => {
@@ -1027,21 +1036,86 @@ export async function registerRoutes(app: Express, opts?: { version?: string }) 
   // Lightweight image proxy to bypass third-party CORP/CSP issues for remote thumbnails
   app.get('/api/proxy/img', async (req, res) => {
     try {
-      const raw = String(req.query.u || req.query.url || '');
-      if (!raw) return res.status(400).json({ error: 'missing_url' });
-      let target: URL;
-      try { target = new URL(raw); } catch { return res.status(400).json({ error: 'invalid_url' }); }
-      if (target.protocol !== 'https:') return res.status(400).json({ error: 'https_only' });
-      // Optional: tighten allowlist to common CDNs
-      const allowedHosts = new Set<string>([
-        'images.unsplash.com',
-        'plus.unsplash.com',
-        'images.pexels.com',
-        'cdn.pixabay.com',
-      ]);
-      if (!allowedHosts.has(target.hostname)) {
-        // fallback: allow any https but cap size and set short cache
+      const rawParam = String(req.query.u || req.query.url || '');
+      if (!rawParam) { res.setHeader('Cache-Control', 'no-store'); return res.status(400).json({ error: 'missing_url' }); }
+
+      // Normalize/unwrap nested proxy URLs: if `u` points to /api/proxy/img, extract its inner `u`.
+      const unwrapProxyParam = (
+        val: string
+      ): { value: string; nestedDetected: boolean; unwrapFailed: boolean } => {
+        let current = val;
+        let nestedDetected = false;
+        // Limit recursion depth defensively to avoid loops
+        for (let i = 0; i < 5; i++) {
+          const isAbsolute = /^https?:\/\//i.test(current);
+          if (isAbsolute) {
+            try {
+              const u = new URL(current);
+              if (u.pathname.startsWith('/api/proxy/img')) {
+                nestedDetected = true;
+                const inner = u.searchParams.get('u') || u.searchParams.get('url');
+                if (!inner) return { value: current, nestedDetected, unwrapFailed: true };
+                current = inner;
+                continue;
+              }
+            } catch {
+              // If absolute URL parsing fails, stop unwrapping and let main validator handle
+            }
+          } else {
+            if (current.startsWith('/api/proxy/img')) {
+              nestedDetected = true;
+              const qIndex = current.indexOf('?');
+              const qs = qIndex >= 0 ? current.substring(qIndex + 1) : '';
+              const sp = new URLSearchParams(qs);
+              const inner = sp.get('u') || sp.get('url');
+              if (!inner) return { value: current, nestedDetected, unwrapFailed: true };
+              current = inner;
+              continue;
+            }
+          }
+          break;
+        }
+        return { value: current, nestedDetected, unwrapFailed: false };
+      };
+
+      const unwrapped = unwrapProxyParam(rawParam);
+      if (unwrapped.nestedDetected && unwrapped.unwrapFailed) {
+        res.setHeader('Cache-Control', 'no-store');
+        return res.status(400).json({ error: 'nested_proxy_missing_inner_url' });
       }
+
+      const normalized = unwrapped.value;
+      const baseForRelative = process.env.PUBLIC_URL || process.env.BASE_URL || `${req.protocol}://${req.get('host')}`;
+      let target: URL;
+      try {
+        if (/^https?:\/\//i.test(normalized)) {
+          target = new URL(normalized);
+        } else if (normalized.startsWith('/')) {
+          target = new URL(normalized, baseForRelative);
+        } else {
+          res.setHeader('Cache-Control', 'no-store');
+          return res.status(400).json({ error: 'invalid_url' });
+        }
+      } catch {
+        res.setHeader('Cache-Control', 'no-store');
+        return res.status(400).json({ error: 'invalid_url' });
+      }
+
+      if (target.protocol !== 'https:') { res.setHeader('Cache-Control', 'no-store'); return res.status(400).json({ error: 'https_only' }); }
+
+      // SSRF basic protections: block localhost/private networks
+      const host = target.hostname.toLowerCase();
+      const isPrivateHost = host === 'localhost' || host === '127.0.0.1' || host === '::1' ||
+        /^10\./.test(host) || /^192\.168\./.test(host) || /^172\.(1[6-9]|2\d|3[0-1])\./.test(host) || /^169\.254\./.test(host);
+      if (isPrivateHost) { res.setHeader('Cache-Control', 'no-store'); return res.status(400).json({ error: 'blocked_host' }); }
+
+      // Optional allowlist via env (comma-separated). If set, enforce it.
+      const allowEnv = (process.env.IMAGE_PROXY_ALLOWED_HOSTS || '').trim();
+      if (allowEnv) {
+        const allowed = new Set(allowEnv.split(',').map(s => s.trim().toLowerCase()).filter(Boolean));
+        if (!allowed.has(host)) { res.setHeader('Cache-Control', 'no-store'); return res.status(400).json({ error: 'host_not_allowed' }); }
+      }
+
       const fmt = typeof req.query.fmt === 'string' ? req.query.fmt : undefined;
       // Best-effort content negotiation to request webp when asked
       // Local caching layer (best-effort)
