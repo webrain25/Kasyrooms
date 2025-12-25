@@ -54,8 +54,8 @@ const IS_PROD = process.env.NODE_ENV === 'production';
 app.set('trust proxy', 1);
 // Structured request logging
 app.use(requestLogger);
-// Base limiter only in production
-if (IS_PROD) {
+// Base limiter in production; optionally enable in dev for testing via env flag
+if (IS_PROD || process.env.RATE_LIMIT_ENABLE_DEV === '1') {
   app.use(limiterMiddleware);
 }
 
@@ -125,6 +125,12 @@ app.use(
     credentials: true,
   })
 );
+
+// Basic health endpoint (used by load balancers / monitors)
+app.get('/health', (_req, res) => {
+  res.setHeader('Cache-Control', 'no-store');
+  res.status(200).json({ ok: true, time: new Date().toISOString() });
+});
 
 // Capture raw body for HMAC verification while parsing JSON
 app.use(express.json({

@@ -1,27 +1,28 @@
 import { useEffect, useState } from "react";
 import { useLocation } from "wouter";
 import { useI18n } from "@/lib/i18n";
+import { buildImageUrl } from "@/lib/utils";
 
 const slides = [
   {
     id: 1,
     title: "Connect with Premium Models",
     subtitle: "Experience exclusive private shows with verified VIP models. Join now and get 100 free credits.",
-    image: "/api/proxy/img?u=https%3A%2F%2Fimages.unsplash.com%2Fphoto-1529626455594-4ff0802cfb7e%3Fixlib%3Drb-4.0.3%26auto%3Dformat%26fit%3Dcrop%26w%3D1920%26h%3D1080",
+    image: "https://images.unsplash.com/photo-1529626455594-4ff0802cfb7e?ixlib=rb-4.0.3&auto=format&fit=crop&w=1920&h=1080",
     badge: "VIP Featured"
   },
   {
     id: 2,
     title: "New Models Every Day",
     subtitle: "Discover fresh faces and exciting personalities joining our premium platform daily.",
-    image: "/api/proxy/img?u=https%3A%2F%2Fimages.unsplash.com%2Fphoto-1534528741775-53994a69daeb%3Fixlib%3Drb-4.0.3%26auto%3Dformat%26fit%3Dcrop%26w%3D1920%26h%3D1080",
+    image: "https://images.unsplash.com/photo-1534528741775-53994a69daeb?ixlib=rb-4.0.3&auto=format&fit=crop&w=1920&h=1080",
     badge: "Fresh Arrivals"
   },
   {
     id: 3,
     title: "24/7 Live Entertainment",
     subtitle: "Round-the-clock access to hundreds of beautiful models from around the world.",
-    image: "/api/proxy/img?u=https%3A%2F%2Fimages.unsplash.com%2Fphoto-1544005313-94ddf0286df2%3Fixlib%3Drb-4.0.3%26auto%3Dformat%26fit%3Dcrop%26w%3D1920%26h%3D1080",
+    image: "https://images.unsplash.com/photo-1544005313-94ddf0286df2?ixlib=rb-4.0.3&auto=format&fit=crop&w=1920&h=1080",
     badge: "Always Online"
   }
 ];
@@ -73,7 +74,7 @@ export default function HeroCarousel() {
                 index === currentSlide ? 'opacity-100' : 'opacity-0'
               }`}
               style={{
-                backgroundImage: `linear-gradient(to right, rgba(26, 29, 41, 0.8), rgba(26, 29, 41, 0.3)), url('${slide.image}')`
+                backgroundImage: `linear-gradient(to right, rgba(26, 29, 41, 0.8), rgba(26, 29, 41, 0.3)), url('${buildImageUrl(slide.image, { preferWebp: true })}')`
               }}
               data-testid={`hero-slide-${index}`}
             >

@@ -1,13 +1,28 @@
-import rateLimit from 'express-rate-limit';
+import rateLimit, { ipKeyGenerator } from 'express-rate-limit';
+
+// Cloudflare-first, IPv6-safe client IP key
+function getClientIpKey(req) {
+  const cf = req.headers['cf-connecting-ip'];
+  if (typeof cf === 'string' && cf.trim()) return cf.trim();
+
+  const xff = req.headers['x-forwarded-for'];
+  if (typeof xff === 'string' && xff.trim()) {
+    const first = xff.split(',')[0].trim();
+    if (first) return first;
+  }
+  // Fallback to library helper (trust proxy must be set on app)
+  return ipKeyGenerator(req);
+}
 
 // Base API limiter (read-heavy endpoints will be exempted below)
 const baseLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
   // Allow override via env if we need to raise limits quickly without redeploy
-  max: Number.parseInt(process.env.RATE_LIMIT_API_MAX || '600', 10),
-  standardHeaders: 'draft-7',
+  max: Number.parseInt(process.env.RATE_LIMIT_API_MAX || '300', 10),
+  standardHeaders: true,
   legacyHeaders: false,
-  keyGenerator: (req) => req.headers['cf-connecting-ip'] || req.ip
+  keyGenerator: (req) => getClientIpKey(req),
+  skip: (req) => req.path === '/health'
 });
 
 export default function limiterMiddleware(req, res, next) {

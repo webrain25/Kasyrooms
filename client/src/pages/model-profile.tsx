@@ -11,6 +11,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { useFavorites } from "@/lib/favoritesContext";
 import { useAuth } from "@/lib/authContext";
+import { buildImageUrl } from "@/lib/utils";
 
 export default function ModelProfile() {
   const [, params] = useRoute("/model/:id");
