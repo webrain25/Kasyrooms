@@ -9,6 +9,7 @@ import multer from "multer";
 import path from "path";
 import fs from "fs";
 import { and, eq } from "drizzle-orm";
+import { getOrCreateAccountBySirplayUserId, upsertWalletSnapshot, recordWalletTransactionIdempotent } from "./services/sirplayAdapter";
 import { z } from "zod";
 import { ensureCacheDir, downloadAndCache } from "./image-cache";
 import { getCachedImage } from "./image-cache";
@@ -543,6 +544,65 @@ export async function registerRoutes(app: Express, opts?: { version?: string }) 
     } catch {}
     return res.json({ userId: user.id, externalUserId, status: "CREATED" });
   });
+
+  // Sirplay handshake: receive/resolve external_user_id, ensure local mapping and accounts entry
+  async function sirplayHandshake(req: any, res: any) {
+    const parsed = z.object({
+      externalUserId: z.string().min(1),
+      email: z.string().email(),
+      username: z.string().optional(),
+      displayName: z.string().optional(),
+      avatarUrl: z.string().url().optional(),
+      role: z.enum(['user','model','admin']).optional(),
+    }).safeParse(req.body ?? {});
+    if (!parsed.success) return res.status(400).json({ error: 'invalid_payload', details: parsed.error.flatten() });
+    const { externalUserId, email, username, displayName, avatarUrl, role } = parsed.data;
+
+    // Ensure a local user bound to this external id
+    let u = await storage.getUserByExternal(externalUserId);
+    if (!u) {
+      const uname = username && username.trim().length > 0 ? username.trim() : `sirplay_${externalUserId}`;
+      u = await storage.createUser({ username: uname, email, externalUserId, role: 'user' });
+      // Best-effort persist to DB: users + wallets
+      try {
+        if (db) {
+          await db.insert(schema.users).values({
+            id: u.id,
+            username: u.username,
+            password: '-',
+            email,
+            role: 'user',
+            externalUserId,
+            status: 'active',
+            lastLogin: new Date() as any,
+          });
+          await db.insert(schema.wallets).values({ userId: u.id, balanceCents: 0, currency: 'EUR' });
+        }
+      } catch {}
+    } else {
+      // Touch lastLogin when possible
+      try { if (db) { await db.update(schema.users).set({ lastLogin: new Date() as any }).where(eq(schema.users.id, u.id)); } } catch {}
+    }
+
+    // Ensure Accounts mapping exists (provider/user id) for Sirplay
+    try {
+      await getOrCreateAccountBySirplayUserId({
+        externalUserId,
+        email,
+        displayName: displayName ?? username ?? u.username,
+        avatarUrl,
+        role: role ?? 'user',
+      });
+    } catch (e:any) {
+      return res.status(400).json({ error: 'sirplay_mapping_failed', message: e?.message || String(e) });
+    }
+
+    // Issue a JWT for the local user
+    const token = jwt.sign({ uid: u.id, role: 'user', username: u.username }, getJWTSecret(), { expiresIn: '1d' });
+    return res.json({ token, user: { id: u.id, username: u.username, role: 'user', email: u.email }, mode: 'sirplay' });
+  }
+  app.post('/api/sirplay/handshake', sirplayHandshake);
+  app.post('/api/sirplay/login', sirplayHandshake);
 
   // 2) Info player lato Operatore B
   app.get("/api/v1/player/info", async (req, res) => {
@@ -1240,43 +1300,39 @@ export async function registerRoutes(app: Express, opts?: { version?: string }) 
 
     // At this point the payload is trusted. Parse JSON from req.body
     const event = req.body || {};
-    // Example: process deposit/cashout notifications
-    // Expecting shape: { type: 'deposit'|'withdrawal', userId_A?: string, userId_B?: string, amount: number, ref?: string }
-    try {
-      // Idempotency: skip if ref was already processed
-      if (await storage.isRefProcessed(event?.ref)) {
-        return res.json({ ok: true, idempotent: true });
-      }
-      if (event?.type === 'deposit' && typeof event.amount === 'number') {
-        if (event.userId_A) {
-          await storage.deposit(event.userId_A, event.amount);
-          const tx = await storage.addTransaction({ userId_A: event.userId_A, type: 'DEPOSIT', amount: event.amount, source: 'sirplay_webhook', externalRef: event.ref });
-          try { if (db) { await db.insert(schema.transactions).values({ id: tx.id, userId_A: event.userId_A, type: 'DEPOSIT', amountCents: Math.round(event.amount * 100), currency: 'EUR', source: 'sirplay_webhook', externalRef: event.ref }); } } catch {}
-        } else if (event.userId_B) {
-          await storage.localDeposit(event.userId_B, event.amount);
-          const tx = await storage.addTransaction({ userId_B: event.userId_B, type: 'DEPOSIT', amount: event.amount, source: 'sirplay_webhook', externalRef: event.ref });
-          try { if (db) { await db.insert(schema.transactions).values({ id: tx.id, userId_B: event.userId_B, type: 'DEPOSIT', amountCents: Math.round(event.amount * 100), currency: 'EUR', source: 'sirplay_webhook', externalRef: event.ref }); } } catch {}
-        }
-      }
-      if (event?.type === 'withdrawal' && typeof event.amount === 'number') {
-        if (event.userId_A) {
-          await storage.withdraw(event.userId_A, event.amount);
-          const tx = await storage.addTransaction({ userId_A: event.userId_A, type: 'WITHDRAWAL', amount: event.amount, source: 'sirplay_webhook', externalRef: event.ref });
-          try { if (db) { await db.insert(schema.transactions).values({ id: tx.id, userId_A: event.userId_A, type: 'WITHDRAWAL', amountCents: Math.round(event.amount * 100), currency: 'EUR', source: 'sirplay_webhook', externalRef: event.ref }); } } catch {}
-        } else if (event.userId_B) {
-          try {
-            await storage.localWithdraw(event.userId_B, event.amount);
-            const tx = await storage.addTransaction({ userId_B: event.userId_B, type: 'WITHDRAWAL', amount: event.amount, source: 'sirplay_webhook', externalRef: event.ref });
-            try { if (db) { await db.insert(schema.transactions).values({ id: tx.id, userId_B: event.userId_B, type: 'WITHDRAWAL', amountCents: Math.round(event.amount * 100), currency: 'EUR', source: 'sirplay_webhook', externalRef: event.ref }); } } catch {}
-          } catch {}
-        }
-      }
-      await storage.markRefProcessed(event?.ref);
-    } catch (e:any) {
-      return res.status(500).json({ error: 'processing_failed' });
-    }
+    // Require unique transaction id
+    const transactionId = String(event?.transactionId || event?.ref || "").trim();
+    if (!transactionId) return res.status(400).json({ error: 'missing_transaction_id' });
 
-    return res.json({ ok: true });
+    // Resolve account via externalUserId + email (email required for adapter)
+    const externalUserId = typeof event?.externalUserId === 'string' ? String(event.externalUserId) : '';
+    const email = typeof event?.email === 'string' ? String(event.email) : '';
+    if (!externalUserId || !email) return res.status(400).json({ error: 'missing_identity' });
+
+    try {
+      const acc = await getOrCreateAccountBySirplayUserId({ externalUserId, email });
+      const type = String(event?.type || '').toLowerCase();
+      const amountCents = Number(event?.amountCents ?? (Number(event?.amount) * 100));
+      const currency = String(event?.currency || 'EUR');
+      if (!Number.isFinite(amountCents) || amountCents <= 0) return res.status(400).json({ error: 'invalid_amount' });
+      // Record idempotent transaction
+      await recordWalletTransactionIdempotent({
+        accountId: acc.id as number,
+        externalTransactionId: transactionId,
+        type: type || 'deposit',
+        amountCents,
+        currency,
+        metadata: event?.metadata,
+      });
+      // Optional snapshot update when provided
+      const balanceCents = Number(event?.balanceCents);
+      if (Number.isFinite(balanceCents)) {
+        await upsertWalletSnapshot({ accountId: acc.id as number, balanceCents, currency });
+      }
+      return res.json({ ok: true });
+    } catch (e:any) {
+      return res.status(400).json({ error: 'sirplay_adapter_failed', message: e?.message || String(e) });
+    }
   });
 
   const httpServer = createServer(app);

@@ -1,5 +1,18 @@
 import { sql } from "drizzle-orm";
-import { pgTable, text, varchar, integer, boolean, timestamp, date, primaryKey } from "drizzle-orm/pg-core";
+import {
+  pgTable,
+  text,
+  varchar,
+  integer,
+  boolean,
+  timestamp,
+  date,
+  primaryKey,
+  bigint,
+  bigserial,
+  jsonb,
+  uniqueIndex,
+} from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
 
@@ -10,6 +23,8 @@ export const users = pgTable("users", {
   password: text("password").notNull(),
   email: text("email"),
   role: varchar("role", { length: 16 }).default("user"),
+  // External identity mapping (provider + user id)
+  externalProvider: text("external_provider"),
   externalUserId: text("external_user_id"),
   // Extended profile fields per new schema
   firstName: text("first_name"),
@@ -149,6 +164,53 @@ export const auditEvents = pgTable("audit_events", {
   meta: text("meta"), // JSON serialized string
 });
 
+//
+// Accounts + Wallets (Sirplay integration)
+//
+
+export const accounts = pgTable("accounts", {
+  id: bigint("id", { mode: "number" }).primaryKey().generatedAlwaysAsIdentity(),
+  role: text("role").notNull().default("user"),
+  email: text("email").notNull().unique(),
+  passwordHash: text("password_hash").notNull(),
+  displayName: text("display_name"),
+  avatarUrl: text("avatar_url"),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().default(sql`now()`),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().default(sql`now()`),
+  externalProvider: text("external_provider"),
+  externalUserId: text("external_user_id"),
+});
+
+export const walletSnapshots = pgTable("wallet_snapshots", {
+  accountId: bigint("account_id", { mode: "number" }).primaryKey(),
+  provider: text("provider").notNull().default("sirplay"),
+  balanceCents: bigint("balance_cents", { mode: "number" }).notNull().default(0),
+  currency: text("currency").notNull().default("EUR"),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().default(sql`now()`),
+});
+
+export const walletTransactions = pgTable(
+  "wallet_transactions",
+  {
+    id: bigserial("id", { mode: "number" }).primaryKey(),
+    accountId: bigint("account_id", { mode: "number" }).notNull(),
+    provider: text("provider").notNull().default("sirplay"),
+    externalTransactionId: text("external_transaction_id"),
+    type: text("type").notNull(),
+    amountCents: bigint("amount_cents", { mode: "number" }).notNull(),
+    currency: text("currency").notNull().default("EUR"),
+    status: text("status").notNull().default("confirmed"),
+    metadata: jsonb("metadata"),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().default(sql`now()`),
+  },
+  (t) => ({
+    uniqProviderExtId: uniqueIndex("uniq_wallet_tx_provider_extid").on(
+      t.provider,
+      t.externalTransactionId,
+    ),
+  })
+);
+
 export const insertUserSchema = createInsertSchema(users).pick({
   username: true,
   password: true,
@@ -173,3 +235,6 @@ export type Session = typeof sessions.$inferSelect;
 export type DmcaNoticeRow = typeof dmcaNotices.$inferSelect;
 export type KycApplicationRow = typeof kycApplications.$inferSelect;
 export type AuditEventRow = typeof auditEvents.$inferSelect;
+export type AccountRow = typeof accounts.$inferSelect;
+export type WalletSnapshotRow = typeof walletSnapshots.$inferSelect;
+export type WalletTransactionRow = typeof walletTransactions.$inferSelect;

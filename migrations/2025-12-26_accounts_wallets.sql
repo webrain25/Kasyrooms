@@ -1,0 +1,2 @@
+-- Deprecated: This repository does not use manual SQL migrations.
+-- Schema alignment is handled via Drizzle definitions only.

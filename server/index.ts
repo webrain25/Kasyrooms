@@ -172,6 +172,11 @@ if (IS_PROD) {
   app.use("/api/dmca/report", dmcaLimiter);
   app.use("/api/kyc/apply", kycLimiter);
   app.use("/api/models/:id/tip", tipLimiter);
+  // Sirplay-specific rate limits
+  const sirplayAuthLimiter = rateLimit({ windowMs: 10 * 60 * 1000, max: 30, standardHeaders: true, legacyHeaders: false });
+  const sirplayWebhookLimiter = rateLimit({ windowMs: 60 * 1000, max: 120, standardHeaders: true, legacyHeaders: false });
+  app.use(["/api/sirplay/handshake", "/api/sirplay/login"], sirplayAuthLimiter);
+  app.use(["/api/webhooks/sirplay"], sirplayWebhookLimiter);
 }
 
 // API routes (pass app version for diagnostics)
