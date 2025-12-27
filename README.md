@@ -144,3 +144,38 @@ Invoke-RestMethod -Uri "https://dev.kasyrooms.com/api/auth/login" -Method Post -
 ## Deploy
 
 See `docs/DEPLOY.md` for PM2 + Nginx, and `docs/DEPLOY_GIT.md` for Git-based deployments or GitHub Actions.
+
+## Sirplay Integration
+
+Endpoints and payloads used by the server for Sirplay flows.
+
+- Handshake/Login: POST /api/sirplay/handshake and POST /api/sirplay/login
+	- Body fields:
+		- externalUserId: string (required)
+		- email: string (required, valid email)
+		- username: string (optional)
+		- displayName: string (optional)
+		- avatarUrl: string (optional, URL)
+		- role: one of user|model|admin (optional; defaults to user)
+	- Behavior: ensures local user and Sirplay account mapping; returns JWT token and user info.
+
+- Webhook (Wallet): POST /api/webhooks/sirplay
+	- HMAC verification:
+		- Env vars:
+			- SIRPLAY_WEBHOOK_SECRET: shared HMAC key (required)
+			- SIRPLAY_WEBHOOK_SIGNATURE_HEADER: header name for signature (default: x-sirplay-signature)
+			- SIRPLAY_WEBHOOK_TIMESTAMP_HEADER: header name for timestamp (default: x-sirplay-timestamp)
+		- Signature is HMAC-SHA256 over `timestamp + "." + rawBody` (if timestamp provided) or `rawBody`.
+		- Requests older than 5 minutes are rejected when timestamp header is present.
+	- Body fields:
+		- transactionId or ref: string (required; unique id for idempotency)
+		- externalUserId: string (required)
+		- email: string (required)
+		- type: string (optional; e.g., deposit/withdrawal)
+		- amountCents: number (preferred) or amount: number (will be multiplied by 100)
+		- currency: string (optional; default EUR)
+		- metadata: object (optional)
+		- balanceCents: number (optional; snapshot upsert when provided)
+	- Behavior: verifies HMAC, resolves/creates account by `externalUserId + email`, records idempotent transaction by `(provider, externalTransactionId)`, optionally upserts balance snapshot; returns `{ ok: true }` on success.
+
+Note: If your actual webhook uses different field names, provide the exact payload so we can adapt `type`, `amountCents`/`amount`, and identity resolution.

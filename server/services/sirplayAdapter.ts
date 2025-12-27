@@ -93,6 +93,7 @@ export async function recordWalletTransactionIdempotent(params: {
   metadata?: unknown;
 }) {
   if (!db) throw new Error("DB_DISABLED");
+
   const provider = "sirplay";
   const currency = params.currency ?? "EUR";
   const status = params.status ?? "confirmed";
@@ -101,11 +102,25 @@ export async function recordWalletTransactionIdempotent(params: {
     throw new Error("MISSING_EXTERNAL_TRANSACTION_ID");
   }
 
-  await db.execute(sql`
-    insert into public.wallet_transactions
-      (account_id, provider, external_transaction_id, type, amount_cents, currency, status, metadata)
-    values
-      (${params.accountId}, ${provider}, ${params.externalTransactionId}, ${params.type}, ${params.amountCents}, ${currency}, ${status}, ${JSON.stringify(params.metadata ?? null)}::jsonb)
-    on conflict (provider, external_transaction_id) do nothing
-  `);
+  try {
+    await db.execute(sql`
+      insert into public.wallet_transactions
+        (account_id, provider, external_transaction_id, type, amount_cents, currency, status, metadata)
+      values
+        (
+          ${params.accountId},
+          ${provider},
+          ${params.externalTransactionId},
+          ${params.type},
+          ${params.amountCents},
+          ${currency},
+          ${status},
+          ${JSON.stringify(params.metadata ?? null)}::jsonb
+        )
+    `);
+  } catch (err: any) {
+    // 23505 = unique_violation => transaction already recorded => idempotency OK
+    if (err?.code === "23505") return;
+    throw err;
+  }
 }
