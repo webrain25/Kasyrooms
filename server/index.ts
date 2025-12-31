@@ -77,14 +77,10 @@ if (IS_PROD || process.env.RATE_LIMIT_ENABLE_DEV === "1") {
   app.use(limiterMiddleware);
 }
 
-// Reusable rate-limit key generator (trust proxy must be set before limiters)
+// Use the library-provided IPv6-safe key generator with req.ip.
+// Keep a small wrapper so TypeScript types align with express-rate-limit's API.
 const rlKey = (req: Request): string => {
-  const ip =
-    req.ip ??
-    (Array.isArray(req.ips) ? req.ips[0] : undefined) ??
-    req.socket.remoteAddress ??
-    "0.0.0.0";
-  // ipKeyGenerator expects a string
+  const ip = req.ip || req.socket.remoteAddress || "";
   return ipKeyGenerator(ip);
 };
 
