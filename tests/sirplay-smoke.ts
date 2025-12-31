@@ -7,6 +7,10 @@ async function main() {
   await registerRoutes(app as any, { version: 'sirplay-smoke' });
 
   // Helper to spin up an ephemeral listener for each request (isolated like supertest)
+  const B2B_USER = process.env.B2B_BASIC_AUTH_USER || 'sirplay';
+  const B2B_PASS = process.env.B2B_BASIC_AUTH_PASS || 's3cr3t';
+  const basicAuth = 'Basic ' + Buffer.from(`${B2B_USER}:${B2B_PASS}`).toString('base64');
+
   async function req(method: string, path: string, body?: any, headers?: Record<string,string>) {
     const server = app.listen(0);
     const address: any = server.address();
@@ -14,7 +18,7 @@ async function main() {
     try {
       const res = await fetch(url, {
         method,
-        headers: { 'Content-Type': 'application/json', ...(headers||{}) },
+        headers: { 'Content-Type': 'application/json', 'Authorization': basicAuth, ...(headers||{}) },
         body: body ? JSON.stringify(body) : undefined,
       } as any);
       const text = await res.text();

@@ -17,6 +17,53 @@ import { getCachedImage } from "./image-cache";
 // Read JWT secret lazily to ensure dotenv/config has been applied by the entrypoint
 const getJWTSecret = () => process.env.JWT_SECRET || "dev-secret";
 
+// B2B Basic Auth credentials helper (Sirplay -> Kasyrooms)
+const getB2BCreds = () => ({
+  user: process.env.B2B_BASIC_AUTH_USER || "sirplay",
+  pass: process.env.B2B_BASIC_AUTH_PASS || "s3cr3t",
+});
+
+// Middleware enforcing HTTP Basic authentication for B2B endpoints
+function requireB2BBasicAuth() {
+  return (req: any, res: any, next: any) => {
+    const hdr = req.headers?.authorization || req.headers?.Authorization;
+    if (typeof hdr !== 'string' || !hdr.startsWith('Basic ')) {
+      res.set('WWW-Authenticate', 'Basic realm="Kasyrooms B2B"');
+      return res.status(401).json({ error: 'unauthorized' });
+    }
+    const b64 = hdr.slice('Basic '.length).trim();
+    let decoded = '';
+    try { decoded = Buffer.from(b64, 'base64').toString('utf8'); } catch {}
+    const sep = decoded.indexOf(':');
+    if (sep <= 0) {
+      res.set('WWW-Authenticate', 'Basic realm="Kasyrooms B2B"');
+      return res.status(401).json({ error: 'unauthorized' });
+    }
+    const providedUser = decoded.slice(0, sep);
+    const providedPass = decoded.slice(sep + 1);
+    const { user, pass } = getB2BCreds();
+
+    // In production, require explicit env configuration (do not allow defaults)
+    if (process.env.NODE_ENV === 'production' && (!process.env.B2B_BASIC_AUTH_USER || !process.env.B2B_BASIC_AUTH_PASS)) {
+      console.error('[security] B2B basic auth credentials not configured in production');
+      return res.status(503).json({ error: 'b2b_auth_not_configured' });
+    }
+
+    try {
+      const uOk = crypto.timingSafeEqual(Buffer.from(providedUser), Buffer.from(user));
+      const pOk = crypto.timingSafeEqual(Buffer.from(providedPass), Buffer.from(pass));
+      if (!uOk || !pOk) {
+        res.set('WWW-Authenticate', 'Basic realm="Kasyrooms B2B"');
+        return res.status(401).json({ error: 'unauthorized' });
+      }
+    } catch {
+      res.set('WWW-Authenticate', 'Basic realm="Kasyrooms B2B"');
+      return res.status(401).json({ error: 'unauthorized' });
+    }
+    return next();
+  };
+}
+
 export async function registerRoutes(app: Express, opts?: { version?: string }) {
   const appVersion = opts?.version || "dev";
   // Force proxying of external images at API level when enabled, so the client always receives self-origin URLs
@@ -507,7 +554,7 @@ export async function registerRoutes(app: Express, opts?: { version?: string }) 
   // ===== INTEGRAZIONE SIRPLAY (Operatore B) =====
 
   // 1) Registrazione utente da Sirplay -> Operatore (B)
-  app.post("/api/user/register", async (req, res) => {
+  app.post("/api/user/register", requireB2BBasicAuth(), async (req, res) => {
     const parsed = z.object({
       externalUserId: z.string().min(1),
       email: z.string().email().optional(),
@@ -623,7 +670,7 @@ export async function registerRoutes(app: Express, opts?: { version?: string }) 
   });
 
   // 3) SSO: Sirplay chiede token per userId_B
-  app.post("/api/sso/token", async (req, res) => {
+  app.post("/api/sso/token", requireB2BBasicAuth(), async (req, res) => {
     const parsed = z.object({ userId_B: z.string().min(1) }).safeParse(req.body ?? {});
     if (!parsed.success) return res.status(400).json({ error: 'invalid_payload', details: parsed.error.flatten() });
     const token = jwt.sign({ uid: parsed.data.userId_B }, getJWTSecret(), { expiresIn: "10m" });
@@ -631,7 +678,7 @@ export async function registerRoutes(app: Express, opts?: { version?: string }) 
   });
 
   // util per validare token (B)
-  app.get("/api/sso/validate", async (req, res) => {
+  app.get("/api/sso/validate", requireB2BBasicAuth(), async (req, res) => {
     const token = String(req.query.token || "");
     try {
       const payload = jwt.verify(token, getJWTSecret()) as any;
@@ -643,7 +690,7 @@ export async function registerRoutes(app: Express, opts?: { version?: string }) 
 
   // 4) Wallet proxy lato B verso A (qui simulato in memoria)
   // Wallet: shared (A) or local (B)
-  app.get("/api/wallet/balance", async (req, res) => {
+  app.get("/api/wallet/balance", requireB2BBasicAuth(), async (req, res) => {
     const explicitUserIdA = req.query.userId_A ? String(req.query.userId_A) : undefined;
     const userId = req.query.userId ? String(req.query.userId) : undefined;
     if (!explicitUserIdA && !userId) return res.status(400).json({ error: "userId or userId_A required" });
@@ -666,7 +713,7 @@ export async function registerRoutes(app: Express, opts?: { version?: string }) 
     }
   });
 
-  app.post("/api/wallet/deposit", async (req, res) => {
+  app.post("/api/wallet/deposit", requireB2BBasicAuth(), async (req, res) => {
     const parsed = z.object({ userId_A: z.string().optional(), userId: z.string().optional(), amount: z.number(), transactionId: z.string().optional(), source: z.string().optional() }).safeParse(req.body ?? {});
     if (!parsed.success) return res.status(400).json({ error: 'invalid_payload', details: parsed.error.flatten() });
     const { userId_A, userId, amount, transactionId, source } = parsed.data;
@@ -695,7 +742,7 @@ export async function registerRoutes(app: Express, opts?: { version?: string }) 
     }
   });
 
-  app.post("/api/wallet/withdrawal", async (req, res) => {
+  app.post("/api/wallet/withdrawal", requireB2BBasicAuth(), async (req, res) => {
     const parsed = z.object({ userId_A: z.string().optional(), userId: z.string().optional(), amount: z.number(), transactionId: z.string().optional(), source: z.string().optional() }).safeParse(req.body ?? {});
     if (!parsed.success) return res.status(400).json({ error: 'invalid_payload', details: parsed.error.flatten() });
     const { userId_A, userId, amount, transactionId, source } = parsed.data;

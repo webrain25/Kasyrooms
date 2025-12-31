@@ -145,6 +145,33 @@ Invoke-RestMethod -Uri "https://dev.kasyrooms.com/api/auth/login" -Method Post -
 
 See `docs/DEPLOY.md` for PM2 + Nginx, and `docs/DEPLOY_GIT.md` for Git-based deployments or GitHub Actions.
 
+## B2B Basic Authentication (Sirplay → Kasyrooms)
+
+Kasyrooms exposes B2B endpoints for Sirplay that require HTTP Basic Authentication.
+
+- Required in production: set the following environment variables in `.env` (and in CI secrets):
+	- `B2B_BASIC_AUTH_USER`
+	- `B2B_BASIC_AUTH_PASS`
+- In development: if not set, defaults are used (`sirplay`/`s3cr3t`) for local testing only.
+
+Example request (curl):
+
+```bash
+curl -X POST http://localhost:5000/api/wallet/deposit \
+	-H "Authorization: Basic $(printf '%s:%s' "$B2B_BASIC_AUTH_USER" "$B2B_BASIC_AUTH_PASS" | base64)" \
+	-H "Content-Type: application/json" \
+	-d '{"userId_A":"ext123","amount":10,"source":"sirplay","transactionId":"tx-001"}'
+```
+
+Protected B2B endpoints:
+
+- `POST /api/user/register`
+- `GET /api/wallet/balance`
+- `POST /api/wallet/deposit`
+- `POST /api/wallet/withdrawal`
+- `POST /api/sso/token`
+- `GET /api/sso/validate`
+
 ## Sirplay Integration
 
 Endpoints and payloads used by the server for Sirplay flows.
