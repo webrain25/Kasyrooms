@@ -24,9 +24,7 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      
-      # Preflight: verifica presenza chiavi obbligatorie in APP_ENV_FILE
-      
+      # Preflight: verify required keys exist in APP_ENV_FILE
       - name: Preflight .env keys presence
         run: |
           set -euo pipefail
@@ -64,9 +62,7 @@ jobs:
 
           test $missing -eq 0
 
-      
       # Sync repository to VPS
-      
       - name: Rsync repository to VPS
         uses: burnett01/rsync-deployments@5.2
         with:
@@ -77,9 +73,7 @@ jobs:
           remote_user: ${{ env.VPS_USER }}
           remote_key: ${{ env.VPS_SSH_KEY }}
 
-      
       # Write .env on VPS from APP_ENV_FILE
-      
       - name: Write .env on VPS (from APP_ENV_FILE secret)
         uses: appleboy/ssh-action@v1.2.0
         with:
@@ -105,13 +99,11 @@ jobs:
             cd "${{ env.VPS_APP_DIR }}"
             echo "Checking B2B credentials in .env..."
             grep -nE '^(B2B_BASIC_AUTH_USER|B2B_BASIC_AUTH_PASS|SIRPLAY_B2B_USER|SIRPLAY_B2B_PASSWORD)=' .env | cat -A || {
-              echo "Missing B2B credentials in .env" >&2;
-              exit 1;
+              echo "Missing B2B credentials in .env" >&2
+              exit 1
             }
 
-      
       # Install deps, build, prune, reload PM2
-      
       - name: Install deps, build on VPS, prune and reload PM2
         uses: appleboy/ssh-action@v1.2.0
         with:
@@ -122,7 +114,7 @@ jobs:
             set -e
             cd "${{ env.VPS_APP_DIR }}"
 
-            # Node 20 via nvm (se presente)
+            # Node 20 via nvm (if present)
             if [ -s "$HOME/.nvm/nvm.sh" ]; then . "$HOME/.nvm/nvm.sh"; fi
             if command -v nvm >/dev/null 2>&1; then
               nvm install 20 >/dev/null
@@ -146,9 +138,155 @@ jobs:
             fi
             pm2 save || true
 
-      
-      # Smoke check
-      
+      - name: Local smoke checks on VPS (127.0.0.1:5000)
+        uses: appleboy/ssh-action@v1.2.0
+        with:
+          host: ${{ env.VPS_HOST }}
+          username: ${{ env.VPS_USER }}
+          key: ${{ env.VPS_SSH_KEY }}
+          script: |
+            set -euo pipefail
+            cd "${{ env.VPS_APP_DIR }}"
+
+            base_url="http://127.0.0.1:5000"
+
+            # Local healthz with retry (avoid flakiness right after PM2 reload)
+            echo "[Local Smoke] healthz at $base_url/api/healthz"
+            attempts=5
+            delay=2
+            ok=0
+            last_status=""
+            last_body=""
+            for i in $(seq 1 $attempts); do
+              tmp="$(mktemp)"
+              status="$(curl -sS -o "$tmp" -w '%{http_code}' "$base_url/api/healthz" || echo "000")"
+              body="$(cat "$tmp" 2>/dev/null || true)"
+              rm -f "$tmp"
+              last_status="$status"
+              last_body="$body"
+
+              if [ "$status" = "200" ]; then
+                ok=1
+                break
+              fi
+              echo "Healthz not ready (attempt $i/$attempts): $status"
+              sleep "$delay"
+            done
+
+            if [ "$ok" -ne 1 ]; then
+              echo "Healthz FAILED: HTTP $last_status" >&2
+              echo "-- response (truncated) --"
+              printf '%s' "$last_body" | head -c 2048
+              echo
+              exit 1
+            fi
+            echo "Healthz OK (200)"
+
+            # B2B no-auth should be 401 and never 500
+            echo "[Local Smoke] b2b login-tokens without Authorization (expect 401, never 500)"
+            tmp="$(mktemp)"
+            status="$(curl -sS -o "$tmp" -w '%{http_code}' -X POST "$base_url/api/b2b/login-tokens" \
+              -H 'Content-Type: application/json' \
+              -d '{"userId":"SMOKE-DEV-001"}' || echo "000")"
+            body="$(cat "$tmp" 2>/dev/null || true)"
+            rm -f "$tmp"
+
+            if [ -z "$status" ] || [ "$status" = "000" ] || ! printf '%s' "$status" | grep -Eq '^[0-9]{3}$'; then
+              echo "B2B no-auth CONNECTION ERROR or invalid status: $status" >&2
+              echo "-- response (truncated) --"
+              printf '%s' "$body" | head -c 2048
+              echo
+              exit 1
+            fi
+
+            if [ "$status" -eq 500 ]; then
+              echo "B2B no-auth REGRESSION: got 500" >&2
+              echo "-- response (truncated) --"
+              printf '%s' "$body" | head -c 2048
+              echo
+              exit 1
+            fi
+
+            if [ "$status" -ne 401 ]; then
+              echo "B2B no-auth FAILED: expected 401, got $status" >&2
+              echo "-- response (truncated) --"
+              printf '%s' "$body" | head -c 2048
+              echo
+              exit 1
+            fi
+            echo "B2B no-auth OK (401)"
+
+            # Invalid JSON should be 400
+            echo "[Local Smoke] b2b invalid JSON should be 400"
+            tmp="$(mktemp)"
+            status="$(curl -sS -o "$tmp" -w '%{http_code}' -X POST "$base_url/api/b2b/login-tokens" \
+              -H 'Content-Type: application/json' \
+              -d '{' || echo "000")"
+            body="$(cat "$tmp" 2>/dev/null || true)"
+            rm -f "$tmp"
+
+            if [ -z "$status" ] || [ "$status" = "000" ] || ! printf '%s' "$status" | grep -Eq '^[0-9]{3}$'; then
+              echo "B2B invalid-json CONNECTION ERROR or invalid status: $status" >&2
+              echo "-- response (truncated) --"
+              printf '%s' "$body" | head -c 2048
+              echo
+              exit 1
+            fi
+
+            if [ "$status" -ne 400 ]; then
+              echo "B2B invalid-json FAILED: expected 400, got $status" >&2
+              echo "-- response (truncated) --"
+              printf '%s' "$body" | head -c 2048
+              echo
+              exit 1
+            fi
+            echo "B2B invalid-json OK (400)"
+
+            # Optional auth-positive if credentials present (deterministic priority)
+            echo "[Local Smoke] optional auth-positive if credentials present"
+
+            B2B_USER="$(grep '^B2B_BASIC_AUTH_USER=' .env 2>/dev/null | head -n1 | cut -d= -f2- | tr -d '\r' | sed 's/^"//;s/"$//')"
+            B2B_PASS="$(grep '^B2B_BASIC_AUTH_PASS=' .env 2>/dev/null | head -n1 | cut -d= -f2- | tr -d '\r' | sed 's/^"//;s/"$//')"
+
+            if [ -z "${B2B_USER:-}" ] || [ -z "${B2B_PASS:-}" ]; then
+              B2B_USER="$(grep '^SIRPLAY_B2B_USER=' .env 2>/dev/null | head -n1 | cut -d= -f2- | tr -d '\r' | sed 's/^"//;s/"$//')"
+              B2B_PASS="$(grep '^SIRPLAY_B2B_PASSWORD=' .env 2>/dev/null | head -n1 | cut -d= -f2- | tr -d '\r' | sed 's/^"//;s/"$//')"
+            fi
+
+            if [ -n "${B2B_USER:-}" ] && [ -n "${B2B_PASS:-}" ]; then
+              basic="$(printf '%s:%s' "$B2B_USER" "$B2B_PASS" | base64)"
+              tmp="$(mktemp)"
+              status="$(curl -sS -o "$tmp" -w '%{http_code}' -X POST "$base_url/api/b2b/login-tokens" \
+                -H 'Content-Type: application/json' \
+                -H "Authorization: Basic $basic" \
+                -d '{"userId":"SMOKE-DEV-001"}' || echo "000")"
+              body="$(cat "$tmp" 2>/dev/null || true)"
+              rm -f "$tmp"
+
+              if [ -z "$status" ] || [ "$status" = "000" ] || ! printf '%s' "$status" | grep -Eq '^[0-9]{3}$'; then
+                echo "B2B auth-positive CONNECTION ERROR or invalid status: $status" >&2
+                masked="$(printf '%s' "$body" | sed -E 's/("?(jwt|ssoToken|token|access_token|id_token)"?[[:space:]]*:[[:space:]]*")[^"]+/\1***?/g')"
+                echo "-- response (masked, truncated) --"
+                printf '%s' "$masked" | head -c 2048
+                echo
+                exit 1
+              fi
+
+              if [ "$status" -ne 200 ] && [ "$status" -ne 201 ]; then
+                echo "B2B auth-positive FAILED: expected 200/201, got $status" >&2
+                masked="$(printf '%s' "$body" | sed -E 's/("?(jwt|ssoToken|token|access_token|id_token)"?[[:space:]]*:[[:space:]]*")[^"]+/\1***?/g')"
+                echo "-- response (masked, truncated) --"
+                printf '%s' "$masked" | head -c 2048
+                echo
+                exit 1
+              fi
+
+              echo "B2B auth-positive OK ($status)"
+            else
+              echo "B2B creds not present; skipping auth-positive test"
+            fi
+
+      # Smoke check (public, via Cloudflare)
       - name: Smoke check /api/healthz (with retries)
         run: |
           set -e

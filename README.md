@@ -173,6 +173,23 @@ Protected B2B endpoints:
 - `POST /api/sso/token`
 - `GET /api/sso/validate`
 
+### Addendum – Verification
+
+Optional – Auth-positive test
+
+With valid Basic Auth header, expect 200/201 (token payload):
+
+```bash
+curl -sS -i -X POST http://127.0.0.1:5000/api/b2b/login-tokens \
+	-H 'Content-Type: application/json' \
+	-H "Authorization: Basic $(printf '%s:%s' "$B2B_BASIC_AUTH_USER" "$B2B_BASIC_AUTH_PASS" | base64)" \
+	-d '{"userId":"SIR-DEV-001"}'
+```
+
+Optional – Regression check
+
+Confirm `/api/b2b/login-tokens` no longer returns 500 for well-formed JSON (it should return 401 without Authorization).
+
 ## Sirplay Integration
 
 Endpoints and payloads used by the server for Sirplay flows.
