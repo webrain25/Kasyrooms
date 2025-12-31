@@ -677,6 +677,25 @@ export async function registerRoutes(app: Express, opts?: { version?: string }) 
     res.json({ token, expiresIn: 600 });
   });
 
+  // B2B: issue login tokens for an existing Sirplay external userId
+  // Body: { userId: "<externalUserId>" }
+  app.post("/api/b2b/login-tokens", requireB2BBasicAuth(), async (req, res) => {
+    const parsed = z.object({ userId: z.string().min(1) }).safeParse(req.body ?? {});
+    if (!parsed.success) return res.status(400).json({ error: 'invalid_payload', details: parsed.error.flatten() });
+    const externalUserId = parsed.data.userId;
+    const user = await storage.getUserByExternal(externalUserId);
+    if (!user) return res.status(404).json({ error: 'user_not_found' });
+    const jwtToken = jwt.sign({ uid: user.id, role: user.role || 'user', username: user.username }, getJWTSecret(), { expiresIn: '1d' });
+    const ssoToken = jwt.sign({ uid: user.id }, getJWTSecret(), { expiresIn: '10m' });
+    return res.json({
+      jwt: jwtToken,
+      ssoToken,
+      expiresIn: 600,
+      user: { id: user.id, username: user.username, role: user.role || 'user' },
+      mode: 'sirplay'
+    });
+  });
+
   // util per validare token (B)
   app.get("/api/sso/validate", requireB2BBasicAuth(), async (req, res) => {
     const token = String(req.query.token || "");
