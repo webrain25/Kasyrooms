@@ -37,6 +37,7 @@ jobs:
             DATABASE_URL JWT_SECRET BASE_URL
             SIRPLAY_BASE_URL SIRPLAY_API_KEY SIRPLAY_HMAC_SECRET SIRPLAY_WEBHOOK_SECRET
             SIRPLAY_CUSTOMER_ID SIRPLAY_PARTNER_ID
+            B2B_BASIC_AUTH_USER B2B_BASIC_AUTH_PASS
           )
           missing=0
           for k in "${required[@]}"; do
