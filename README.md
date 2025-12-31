@@ -152,6 +152,7 @@ Kasyrooms exposes B2B endpoints for Sirplay that require HTTP Basic Authenticati
 - Required in production: set the following environment variables in `.env` (and in CI secrets):
 	- `B2B_BASIC_AUTH_USER`
 	- `B2B_BASIC_AUTH_PASS`
+	- Alternatively supported names: `SIRPLAY_B2B_USER` and `SIRPLAY_B2B_PASSWORD`
 - In development: if not set, defaults are used (`sirplay`/`s3cr3t`) for local testing only.
 
 Example request (curl):

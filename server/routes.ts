@@ -19,8 +19,8 @@ const getJWTSecret = () => process.env.JWT_SECRET || "dev-secret";
 
 // B2B Basic Auth credentials helper (Sirplay -> Kasyrooms)
 const getB2BCreds = () => ({
-  user: process.env.B2B_BASIC_AUTH_USER || "sirplay",
-  pass: process.env.B2B_BASIC_AUTH_PASS || "s3cr3t",
+  user: process.env.B2B_BASIC_AUTH_USER || process.env.SIRPLAY_B2B_USER || "sirplay",
+  pass: process.env.B2B_BASIC_AUTH_PASS || process.env.SIRPLAY_B2B_PASSWORD || "s3cr3t",
 });
 
 // Middleware enforcing HTTP Basic authentication for B2B endpoints
@@ -44,9 +44,13 @@ function requireB2BBasicAuth() {
     const { user, pass } = getB2BCreds();
 
     // In production, require explicit env configuration (do not allow defaults)
-    if (process.env.NODE_ENV === 'production' && (!process.env.B2B_BASIC_AUTH_USER || !process.env.B2B_BASIC_AUTH_PASS)) {
-      console.error('[security] B2B basic auth credentials not configured in production');
-      return res.status(503).json({ error: 'b2b_auth_not_configured' });
+    if (process.env.NODE_ENV === 'production') {
+      const hasB2B = !!(process.env.B2B_BASIC_AUTH_USER && process.env.B2B_BASIC_AUTH_PASS);
+      const hasSirplay = !!(process.env.SIRPLAY_B2B_USER && process.env.SIRPLAY_B2B_PASSWORD);
+      if (!(hasB2B || hasSirplay)) {
+        console.error('[security] B2B basic auth credentials not configured in production');
+        return res.status(503).json({ error: 'b2b_auth_not_configured' });
+      }
     }
 
     try {
