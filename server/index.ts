@@ -1,7 +1,8 @@
+// server/index.ts
+
 // Load environment variables early
-import dotenv from 'dotenv';
-import express from "express";
-import type { Request } from "express";
+import dotenv from "dotenv";
+import express, { Request, Response, NextFunction } from "express";
 import cors from "cors";
 import helmet from "helmet";
 import rateLimit, { ipKeyGenerator } from "express-rate-limit";
@@ -10,10 +11,11 @@ import { fileURLToPath } from "url";
 import fs from "fs/promises";
 import fsSync from "fs";
 import crypto from "crypto";
+
 import { registerRoutes } from "./routes";
-import limiterMiddleware from './middleware/limiter';
-import { requestLogger, errorLogger } from './middleware/request-logger';
-import { logger } from './logger';
+import limiterMiddleware from "./middleware/limiter";
+import { requestLogger, errorLogger } from "./middleware/request-logger";
+import { logger } from "./logger";
 import { storage } from "./storage";
 import { db, schema } from "./db";
 import { eq } from "drizzle-orm";
@@ -22,52 +24,74 @@ import { initSignaling } from "./rtc/signaling";
 // Prefer loading env from APP_ENV_FILE (inline content or file path). Fallback to local .env only if absent.
 (() => {
   const inline = process.env.APP_ENV_FILE;
+
   const loadFromAppEnv = () => {
     if (!inline) return false;
+
     try {
-      const isPath = inline.startsWith('file://') || inline.startsWith('/') || /^[a-zA-Z]:\\/.test(inline);
-      const content = isPath ? fsSync.readFileSync(inline.replace(/^file:\/\//, ''), 'utf8') : inline;
+      const isPath =
+        inline.startsWith("file://") ||
+        inline.startsWith("/") ||
+        /^[a-zA-Z]:\\/.test(inline);
+
+      const content = isPath
+        ? fsSync.readFileSync(inline.replace(/^file:\/\//, ""), "utf8")
+        : inline;
+
       const parsed = dotenv.parse(content);
       for (const [k, v] of Object.entries(parsed)) {
         process.env[k] = v as string; // override to ensure source of truth is APP_ENV_FILE
       }
+
       // eslint-disable-next-line no-console
-      console.log('[env] APP_ENV_FILE loaded');
+      console.log("[env] APP_ENV_FILE loaded");
       return true;
     } catch (e) {
       // eslint-disable-next-line no-console
-      console.error('[env] Failed to load APP_ENV_FILE:', (e as Error).message);
+      console.error("[env] Failed to load APP_ENV_FILE:", (e as Error).message);
       return false;
     }
   };
+
   const ok = loadFromAppEnv();
   if (!ok) {
     const res = dotenv.config();
     if (res.parsed) {
       // eslint-disable-next-line no-console
-      console.log('[env] .env loaded');
+      console.log("[env] .env loaded");
     }
   }
 })();
 
 const app = express();
-const IS_PROD = process.env.NODE_ENV === 'production';
+const IS_PROD = process.env.NODE_ENV === "production";
+
 // MUST be before any middleware that reads req.ip / req.ips (rate-limit, logging, auth, etc.)
-app.set('trust proxy', 2); // Cloudflare + Nginx (2 hops). If only 1 proxy, set to 1.
+app.set("trust proxy", 2); // Cloudflare + Nginx (2 hops). If only 1 proxy, set to 1.
+
 // Structured request logging
 app.use(requestLogger);
+
 // Base limiter in production; optionally enable in dev for testing via env flag
-if (IS_PROD || process.env.RATE_LIMIT_ENABLE_DEV === '1') {
+if (IS_PROD || process.env.RATE_LIMIT_ENABLE_DEV === "1") {
   app.use(limiterMiddleware);
 }
 
 // Reusable rate-limit key generator (trust proxy must be set before limiters)
-const rlKey = (req: Request) => ipKeyGenerator(req.ip);
+const rlKey = (req: Request): string => {
+  const ip =
+    req.ip ??
+    (Array.isArray(req.ips) ? req.ips[0] : undefined) ??
+    req.socket.remoteAddress ??
+    "0.0.0.0";
+  // ipKeyGenerator expects a string
+  return ipKeyGenerator(ip);
+};
 
 // Per-request CSP nonce
-app.use((req: any, res: any, next: any) => {
-  try { (res as any).locals = (res as any).locals || {}; } catch {}
-  (res as any).locals.cspNonce = crypto.randomBytes(16).toString("base64");
+app.use((req: Request, res: Response, next: NextFunction) => {
+  res.locals = res.locals ?? {};
+  res.locals.cspNonce = crypto.randomBytes(16).toString("base64");
   next();
 });
 
@@ -79,41 +103,49 @@ app.use(
     // Disable COEP to avoid breaking cross-origin media/fonts in browsers without proper CORP/CORS
     crossOriginEmbedderPolicy: false,
     // CSP with nonce and explicit allowlists; active only in production
-    contentSecurityPolicy: process.env.NODE_ENV === 'production' ? {
-      useDefaults: true,
-      directives: {
-        defaultSrc: ["'self'"],
-        baseUri: ["'self'"],
-        objectSrc: ["'none'"],
-        frameAncestors: ["'none'"],
-        // Images: self/data/blob + specific CDNs; optionally allow all https if flag set
-        imgSrc: (() => {
-          const allowAll = process.env.CSP_IMG_ALLOW_ALL === '1';
-          const list = [
-            "'self'", 'data:', 'blob:',
-            'https://images.unsplash.com', 'https://*.unsplash.com',
-            'https://cdn.kasyrooms.com',
-            'https://*.r2.cloudflarestorage.com'
-          ];
-          return allowAll ? ["'self'", 'data:', 'blob:', 'https:'] : list;
-        })(),
-        mediaSrc: ["'self'", 'https:', 'blob:'],
-        fontSrc: ["'self'", 'https:', 'data:', 'https://fonts.gstatic.com'],
-        styleSrc: ["'self'", "'unsafe-inline'", 'https:', 'https://fonts.googleapis.com'],
-        // Inline scripts should include: <script nonce="${res.locals.cspNonce}">
-        scriptSrc: ["'self'", 'https:', (req: any, res: any) => `'nonce-${(res as any).locals?.cspNonce}'`],
-        connectSrc: [
-          "'self'", 'https:', 'wss:',
-          'https://api.kasyrooms.com',
-          'https://cdn.kasyrooms.com',
-          'https://*.ingest.sentry.io'
-        ],
-        workerSrc: ["'self'", 'blob:'],
-        frameSrc: ["'self'", 'https:'],
-        formAction: ["'self'"],
-        upgradeInsecureRequests: []
-      }
-    } : false
+    contentSecurityPolicy:
+      process.env.NODE_ENV === "production"
+        ? {
+            useDefaults: true,
+            directives: {
+              defaultSrc: ["'self'"],
+              baseUri: ["'self'"],
+              objectSrc: ["'none'"],
+              frameAncestors: ["'none'"],
+              imgSrc: (() => {
+                const allowAll = process.env.CSP_IMG_ALLOW_ALL === "1";
+                const list = [
+                  "'self'",
+                  "data:",
+                  "blob:",
+                  "https://images.unsplash.com",
+                  "https://*.unsplash.com",
+                  "https://cdn.kasyrooms.com",
+                  "https://*.r2.cloudflarestorage.com",
+                ];
+                return allowAll ? ["'self'", "data:", "blob:", "https:"] : list;
+              })(),
+              mediaSrc: ["'self'", "https:", "blob:"],
+              fontSrc: ["'self'", "https:", "data:", "https://fonts.gstatic.com"],
+              styleSrc: ["'self'", "'unsafe-inline'", "https:", "https://fonts.googleapis.com"],
+              // Inline scripts should include: <script nonce="${res.locals.cspNonce}">
+              // Helmet typings don't strongly type the function args; keep them loose but safe.
+              scriptSrc: ["'self'", "https:", (_req: any, res: any) => `'nonce-${res?.locals?.cspNonce}'`],
+              connectSrc: [
+                "'self'",
+                "https:",
+                "wss:",
+                "https://api.kasyrooms.com",
+                "https://cdn.kasyrooms.com",
+                "https://*.ingest.sentry.io",
+              ],
+              workerSrc: ["'self'", "blob:"],
+              frameSrc: ["'self'", "https:"],
+              formAction: ["'self'"],
+              upgradeInsecureRequests: [],
+            },
+          }
+        : false,
   })
 );
 
@@ -132,62 +164,148 @@ app.use(
 );
 
 // Basic health endpoint (used by load balancers / monitors)
-app.get('/health', (_req, res) => {
-  res.setHeader('Cache-Control', 'no-store');
+app.get("/health", (_req: Request, res: Response) => {
+  res.setHeader("Cache-Control", "no-store");
   res.status(200).json({ ok: true, time: new Date().toISOString() });
 });
 
 // Capture raw body for HMAC verification while parsing JSON
-app.use(express.json({
-  verify: (req: any, _res, buf) => {
-    req.rawBody = buf;
-  }
-}));
+app.use(
+  express.json({
+    verify: (req: any, _res: any, buf: Buffer) => {
+      req.rawBody = buf;
+    },
+  })
+);
 
 // Handle invalid JSON with 400 instead of 500
-app.use((err: any, _req: any, res: any, next: any) => {
-  if (err instanceof SyntaxError && (err as any).status === 400 && 'body' in (err as any)) {
-    return res.status(400).json({ error: 'invalid_json' });
+app.use((err: unknown, _req: Request, res: Response, next: NextFunction) => {
+  const e = err as any;
+  const statusVal = (e as any)?.status;
+  const isBodyParserSyntax =
+    e instanceof SyntaxError &&
+    typeof statusVal === "number" &&
+    statusVal === 400 &&
+    "body" in (e as any);
+
+  if (isBodyParserSyntax) {
+    return res.status(400).json({ error: "invalid_json" });
   }
   return next(err);
 });
 
 // Targeted rate limits (production only)
 if (IS_PROD) {
-  const authLimiter = rateLimit({ windowMs: 10 * 60 * 1000, max: 50, standardHeaders: true, legacyHeaders: false, keyGenerator: rlKey });
-  const registerLimiter = rateLimit({ windowMs: 10 * 60 * 1000, max: 5, standardHeaders: true, legacyHeaders: false, message: { error: "Troppe richieste, riprova più tardi." }, keyGenerator: rlKey });
-  const chatLimiter = rateLimit({ windowMs: 60 * 1000, max: 30, standardHeaders: true, legacyHeaders: false, keyGenerator: rlKey });
-  const modelsLimiter = rateLimit({ windowMs: 60 * 1000, max: 300, standardHeaders: true, legacyHeaders: false, keyGenerator: rlKey });
+  const authLimiter = rateLimit({
+    windowMs: 10 * 60 * 1000,
+    max: 50,
+    standardHeaders: true,
+    legacyHeaders: false,
+    keyGenerator: rlKey,
+  });
+
+  const registerLimiter = rateLimit({
+    windowMs: 10 * 60 * 1000,
+    max: 5,
+    standardHeaders: true,
+    legacyHeaders: false,
+    message: { error: "Troppe richieste, riprova più tardi." },
+    keyGenerator: rlKey,
+  });
+
+  const chatLimiter = rateLimit({
+    windowMs: 60 * 1000,
+    max: 30,
+    standardHeaders: true,
+    legacyHeaders: false,
+    keyGenerator: rlKey,
+  });
+
+  const modelsLimiter = rateLimit({
+    windowMs: 60 * 1000,
+    max: 300,
+    standardHeaders: true,
+    legacyHeaders: false,
+    keyGenerator: rlKey,
+  });
+
   app.use("/api/auth/login", authLimiter);
   app.use("/api/auth/register", registerLimiter);
   app.use(["/api/chat", "/api/chat/public"], chatLimiter);
   app.use(["/api/models", "/api/home/models", "/api/models-home"], modelsLimiter);
+
   // Optional heuristics (production only)
   const ipHitCounter = new Map<string, { count: number; ts: number }>();
-  app.use(["/api/models", "/api/home/models", "/api/models-home"], (req, _res, next) => {
+  app.use(["/api/models", "/api/home/models", "/api/models-home"], (req: Request, _res: Response, next: NextFunction) => {
     try {
-      const key = String((req.headers['x-forwarded-for'] as string) || req.socket.remoteAddress || 'unknown');
+      const key = String((req.headers["x-forwarded-for"] as string) || req.socket.remoteAddress || "unknown");
       const now = Date.now();
       const rec = ipHitCounter.get(key) || { count: 0, ts: now };
-      if (now - rec.ts > 60_000) { rec.count = 0; rec.ts = now; }
+      if (now - rec.ts > 60_000) {
+        rec.count = 0;
+        rec.ts = now;
+      }
       rec.count++;
       ipHitCounter.set(key, rec);
+
       if (rec.count > 500) {
-        storage.addAudit({ action: 'anti_scrape_suspect', meta: { ip: key, count: rec.count } }).catch(()=>{});
-        rec.count = 0; rec.ts = now;
+        storage
+          .addAudit({ action: "anti_scrape_suspect", meta: { ip: key, count: rec.count } })
+          .catch(() => {});
+        rec.count = 0;
+        rec.ts = now;
       }
-    } catch {}
+    } catch {
+      // ignore
+    }
     next();
   });
-  const dmcaLimiter = rateLimit({ windowMs: 60 * 60 * 1000, max: 10, standardHeaders: true, legacyHeaders: false, keyGenerator: rlKey });
-  const kycLimiter = rateLimit({ windowMs: 60 * 60 * 1000, max: 10, standardHeaders: true, legacyHeaders: false, keyGenerator: rlKey });
-  const tipLimiter = rateLimit({ windowMs: 60 * 1000, max: 30, standardHeaders: true, legacyHeaders: false, keyGenerator: rlKey });
+
+  const dmcaLimiter = rateLimit({
+    windowMs: 60 * 60 * 1000,
+    max: 10,
+    standardHeaders: true,
+    legacyHeaders: false,
+    keyGenerator: rlKey,
+  });
+
+  const kycLimiter = rateLimit({
+    windowMs: 60 * 60 * 1000,
+    max: 10,
+    standardHeaders: true,
+    legacyHeaders: false,
+    keyGenerator: rlKey,
+  });
+
+  const tipLimiter = rateLimit({
+    windowMs: 60 * 1000,
+    max: 30,
+    standardHeaders: true,
+    legacyHeaders: false,
+    keyGenerator: rlKey,
+  });
+
   app.use("/api/dmca/report", dmcaLimiter);
   app.use("/api/kyc/apply", kycLimiter);
   app.use("/api/models/:id/tip", tipLimiter);
+
   // Sirplay-specific rate limits
-  const sirplayAuthLimiter = rateLimit({ windowMs: 10 * 60 * 1000, max: 30, standardHeaders: true, legacyHeaders: false, keyGenerator: rlKey });
-  const sirplayWebhookLimiter = rateLimit({ windowMs: 60 * 1000, max: 120, standardHeaders: true, legacyHeaders: false, keyGenerator: rlKey });
+  const sirplayAuthLimiter = rateLimit({
+    windowMs: 10 * 60 * 1000,
+    max: 30,
+    standardHeaders: true,
+    legacyHeaders: false,
+    keyGenerator: rlKey,
+  });
+
+  const sirplayWebhookLimiter = rateLimit({
+    windowMs: 60 * 1000,
+    max: 120,
+    standardHeaders: true,
+    legacyHeaders: false,
+    keyGenerator: rlKey,
+  });
+
   app.use(["/api/sirplay/handshake", "/api/sirplay/login"], sirplayAuthLimiter);
   app.use(["/api/webhooks/sirplay"], sirplayWebhookLimiter);
 }
@@ -195,14 +313,21 @@ if (IS_PROD) {
 // API routes (pass app version for diagnostics)
 let appVersion = "dev";
 try {
-  const pkgRaw = fsSync.readFileSync(path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "package.json"), "utf-8");
+  const pkgRaw = fsSync.readFileSync(
+    path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "package.json"),
+    "utf-8"
+  );
   const pkg = JSON.parse(pkgRaw);
   if (pkg?.version) appVersion = String(pkg.version);
-} catch {}
+} catch {
+  // ignore
+}
+
 const server = await registerRoutes(app, { version: appVersion });
+
 // Initialize WebSocket signaling server for WebRTC rooms
 initSignaling(server);
-logger.info('signaling.initialized');
+logger.info("signaling.initialized");
 
 // In development, mount Vite dev middleware; in production, serve static from /dist/public
 const __filename = fileURLToPath(import.meta.url);
@@ -214,7 +339,6 @@ const clientDist = path.resolve(__dirname, "..", "dist", "public");
 const uploadsRoot = path.resolve(__dirname, "..", "uploads");
 
 if (!isProd) {
-  // Vite dev server in middleware mode for a smooth DX
   const { createServer: createViteServer } = await import("vite");
   const vite = await createViteServer({
     configFile: path.resolve(__dirname, "..", "vite.config.ts"),
@@ -223,7 +347,7 @@ if (!isProd) {
 
   app.use(vite.middlewares);
 
-  app.get("*", async (req, res, next) => {
+  app.get("*", async (req: Request, res: Response, next: NextFunction) => {
     try {
       const url = req.originalUrl;
       const indexHtmlPath = path.resolve(clientRoot, "index.html");
@@ -238,38 +362,46 @@ if (!isProd) {
 } else {
   // Production: serve built assets
   // Also serve uploaded assets under /uploads
-  try { fsSync.mkdirSync(uploadsRoot, { recursive: true }); } catch {}
-  app.use("/uploads", express.static(uploadsRoot, {
-    etag: true,
-    lastModified: true,
-    setHeaders: (res, p) => {
-      const rel = p.replace(/\\/g, "/");
-      // Cache uploads moderately
-      if (/(\/models\/).+\.(jpg|jpeg|png|webp|gif|avif|svg)$/i.test(rel)) {
-        res.setHeader("Cache-Control", "public, max-age=86400"); // 1 day
-      } else {
-        res.setHeader("Cache-Control", "public, max-age=300");
-      }
-    }
-  }));
-  // Static assets: cache aggressively for hashed asset files; avoid caching for index.html
-  app.use(express.static(clientDist, {
-    etag: true,
-    lastModified: true,
-    setHeaders: (res, p) => {
-      const rel = p.replace(/\\/g, "/");
-      if (rel.endsWith("/index.html") || rel.endsWith("index.html")) {
-        res.setHeader("Cache-Control", "no-cache");
-      } else if (rel.includes("/assets/")) {
-        // Vite emits hashed filenames under /assets; safe to cache long-term
-        res.setHeader("Cache-Control", "public, max-age=31536000, immutable");
-      } else {
-        // default short cache for other files
-        res.setHeader("Cache-Control", "public, max-age=300");
-      }
-    }
-  }));
-  app.get("*", async (_req, res) => {
+  try {
+    fsSync.mkdirSync(uploadsRoot, { recursive: true });
+  } catch {
+    // ignore
+  }
+
+  app.use(
+    "/uploads",
+    express.static(uploadsRoot, {
+      etag: true,
+      lastModified: true,
+      setHeaders: (res, p) => {
+        const rel = p.replace(/\\/g, "/");
+        if (/(\/models\/).+\.(jpg|jpeg|png|webp|gif|avif|svg)$/i.test(rel)) {
+          res.setHeader("Cache-Control", "public, max-age=86400"); // 1 day
+        } else {
+          res.setHeader("Cache-Control", "public, max-age=300");
+        }
+      },
+    })
+  );
+
+  app.use(
+    express.static(clientDist, {
+      etag: true,
+      lastModified: true,
+      setHeaders: (res, p) => {
+        const rel = p.replace(/\\/g, "/");
+        if (rel.endsWith("/index.html") || rel.endsWith("index.html")) {
+          res.setHeader("Cache-Control", "no-cache");
+        } else if (rel.includes("/assets/")) {
+          res.setHeader("Cache-Control", "public, max-age=31536000, immutable");
+        } else {
+          res.setHeader("Cache-Control", "public, max-age=300");
+        }
+      },
+    })
+  );
+
+  app.get("*", (_req: Request, res: Response) => {
     res.setHeader("Cache-Control", "no-cache");
     res.sendFile(path.join(clientDist, "index.html"));
   });
@@ -282,123 +414,185 @@ const baseHost = process.env.HOST || "127.0.0.1"; // set to "0.0.0.0" to listen 
 
 function listenWithRetry(port: number, attemptsLeft: number, host: string) {
   let started = false;
+
   const attachAndListen = (p: number, tries: number) => {
-    // ensure previous error listeners don't accumulate
     server.removeAllListeners("error");
+
     server.once("error", (err: any) => {
-      if (started) return; // already started elsewhere
-      if (err && (err as any).code === "EADDRINUSE" && tries > 0) {
+      if (started) return;
+
+      if (err?.code === "EADDRINUSE" && tries > 0) {
         const nextPort = p + 1;
+        // eslint-disable-next-line no-console
         console.warn(`[kasyrooms] Port ${host}:${p} in use, retrying on ${host}:${nextPort}...`);
         attachAndListen(nextPort, tries - 1);
       } else {
+        // eslint-disable-next-line no-console
         console.error("[kasyrooms] Server failed to start:", err);
         process.exit(1);
       }
     });
+
     server.listen(p, host, () => {
       if (started) return;
       started = true;
+      // eslint-disable-next-line no-console
       console.log(`[kasyrooms] listening on ${host}:${p} (${isProd ? "production" : "development"})`);
     });
   };
+
   attachAndListen(port, attemptsLeft);
 }
 
 listenWithRetry(basePort, 10, baseHost);
-logger.info('server.starting', { host: baseHost, port: basePort });
+logger.info("server.starting", { host: baseHost, port: basePort });
 
 // -------------------
 // Server-side billing loop for private sessions
 // Charges per minute and auto-ends on insufficient funds
 // -------------------
-(function startBillingLoop(){
+(function startBillingLoop() {
   const RATE_PER_MIN = Number.parseFloat(process.env.RATE_PER_MIN || "5.99");
   const TICK_MS = Number.parseInt(process.env.BILLING_TICK_MS || "10000", 10); // default 10s
   if (!Number.isFinite(RATE_PER_MIN) || RATE_PER_MIN <= 0) return;
 
   setInterval(async () => {
     const now = Date.now();
-    // Iterate active sessions (no endAt)
+
     for (const s of storage.sessions) {
       if (s.endAt) continue;
+
       const lastChargeAt = Date.parse(s.lastChargeAt || s.startAt);
       if (!Number.isFinite(lastChargeAt)) continue;
+
       const elapsedMs = now - lastChargeAt;
       const minutesToCharge = Math.floor(elapsedMs / 60000);
       if (minutesToCharge <= 0) continue;
 
-      // Resolve user and wallet mode
       const user = await storage.getUser(s.userId_B);
       if (!user) continue;
+
       const isShared = !!user.externalUserId;
       const walletIdA = user.externalUserId!;
 
       let chargedMinutes = 0;
+
       for (let i = 0; i < minutesToCharge; i++) {
         try {
-          // Pre-check balance to avoid going negative
-          const currentBalance = isShared
-            ? await storage.getBalance(walletIdA)
-            : await storage.getLocalBalance(user.id);
+          const currentBalance = isShared ? await storage.getBalance(walletIdA) : await storage.getLocalBalance(user.id);
+
           if (currentBalance < RATE_PER_MIN) {
-            // End session due to insufficient funds
             const durationSec = Math.max(1, Math.floor((Date.now() - Date.parse(s.startAt)) / 1000));
             await storage.endSession(s.id, { durationSec, totalCharged: s.totalCharged || 0 });
-            // Persist to DB if available
+
             try {
               if (db) {
-                await db.update(schema.sessions)
+                await db
+                  .update(schema.sessions)
                   .set({ endedAt: new Date() as any, durationSec, totalChargedCents: Math.round((s.totalCharged || 0) * 100) })
                   .where(eq(schema.sessions.id, s.id));
               }
-            } catch {}
-            // Reset model busy state best-effort
-            try { await storage.setModelBusy(s.modelId, false); } catch {}
-            break; // stop charging this session
+            } catch {
+              // ignore
+            }
+
+            try {
+              await storage.setModelBusy(s.modelId, false);
+            } catch {
+              // ignore
+            }
+
+            break;
           }
 
-          // Withdraw funds and log transaction
           if (isShared) {
             await storage.withdraw(walletIdA, RATE_PER_MIN);
-            const tx = await storage.addTransaction({ userId_A: walletIdA, type: 'CHARGE', amount: RATE_PER_MIN, source: 'server-billing' });
-            try { if (db) { await db.insert(schema.transactions).values({ id: tx.id, userId_A: walletIdA, type: 'CHARGE', amountCents: Math.round(RATE_PER_MIN * 100), currency: 'EUR', source: 'server-billing' }); } } catch {}
+            const tx = await storage.addTransaction({ userId_A: walletIdA, type: "CHARGE", amount: RATE_PER_MIN, source: "server-billing" });
+
+            try {
+              if (db) {
+                await db.insert(schema.transactions).values({
+                  id: tx.id,
+                  userId_A: walletIdA,
+                  type: "CHARGE",
+                  amountCents: Math.round(RATE_PER_MIN * 100),
+                  currency: "EUR",
+                  source: "server-billing",
+                });
+              }
+            } catch {
+              // ignore
+            }
           } else {
             try {
               await storage.localWithdraw(user.id, RATE_PER_MIN);
             } catch {
-              // Local insufficient, end session
               const durationSec = Math.max(1, Math.floor((Date.now() - Date.parse(s.startAt)) / 1000));
               await storage.endSession(s.id, { durationSec, totalCharged: s.totalCharged || 0 });
-              try { if (db) { await db.update(schema.sessions).set({ endedAt: new Date() as any, durationSec, totalChargedCents: Math.round((s.totalCharged || 0) * 100) }).where(eq(schema.sessions.id, s.id)); } } catch {}
-              try { await storage.setModelBusy(s.modelId, false); } catch {}
+
+              try {
+                if (db) {
+                  await db
+                    .update(schema.sessions)
+                    .set({
+                      endedAt: new Date() as any,
+                      durationSec,
+                      totalChargedCents: Math.round((s.totalCharged || 0) * 100),
+                    })
+                    .where(eq(schema.sessions.id, s.id));
+                }
+              } catch {
+                // ignore
+              }
+
+              try {
+                await storage.setModelBusy(s.modelId, false);
+              } catch {
+                // ignore
+              }
+
               break;
             }
-            const tx = await storage.addTransaction({ userId_B: user.id, type: 'CHARGE', amount: RATE_PER_MIN, source: 'server-billing' });
-            try { if (db) { await db.insert(schema.transactions).values({ id: tx.id, userId_B: user.id, type: 'CHARGE', amountCents: Math.round(RATE_PER_MIN * 100), currency: 'EUR', source: 'server-billing' }); } } catch {}
+
+            const tx = await storage.addTransaction({ userId_B: user.id, type: "CHARGE", amount: RATE_PER_MIN, source: "server-billing" });
+
+            try {
+              if (db) {
+                await db.insert(schema.transactions).values({
+                  id: tx.id,
+                  userId_B: user.id,
+                  type: "CHARGE",
+                  amountCents: Math.round(RATE_PER_MIN * 100),
+                  currency: "EUR",
+                  source: "server-billing",
+                });
+              }
+            } catch {
+              // ignore
+            }
           }
 
-          // Update session in-memory and persist aggregate charge best-effort
           s.totalCharged = (s.totalCharged || 0) + RATE_PER_MIN;
           chargedMinutes++;
         } catch {
-          // Best effort: skip on unexpected errors
           break;
         }
       }
 
       if (chargedMinutes > 0) {
-        // Advance lastChargeAt by charged minutes to avoid drift
         const nextTs = lastChargeAt + chargedMinutes * 60000;
         s.lastChargeAt = new Date(nextTs).toISOString();
-        // Optionally sync running total in DB
+
         try {
           if (db) {
-            await db.update(schema.sessions)
+            await db
+              .update(schema.sessions)
               .set({ totalChargedCents: Math.round((s.totalCharged || 0) * 100) })
               .where(eq(schema.sessions.id, s.id));
           }
-        } catch {}
+        } catch {
+          // ignore
+        }
       }
     }
   }, TICK_MS);
