@@ -24,23 +24,36 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      # Verifica delle chiavi
+      
+      # Preflight: verifica presenza chiavi obbligatorie in APP_ENV_FILE
+      
       - name: Preflight .env keys presence
         run: |
           set -euo pipefail
-          # Ensure the multi-line secret is available in the environment
+
           if [ -z "${APP_ENV_FILE:-}" ]; then
             echo "APP_ENV_FILE secret is empty or not provided" >&2
             exit 1
           fi
+
           required=(
-            DATABASE_URL JWT_SECRET BASE_URL
-            SIRPLAY_BASE_URL SIRPLAY_API_KEY SIRPLAY_HMAC_SECRET SIRPLAY_WEBHOOK_SECRET
-            SIRPLAY_CUSTOMER_ID SIRPLAY_PARTNER_ID
+            DATABASE_URL
+            JWT_SECRET
+            BASE_URL
+
+            SIRPLAY_BASE_URL
+            SIRPLAY_API_KEY
+            SIRPLAY_HMAC_SECRET
+            SIRPLAY_WEBHOOK_SECRET
+            SIRPLAY_CUSTOMER_ID
+            SIRPLAY_PARTNER_ID
+
+            SIRPLAY_B2B_USER
+            SIRPLAY_B2B_PASSWORD
           )
+
           missing=0
           for k in "${required[@]}"; do
-            # Use the runtime environment variable and tolerate optional whitespace around '='
             if printf "%s\n" "$APP_ENV_FILE" | grep -Eq "^[[:space:]]*$k[[:space:]]*="; then
               echo "OK $k"
             else
@@ -48,8 +61,12 @@ jobs:
               missing=1
             fi
           done
+
           test $missing -eq 0
 
+      
+      # Sync repository to VPS
+      
       - name: Rsync repository to VPS
         uses: burnett01/rsync-deployments@5.2
         with:
@@ -60,6 +77,9 @@ jobs:
           remote_user: ${{ env.VPS_USER }}
           remote_key: ${{ env.VPS_SSH_KEY }}
 
+      
+      # Write .env on VPS from APP_ENV_FILE
+      
       - name: Write .env on VPS (from APP_ENV_FILE secret)
         uses: appleboy/ssh-action@v1.2.0
         with:
@@ -74,6 +94,9 @@ jobs:
             EOF__APP_ENV
             chmod 600 "${{ env.VPS_APP_DIR }}/.env"
 
+      
+      # Install deps, build, prune, reload PM2
+      
       - name: Install deps, build on VPS, prune and reload PM2
         uses: appleboy/ssh-action@v1.2.0
         with:
@@ -86,11 +109,11 @@ jobs:
 
             # Node 20 via nvm (se presente)
             if [ -s "$HOME/.nvm/nvm.sh" ]; then . "$HOME/.nvm/nvm.sh"; fi
-            if command -v nvm >/dev/null 2>&1; then nvm install 20 >/dev/null; nvm use 20; fi
+            if command -v nvm >/dev/null 2>&1; then
+              nvm install 20 >/dev/null
+              nvm use 20
+            fi
             node -v
-
-            # Non eseguire il sourcing della .env nello shell: valori con spazi/JSON possono rompere la build.
-            # L'app carica la .env da Node (dotenv) all'avvio.
 
             # deps + build + prune (runtime only)
             npm ci --include=dev --no-audit --no-fund
@@ -108,6 +131,9 @@ jobs:
             fi
             pm2 save || true
 
+      
+      # Smoke check
+      
       - name: Smoke check /api/healthz (with retries)
         run: |
           set -e
