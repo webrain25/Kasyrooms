@@ -3,7 +3,7 @@ import dotenv from 'dotenv';
 import express from "express";
 import cors from "cors";
 import helmet from "helmet";
-import rateLimit from "express-rate-limit";
+import rateLimit, { ipKeyGenerator } from "express-rate-limit";
 import path from "path";
 import { fileURLToPath } from "url";
 import fs from "fs/promises";
@@ -51,7 +51,8 @@ import { initSignaling } from "./rtc/signaling";
 
 const app = express();
 const IS_PROD = process.env.NODE_ENV === 'production';
-app.set('trust proxy', 1);
+// MUST be before any middleware that reads req.ip / req.ips (rate-limit, logging, auth, etc.)
+app.set('trust proxy', 2); // Cloudflare + Nginx (2 hops). If only 1 proxy, set to 1.
 // Structured request logging
 app.use(requestLogger);
 // Base limiter in production; optionally enable in dev for testing via env flag
@@ -139,12 +140,20 @@ app.use(express.json({
   }
 }));
 
+// Handle invalid JSON with 400 instead of 500
+app.use((err: any, _req: any, res: any, next: any) => {
+  if (err instanceof SyntaxError && (err as any).status === 400 && 'body' in (err as any)) {
+    return res.status(400).json({ error: 'invalid_json' });
+  }
+  return next(err);
+});
+
 // Targeted rate limits (production only)
 if (IS_PROD) {
-  const authLimiter = rateLimit({ windowMs: 10 * 60 * 1000, max: 50, standardHeaders: true, legacyHeaders: false });
-  const registerLimiter = rateLimit({ windowMs: 10 * 60 * 1000, max: 5, standardHeaders: true, legacyHeaders: false, message: { error: "Troppe richieste, riprova più tardi." } });
-  const chatLimiter = rateLimit({ windowMs: 60 * 1000, max: 30, standardHeaders: true, legacyHeaders: false });
-  const modelsLimiter = rateLimit({ windowMs: 60 * 1000, max: 300, standardHeaders: true, legacyHeaders: false });
+  const authLimiter = rateLimit({ windowMs: 10 * 60 * 1000, max: 50, standardHeaders: true, legacyHeaders: false, keyGenerator: (req) => ipKeyGenerator(req) });
+  const registerLimiter = rateLimit({ windowMs: 10 * 60 * 1000, max: 5, standardHeaders: true, legacyHeaders: false, message: { error: "Troppe richieste, riprova più tardi." }, keyGenerator: (req) => ipKeyGenerator(req) });
+  const chatLimiter = rateLimit({ windowMs: 60 * 1000, max: 30, standardHeaders: true, legacyHeaders: false, keyGenerator: (req) => ipKeyGenerator(req) });
+  const modelsLimiter = rateLimit({ windowMs: 60 * 1000, max: 300, standardHeaders: true, legacyHeaders: false, keyGenerator: (req) => ipKeyGenerator(req) });
   app.use("/api/auth/login", authLimiter);
   app.use("/api/auth/register", registerLimiter);
   app.use(["/api/chat", "/api/chat/public"], chatLimiter);
@@ -166,15 +175,15 @@ if (IS_PROD) {
     } catch {}
     next();
   });
-  const dmcaLimiter = rateLimit({ windowMs: 60 * 60 * 1000, max: 10, standardHeaders: true, legacyHeaders: false });
-  const kycLimiter = rateLimit({ windowMs: 60 * 60 * 1000, max: 10, standardHeaders: true, legacyHeaders: false });
-  const tipLimiter = rateLimit({ windowMs: 60 * 1000, max: 30, standardHeaders: true, legacyHeaders: false });
+  const dmcaLimiter = rateLimit({ windowMs: 60 * 60 * 1000, max: 10, standardHeaders: true, legacyHeaders: false, keyGenerator: (req) => ipKeyGenerator(req) });
+  const kycLimiter = rateLimit({ windowMs: 60 * 60 * 1000, max: 10, standardHeaders: true, legacyHeaders: false, keyGenerator: (req) => ipKeyGenerator(req) });
+  const tipLimiter = rateLimit({ windowMs: 60 * 1000, max: 30, standardHeaders: true, legacyHeaders: false, keyGenerator: (req) => ipKeyGenerator(req) });
   app.use("/api/dmca/report", dmcaLimiter);
   app.use("/api/kyc/apply", kycLimiter);
   app.use("/api/models/:id/tip", tipLimiter);
   // Sirplay-specific rate limits
-  const sirplayAuthLimiter = rateLimit({ windowMs: 10 * 60 * 1000, max: 30, standardHeaders: true, legacyHeaders: false });
-  const sirplayWebhookLimiter = rateLimit({ windowMs: 60 * 1000, max: 120, standardHeaders: true, legacyHeaders: false });
+  const sirplayAuthLimiter = rateLimit({ windowMs: 10 * 60 * 1000, max: 30, standardHeaders: true, legacyHeaders: false, keyGenerator: (req) => ipKeyGenerator(req) });
+  const sirplayWebhookLimiter = rateLimit({ windowMs: 60 * 1000, max: 120, standardHeaders: true, legacyHeaders: false, keyGenerator: (req) => ipKeyGenerator(req) });
   app.use(["/api/sirplay/handshake", "/api/sirplay/login"], sirplayAuthLimiter);
   app.use(["/api/webhooks/sirplay"], sirplayWebhookLimiter);
 }
