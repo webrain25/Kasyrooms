@@ -1,6 +1,7 @@
 // Load environment variables early
 import dotenv from 'dotenv';
 import express from "express";
+import type { Request } from "express";
 import cors from "cors";
 import helmet from "helmet";
 import rateLimit, { ipKeyGenerator } from "express-rate-limit";
@@ -59,6 +60,9 @@ app.use(requestLogger);
 if (IS_PROD || process.env.RATE_LIMIT_ENABLE_DEV === '1') {
   app.use(limiterMiddleware);
 }
+
+// Reusable rate-limit key generator (trust proxy must be set before limiters)
+const rlKey = (req: Request) => ipKeyGenerator(req.ip);
 
 // Per-request CSP nonce
 app.use((req: any, res: any, next: any) => {
@@ -150,10 +154,10 @@ app.use((err: any, _req: any, res: any, next: any) => {
 
 // Targeted rate limits (production only)
 if (IS_PROD) {
-  const authLimiter = rateLimit({ windowMs: 10 * 60 * 1000, max: 50, standardHeaders: true, legacyHeaders: false, keyGenerator: (req) => ipKeyGenerator(req) });
-  const registerLimiter = rateLimit({ windowMs: 10 * 60 * 1000, max: 5, standardHeaders: true, legacyHeaders: false, message: { error: "Troppe richieste, riprova più tardi." }, keyGenerator: (req) => ipKeyGenerator(req) });
-  const chatLimiter = rateLimit({ windowMs: 60 * 1000, max: 30, standardHeaders: true, legacyHeaders: false, keyGenerator: (req) => ipKeyGenerator(req) });
-  const modelsLimiter = rateLimit({ windowMs: 60 * 1000, max: 300, standardHeaders: true, legacyHeaders: false, keyGenerator: (req) => ipKeyGenerator(req) });
+  const authLimiter = rateLimit({ windowMs: 10 * 60 * 1000, max: 50, standardHeaders: true, legacyHeaders: false, keyGenerator: rlKey });
+  const registerLimiter = rateLimit({ windowMs: 10 * 60 * 1000, max: 5, standardHeaders: true, legacyHeaders: false, message: { error: "Troppe richieste, riprova più tardi." }, keyGenerator: rlKey });
+  const chatLimiter = rateLimit({ windowMs: 60 * 1000, max: 30, standardHeaders: true, legacyHeaders: false, keyGenerator: rlKey });
+  const modelsLimiter = rateLimit({ windowMs: 60 * 1000, max: 300, standardHeaders: true, legacyHeaders: false, keyGenerator: rlKey });
   app.use("/api/auth/login", authLimiter);
   app.use("/api/auth/register", registerLimiter);
   app.use(["/api/chat", "/api/chat/public"], chatLimiter);
@@ -175,15 +179,15 @@ if (IS_PROD) {
     } catch {}
     next();
   });
-  const dmcaLimiter = rateLimit({ windowMs: 60 * 60 * 1000, max: 10, standardHeaders: true, legacyHeaders: false, keyGenerator: (req) => ipKeyGenerator(req) });
-  const kycLimiter = rateLimit({ windowMs: 60 * 60 * 1000, max: 10, standardHeaders: true, legacyHeaders: false, keyGenerator: (req) => ipKeyGenerator(req) });
-  const tipLimiter = rateLimit({ windowMs: 60 * 1000, max: 30, standardHeaders: true, legacyHeaders: false, keyGenerator: (req) => ipKeyGenerator(req) });
+  const dmcaLimiter = rateLimit({ windowMs: 60 * 60 * 1000, max: 10, standardHeaders: true, legacyHeaders: false, keyGenerator: rlKey });
+  const kycLimiter = rateLimit({ windowMs: 60 * 60 * 1000, max: 10, standardHeaders: true, legacyHeaders: false, keyGenerator: rlKey });
+  const tipLimiter = rateLimit({ windowMs: 60 * 1000, max: 30, standardHeaders: true, legacyHeaders: false, keyGenerator: rlKey });
   app.use("/api/dmca/report", dmcaLimiter);
   app.use("/api/kyc/apply", kycLimiter);
   app.use("/api/models/:id/tip", tipLimiter);
   // Sirplay-specific rate limits
-  const sirplayAuthLimiter = rateLimit({ windowMs: 10 * 60 * 1000, max: 30, standardHeaders: true, legacyHeaders: false, keyGenerator: (req) => ipKeyGenerator(req) });
-  const sirplayWebhookLimiter = rateLimit({ windowMs: 60 * 1000, max: 120, standardHeaders: true, legacyHeaders: false, keyGenerator: (req) => ipKeyGenerator(req) });
+  const sirplayAuthLimiter = rateLimit({ windowMs: 10 * 60 * 1000, max: 30, standardHeaders: true, legacyHeaders: false, keyGenerator: rlKey });
+  const sirplayWebhookLimiter = rateLimit({ windowMs: 60 * 1000, max: 120, standardHeaders: true, legacyHeaders: false, keyGenerator: rlKey });
   app.use(["/api/sirplay/handshake", "/api/sirplay/login"], sirplayAuthLimiter);
   app.use(["/api/webhooks/sirplay"], sirplayWebhookLimiter);
 }
