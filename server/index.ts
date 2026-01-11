@@ -63,6 +63,31 @@ import { initSignaling } from "./rtc/signaling";
   }
 })();
 
+// ---- ENV DIAGNOSTICS (temporary) ----
+(() => {
+  const hasAppEnv = !!process.env.APP_ENV_FILE;
+
+  const hasB2BUser = typeof process.env.B2B_BASIC_AUTH_USER === "string" && process.env.B2B_BASIC_AUTH_USER.trim().length > 0;
+  const hasB2BPass = typeof process.env.B2B_BASIC_AUTH_PASS === "string" && process.env.B2B_BASIC_AUTH_PASS.trim().length > 0;
+
+  const hasSirplayB2BUser = typeof process.env.SIRPLAY_B2B_USER === "string" && process.env.SIRPLAY_B2B_USER.trim().length > 0;
+  const hasSirplayB2BPass = typeof process.env.SIRPLAY_B2B_PASSWORD === "string" && process.env.SIRPLAY_B2B_PASSWORD.trim().length > 0;
+
+  // Non loggare i valori, solo presenza e lunghezze (utile per capire se sono vuoti o troncati)
+  // eslint-disable-next-line no-console
+  console.log("[env] APP_ENV_FILE present:", hasAppEnv);
+
+  // eslint-disable-next-line no-console
+  console.log("[env] B2B_BASIC_AUTH_USER present:", hasB2BUser, "len:", (process.env.B2B_BASIC_AUTH_USER || "").length);
+  // eslint-disable-next-line no-console
+  console.log("[env] B2B_BASIC_AUTH_PASS present:", hasB2BPass, "len:", (process.env.B2B_BASIC_AUTH_PASS || "").length);
+
+  // eslint-disable-next-line no-console
+  console.log("[env] SIRPLAY_B2B_USER present:", hasSirplayB2BUser, "len:", (process.env.SIRPLAY_B2B_USER || "").length);
+  // eslint-disable-next-line no-console
+  console.log("[env] SIRPLAY_B2B_PASSWORD present:", hasSirplayB2BPass, "len:", (process.env.SIRPLAY_B2B_PASSWORD || "").length);
+})();
+
 const app = express();
 const IS_PROD = process.env.NODE_ENV === "production";
 
