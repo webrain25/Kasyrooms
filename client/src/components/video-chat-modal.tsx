@@ -268,6 +268,36 @@ export default function VideoChatModal({ isOpen, onClose, modelName, isModelOnli
 
   if (!isOpen) return null;
 
+  // Poll public chat for this model while modal is open and NOT in private
+  useEffect(() => {
+    if (!isOpen) return;
+    if (isPrivate) return; // in private we don't use public chat
+    let stopped = false;
+
+    const tick = async () => {
+      try {
+        const r = await fetch(`/api/chat/public?modelId=${encodeURIComponent(modelId)}&limit=200`);
+        if (!r.ok) return;
+        const j = await r.json();
+        if (!stopped && Array.isArray(j)) {
+          const mapped = j.map((m: any, idx: number) => ({
+            id: String(m.when || Date.now()) + ":" + idx,
+            user: String(m.user || "Unknown"),
+            text: String(m.text || ""),
+            when: m.when ? new Date(m.when).toLocaleTimeString() : new Date().toLocaleTimeString(),
+          }));
+          setChat(mapped.reverse());
+        }
+      } catch {}
+    };
+    tick();
+    const id = window.setInterval(tick, 2000);
+    return () => {
+      stopped = true;
+      window.clearInterval(id);
+    };
+  }, [isOpen, isPrivate, modelId]);
+
   // Start per-minute billing when in private
   useEffect(() => {
     if (!isOpen) return;

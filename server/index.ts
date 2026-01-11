@@ -77,10 +77,26 @@ if (IS_PROD || process.env.RATE_LIMIT_ENABLE_DEV === "1") {
   app.use(limiterMiddleware);
 }
 
-// Use the library-provided IPv6-safe key generator with req.ip.
-// Keep a small wrapper so TypeScript types align with express-rate-limit's API.
-const rlKey = (req: Request): string => {
-  const ip = req.ip || req.socket.remoteAddress || "";
+/**
+ * express-rate-limit expects: (req) => string
+ * ipKeyGenerator expects: (ip: string, ipv6Subnet?) => string
+ * Bridge the two: extract best-effort client IP, then normalize with ipKeyGenerator(ip)
+ */
+const rlKey: (req: Request) => string = (req) => {
+  const xff = req.headers["x-forwarded-for"];
+  const xffFirst =
+    typeof xff === "string"
+      ? xff.split(",")[0]?.trim()
+      : Array.isArray(xff)
+        ? xff[0]?.trim()
+        : undefined;
+
+  const ip =
+    (req.ip && req.ip.trim()) ||
+    (xffFirst && xffFirst.trim()) ||
+    (req.socket.remoteAddress && req.socket.remoteAddress.trim()) ||
+    "0.0.0.0";
+
   return ipKeyGenerator(ip);
 };
 
@@ -124,9 +140,12 @@ app.use(
               mediaSrc: ["'self'", "https:", "blob:"],
               fontSrc: ["'self'", "https:", "data:", "https://fonts.gstatic.com"],
               styleSrc: ["'self'", "'unsafe-inline'", "https:", "https://fonts.googleapis.com"],
-              // Inline scripts should include: <script nonce="${res.locals.cspNonce}">
-              // Helmet typings don't strongly type the function args; keep them loose but safe.
-              scriptSrc: ["'self'", "https:", (_req: any, res: any) => `'nonce-${res?.locals?.cspNonce}'`],
+              // Helmet typings don't strongly type callback args; keep them permissive.
+              scriptSrc: [
+                "'self'",
+                "https:",
+                (_req: any, res: any) => `'nonce-${res?.locals?.cspNonce}'`,
+              ],
               connectSrc: [
                 "'self'",
                 "https:",
@@ -177,16 +196,21 @@ app.use(
 // Handle invalid JSON with 400 instead of 500
 app.use((err: unknown, _req: Request, res: Response, next: NextFunction) => {
   const e = err as any;
-  const statusVal = (e as any)?.status;
+
+  // body-parser sets err.status = 400 on invalid JSON; types don't expose it, so treat as unknown/any.
+  const statusVal = typeof e?.status === "number" ? (e.status as number) : undefined;
+
   const isBodyParserSyntax =
     e instanceof SyntaxError &&
-    typeof statusVal === "number" &&
     statusVal === 400 &&
-    "body" in (e as any);
+    e != null &&
+    typeof e === "object" &&
+    "body" in e;
 
   if (isBodyParserSyntax) {
     return res.status(400).json({ error: "invalid_json" });
   }
+
   return next(err);
 });
 
@@ -232,30 +256,41 @@ if (IS_PROD) {
 
   // Optional heuristics (production only)
   const ipHitCounter = new Map<string, { count: number; ts: number }>();
-  app.use(["/api/models", "/api/home/models", "/api/models-home"], (req: Request, _res: Response, next: NextFunction) => {
-    try {
-      const key = String((req.headers["x-forwarded-for"] as string) || req.socket.remoteAddress || "unknown");
-      const now = Date.now();
-      const rec = ipHitCounter.get(key) || { count: 0, ts: now };
-      if (now - rec.ts > 60_000) {
-        rec.count = 0;
-        rec.ts = now;
-      }
-      rec.count++;
-      ipHitCounter.set(key, rec);
+  app.use(
+    ["/api/models", "/api/home/models", "/api/models-home"],
+    (req: Request, _res: Response, next: NextFunction) => {
+      try {
+        const key = String(
+          (req.headers["x-forwarded-for"] as string) ||
+            req.socket.remoteAddress ||
+            "unknown"
+        );
 
-      if (rec.count > 500) {
-        storage
-          .addAudit({ action: "anti_scrape_suspect", meta: { ip: key, count: rec.count } })
-          .catch(() => {});
-        rec.count = 0;
-        rec.ts = now;
+        const now = Date.now();
+        const rec = ipHitCounter.get(key) || { count: 0, ts: now };
+
+        if (now - rec.ts > 60_000) {
+          rec.count = 0;
+          rec.ts = now;
+        }
+
+        rec.count++;
+        ipHitCounter.set(key, rec);
+
+        if (rec.count > 500) {
+          storage
+            .addAudit({ action: "anti_scrape_suspect", meta: { ip: key, count: rec.count } })
+            .catch(() => {});
+          rec.count = 0;
+          rec.ts = now;
+        }
+      } catch {
+        // ignore
       }
-    } catch {
-      // ignore
+
+      next();
     }
-    next();
-  });
+  );
 
   const dmcaLimiter = rateLimit({
     windowMs: 60 * 60 * 1000,
@@ -380,6 +415,7 @@ if (!isProd) {
     })
   );
 
+  // Static assets: cache aggressively for hashed asset files; avoid caching for index.html
   app.use(
     express.static(clientDist, {
       etag: true,
@@ -475,17 +511,30 @@ logger.info("server.starting", { host: baseHost, port: basePort });
 
       for (let i = 0; i < minutesToCharge; i++) {
         try {
-          const currentBalance = isShared ? await storage.getBalance(walletIdA) : await storage.getLocalBalance(user.id);
+          const currentBalance = isShared
+            ? await storage.getBalance(walletIdA)
+            : await storage.getLocalBalance(user.id);
 
           if (currentBalance < RATE_PER_MIN) {
-            const durationSec = Math.max(1, Math.floor((Date.now() - Date.parse(s.startAt)) / 1000));
-            await storage.endSession(s.id, { durationSec, totalCharged: s.totalCharged || 0 });
+            const durationSec = Math.max(
+              1,
+              Math.floor((Date.now() - Date.parse(s.startAt)) / 1000)
+            );
+
+            await storage.endSession(s.id, {
+              durationSec,
+              totalCharged: s.totalCharged || 0,
+            });
 
             try {
               if (db) {
                 await db
                   .update(schema.sessions)
-                  .set({ endedAt: new Date() as any, durationSec, totalChargedCents: Math.round((s.totalCharged || 0) * 100) })
+                  .set({
+                    endedAt: new Date() as any,
+                    durationSec,
+                    totalChargedCents: Math.round((s.totalCharged || 0) * 100),
+                  })
                   .where(eq(schema.sessions.id, s.id));
               }
             } catch {
@@ -503,7 +552,12 @@ logger.info("server.starting", { host: baseHost, port: basePort });
 
           if (isShared) {
             await storage.withdraw(walletIdA, RATE_PER_MIN);
-            const tx = await storage.addTransaction({ userId_A: walletIdA, type: "CHARGE", amount: RATE_PER_MIN, source: "server-billing" });
+            const tx = await storage.addTransaction({
+              userId_A: walletIdA,
+              type: "CHARGE",
+              amount: RATE_PER_MIN,
+              source: "server-billing",
+            });
 
             try {
               if (db) {
@@ -523,8 +577,15 @@ logger.info("server.starting", { host: baseHost, port: basePort });
             try {
               await storage.localWithdraw(user.id, RATE_PER_MIN);
             } catch {
-              const durationSec = Math.max(1, Math.floor((Date.now() - Date.parse(s.startAt)) / 1000));
-              await storage.endSession(s.id, { durationSec, totalCharged: s.totalCharged || 0 });
+              const durationSec = Math.max(
+                1,
+                Math.floor((Date.now() - Date.parse(s.startAt)) / 1000)
+              );
+
+              await storage.endSession(s.id, {
+                durationSec,
+                totalCharged: s.totalCharged || 0,
+              });
 
               try {
                 if (db) {
@@ -550,7 +611,12 @@ logger.info("server.starting", { host: baseHost, port: basePort });
               break;
             }
 
-            const tx = await storage.addTransaction({ userId_B: user.id, type: "CHARGE", amount: RATE_PER_MIN, source: "server-billing" });
+            const tx = await storage.addTransaction({
+              userId_B: user.id,
+              type: "CHARGE",
+              amount: RATE_PER_MIN,
+              source: "server-billing",
+            });
 
             try {
               if (db) {

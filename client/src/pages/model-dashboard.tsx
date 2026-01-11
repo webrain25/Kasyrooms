@@ -49,10 +49,10 @@ export default function ModelDashboard() {
     const p = await fetch(`/api/models/${user.id}/photos`, { headers });
         const pj = await p.json();
         setPhotos(Array.isArray(pj.photos) ? pj.photos : []);
-        // load public chat
-  const c = await fetch(`/api/chat/public?limit=50`);
-        const cj = await c.json();
-        if (Array.isArray(cj)) setChat(cj);
+          // load public chat for this model
+          const c = await fetch(`/api/chat/public?modelId=${encodeURIComponent(user.id)}&limit=50`);
+          const cj = await c.json();
+          if (Array.isArray(cj)) setChat(cj);
         // preferences
         try {
           const stored = localStorage.getItem(`model:autoOnline:${user.id}`);
@@ -187,7 +187,7 @@ export default function ModelDashboard() {
     if (now - lastChatSentAtRef.current < 2000) return;
     lastChatSentAtRef.current = now;
     try {
-  const r = await fetch('/api/chat/public', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ user: displayName, text: chatText.trim(), userId_B: user?.id })});
+  const r = await fetch('/api/chat/public', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ user: displayName, text: chatText.trim(), userId_B: user?.id, modelId: user?.id })});
       if (r.ok) {
         const msg = await r.json();
         setChat(prev => [msg, ...prev].slice(0, 50));
@@ -195,6 +195,27 @@ export default function ModelDashboard() {
       }
     } catch {}
   };
+
+  // Poll public chat for this model every 2s
+  useEffect(() => {
+    if (!user) return;
+    let stopped = false;
+
+    const tick = async () => {
+      try {
+        const r = await fetch(`/api/chat/public?modelId=${encodeURIComponent(user.id)}&limit=50`);
+        if (!r.ok) return;
+        const j = await r.json();
+        if (!stopped && Array.isArray(j)) setChat(j);
+      } catch {}
+    };
+    tick();
+    const id = window.setInterval(tick, 2000);
+    return () => {
+      stopped = true;
+      window.clearInterval(id);
+    };
+  }, [user?.id]);
 
   const startPrivate = async (userIdB: string) => {
     if (!userIdB.trim() || !user) return;

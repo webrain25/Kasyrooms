@@ -7,6 +7,7 @@ export function useRTC(roomId: string, role: PeerRole = 'user') {
   const [peers, setPeers] = useState<Array<{ id: string; role: PeerRole }>>([]);
   const [remoteStreams, setRemoteStreams] = useState<Map<string, MediaStream>>(new Map());
   const [localStream, setLocalStream] = useState<MediaStream | null>(null);
+  const [selfPeerId, setSelfPeerId] = useState<string>("");
   const wsRef = useRef<WebSocket | null>(null);
   const pcsRef = useRef<Map<string, RTCPeerConnection>>(new Map());
   const peerIdRef = useRef<string>('');
@@ -44,7 +45,12 @@ export function useRTC(roomId: string, role: PeerRole = 'user') {
     }, 5000);
     ws.onopen = () => {
       setConnected(true);
-      ws.send(JSON.stringify({ type: 'join', roomId: roomIdRef.current, role }));
+      ws.send(JSON.stringify({
+        type: 'join',
+        roomId: roomIdRef.current,
+        role,
+        peerId: peerIdRef.current || undefined,
+      }));
     };
     ws.onclose = () => {
       setConnected(false);
@@ -62,6 +68,18 @@ export function useRTC(roomId: string, role: PeerRole = 'user') {
     ws.onmessage = async (ev) => {
       let msg: any; try { msg = JSON.parse(String(ev.data)); } catch { return; }
       if (msg.type === 'pong') { lastPongRef.ts = Date.now(); return; }
+      if (msg.type === 'welcome') {
+        const pid = String(msg.peerId || "");
+        if (pid) {
+          peerIdRef.current = pid;
+          setSelfPeerId(pid);
+          if (process.env.NODE_ENV !== 'production') {
+            // eslint-disable-next-line no-console
+            console.log('[rtc] assigned peerId', pid, 'role', msg.role, 'room', msg.roomId);
+          }
+        }
+        return;
+      }
       if (msg.type === 'peers') { setPeers(msg.peers || []); }
       if (msg.type === 'join') {
         setPeers((prev) => [...prev.filter(p => p.id !== msg.peerId), { id: msg.peerId, role: msg.role || 'user' }]);
@@ -83,7 +101,7 @@ export function useRTC(roomId: string, role: PeerRole = 'user') {
           if (data.sdp.type === 'offer') {
             const answer = await pc!.createAnswer();
             await pc!.setLocalDescription(answer);
-            ws.send(JSON.stringify({ type: 'signal', to: from, from: peerIdRef.current, data: { sdp: pc!.localDescription } }));
+            ws.send(JSON.stringify({ type: 'signal', to: from, from: peerIdRef.current || undefined, data: { sdp: pc!.localDescription } }));
           }
         } else if (data?.candidate) {
           const pc = pcsRef.current.get(from);
@@ -95,7 +113,7 @@ export function useRTC(roomId: string, role: PeerRole = 'user') {
             try {
               const offer = await pc.createOffer({ iceRestart: true });
               await pc.setLocalDescription(offer);
-              ws.send(JSON.stringify({ type: 'signal', to: from, from: peerIdRef.current, data: { sdp: pc.localDescription } }));
+              ws.send(JSON.stringify({ type: 'signal', to: from, from: peerIdRef.current || undefined, data: { sdp: pc.localDescription } }));
             } catch {}
           }
         }
@@ -115,7 +133,7 @@ export function useRTC(roomId: string, role: PeerRole = 'user') {
 
     pc.onicecandidate = (e) => {
       if (e.candidate) {
-        wsRef.current?.send(JSON.stringify({ type: 'signal', to: id, from: peerIdRef.current, data: { candidate: e.candidate } }));
+        wsRef.current?.send(JSON.stringify({ type: 'signal', to: id, from: peerIdRef.current || undefined, data: { candidate: e.candidate } }));
       }
     };
 
@@ -126,7 +144,7 @@ export function useRTC(roomId: string, role: PeerRole = 'user') {
     pc.oniceconnectionstatechange = () => {
       const st = pc.iceConnectionState;
       if (st === 'failed' || st === 'disconnected') {
-        try { wsRef.current?.send(JSON.stringify({ type: 'signal', to: id, from: peerIdRef.current, data: { restart: true } })); } catch {}
+        try { wsRef.current?.send(JSON.stringify({ type: 'signal', to: id, from: peerIdRef.current || undefined, data: { restart: true } })); } catch {}
       }
       if (st === 'closed') {
         pcsRef.current.delete(id);
@@ -142,7 +160,7 @@ export function useRTC(roomId: string, role: PeerRole = 'user') {
     if (isInitiator) {
       const offer = await pc.createOffer();
       await pc.setLocalDescription(offer);
-      ensureWs().send(JSON.stringify({ type: 'signal', to: id, from: peerIdRef.current, data: { sdp: pc.localDescription } }));
+      ensureWs().send(JSON.stringify({ type: 'signal', to: id, from: peerIdRef.current || undefined, data: { sdp: pc.localDescription } }));
     }
 
     return pc;
@@ -166,7 +184,14 @@ export function useRTC(roomId: string, role: PeerRole = 'user') {
     setRemoteStreams(new Map());
     // Reuse WS if open, else it will send join on open
     if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
-      try { wsRef.current.send(JSON.stringify({ type: 'join', roomId: newRoomId, role })); } catch {}
+      try {
+        wsRef.current.send(JSON.stringify({
+          type: 'join',
+          roomId: newRoomId,
+          role,
+          peerId: peerIdRef.current || undefined,
+        }));
+      } catch {}
     } else {
       ensureWs();
     }
@@ -201,7 +226,7 @@ export function useRTC(roomId: string, role: PeerRole = 'user') {
         try {
           const offer = await pc.createOffer({ iceRestart: true });
           await pc.setLocalDescription(offer);
-          wsRef.current?.send(JSON.stringify({ type: 'signal', to: peerId, from: peerIdRef.current, data: { sdp: pc.localDescription } }));
+          wsRef.current?.send(JSON.stringify({ type: 'signal', to: peerId, from: peerIdRef.current || undefined, data: { sdp: pc.localDescription } }));
         } catch {}
       }
     }

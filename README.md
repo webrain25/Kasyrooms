@@ -192,6 +192,8 @@ Confirm `/api/b2b/login-tokens` no longer returns 500 for well-formed JSON (it s
 
 ## Sirplay Integration
 
+See detailed setup in [docs/SIRPLAY.md](docs/SIRPLAY.md).
+
 Endpoints and payloads used by the server for Sirplay flows.
 
 - Handshake/Login: POST /api/sirplay/handshake and POST /api/sirplay/login

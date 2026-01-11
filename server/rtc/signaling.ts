@@ -27,6 +27,7 @@ interface JoinMessage {
 }
 interface LeaveMessage { type: 'leave'; peerId: string; }
 interface PeersMessage { type: 'peers'; peers: Array<{ id: string; role: PeerRole }>; }
+interface WelcomeMessage { type: 'welcome'; peerId: string; role: PeerRole; roomId: RoomId }
 
 function safeJson(data: any): string { try { return JSON.stringify(data); } catch { return '{}'; } }
 
@@ -75,6 +76,9 @@ export function initSignaling(server: HttpServer) {
         currentPeerId = pid;
         peers.set(pid, { id: pid, socket: ws, roomId, role });
         addToRoom(roomId, pid);
+        // send welcome with assigned peerId so client knows its own id
+        const welcome: WelcomeMessage = { type: 'welcome', peerId: pid, role, roomId };
+        ws.send(safeJson(welcome));
         // send peers list to the new peer
         const list: PeersMessage = { type: 'peers', peers: Array.from(rooms.get(roomId) || []).filter(id => id !== pid).map(id => ({ id, role: peers.get(id)?.role || 'user' })) };
         ws.send(safeJson(list));

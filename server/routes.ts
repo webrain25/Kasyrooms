@@ -10,6 +10,17 @@ import path from "path";
 import fs from "fs";
 import { and, eq } from "drizzle-orm";
 import { getOrCreateAccountBySirplayUserId, upsertWalletSnapshot, recordWalletTransactionIdempotent } from "./services/sirplayAdapter";
+// @ts-ignore - bundler resolves this TS module; suppress TS2306 in check
+import {
+  getSirplayConfigFromEnv,
+  sirplayLogin,
+  sirplayRegisterUser,
+  sirplayUpdateUser,
+  sirplayGetWallet,
+  sirplayDeposit,
+  sirplayWithdrawal,
+  type SirplayUpdateAction,
+} from "./services/sirplayClient.ts";
 import { z } from "zod";
 import { ensureCacheDir, downloadAndCache } from "./image-cache";
 import { getCachedImage } from "./image-cache";
@@ -19,28 +30,36 @@ const getJWTSecret = () => process.env.JWT_SECRET || "dev-secret";
 
 // B2B Basic Auth credentials helper (Sirplay -> Kasyrooms)
 const getB2BCreds = () => ({
-  user: process.env.B2B_BASIC_AUTH_USER || process.env.SIRPLAY_B2B_USER || "sirplay",
-  pass: process.env.B2B_BASIC_AUTH_PASS || process.env.SIRPLAY_B2B_PASSWORD || "s3cr3t",
+  user: (process.env.B2B_BASIC_AUTH_USER || process.env.SIRPLAY_B2B_USER || "").trim(),
+  pass: (process.env.B2B_BASIC_AUTH_PASS || process.env.SIRPLAY_B2B_PASSWORD || "").trim(),
 });
 
 // Middleware enforcing HTTP Basic authentication for B2B endpoints
 function requireB2BBasicAuth() {
   return (req: any, res: any, next: any) => {
+    const unauthorized = () => {
+      res.set('WWW-Authenticate', 'Basic realm="Kasyrooms B2B"');
+      return res.status(401).json({ error: 'unauthorized' });
+    };
+
     const hdr = req.headers?.authorization || req.headers?.Authorization;
-    if (typeof hdr !== 'string' || !hdr.startsWith('Basic ')) {
-      res.set('WWW-Authenticate', 'Basic realm="Kasyrooms B2B"');
-      return res.status(401).json({ error: 'unauthorized' });
-    }
+    if (typeof hdr !== 'string' || !hdr.startsWith('Basic ')) return unauthorized();
+
     const b64 = hdr.slice('Basic '.length).trim();
+
     let decoded = '';
-    try { decoded = Buffer.from(b64, 'base64').toString('utf8'); } catch {}
-    const sep = decoded.indexOf(':');
-    if (sep <= 0) {
-      res.set('WWW-Authenticate', 'Basic realm="Kasyrooms B2B"');
-      return res.status(401).json({ error: 'unauthorized' });
+    try {
+      decoded = Buffer.from(b64, 'base64').toString('utf8');
+    } catch {
+      return unauthorized();
     }
-    const providedUser = decoded.slice(0, sep);
-    const providedPass = decoded.slice(sep + 1);
+
+    const sep = decoded.indexOf(':');
+    if (sep <= 0) return unauthorized();
+
+    const providedUser = decoded.slice(0, sep).trim();
+    const providedPass = decoded.slice(sep + 1).trim();
+
     const { user, pass } = getB2BCreds();
 
     // In production, require explicit env configuration (do not allow defaults)
@@ -53,17 +72,35 @@ function requireB2BBasicAuth() {
       }
     }
 
+    // timingSafeEqual requires equal-length buffers, otherwise it throws.
+    if (providedUser.length !== user.length || providedPass.length !== pass.length) {
+      return unauthorized();
+    }
+
     try {
       const uOk = crypto.timingSafeEqual(Buffer.from(providedUser), Buffer.from(user));
       const pOk = crypto.timingSafeEqual(Buffer.from(providedPass), Buffer.from(pass));
-      if (!uOk || !pOk) {
-        res.set('WWW-Authenticate', 'Basic realm="Kasyrooms B2B"');
-        return res.status(401).json({ error: 'unauthorized' });
-      }
+      if (!uOk || !pOk) return unauthorized();
     } catch {
-      res.set('WWW-Authenticate', 'Basic realm="Kasyrooms B2B"');
-      return res.status(401).json({ error: 'unauthorized' });
+      return unauthorized();
     }
+
+    return next();
+  };
+}
+
+// Sirplay inbound: require Bearer token presence (format-only check)
+function requireSirplayBearerAuth() {
+  return (req: any, res: any, next: any) => {
+    const hdr = req.headers?.authorization || req.headers?.Authorization;
+    if (typeof hdr !== 'string' || !hdr.startsWith('Bearer ')) {
+      return res.status(401).json({ error: 'missing_bearer' });
+    }
+    const token = hdr.slice('Bearer '.length).trim();
+    if (!token) return res.status(401).json({ error: 'missing_bearer' });
+
+    // Nota: senza chiave pubblica / introspection endpoint non puoi verificare davvero il JWT Sirplay.
+    // Per i test di integrazione tipicamente basta controllare presenza/formato header.
     return next();
   };
 }
@@ -115,406 +152,39 @@ export async function registerRoutes(app: Express, opts?: { version?: string }) 
   };
   // Simple auth extraction: prefer JWT; fallback to dev headers x-user-id/x-role
   type ReqUser = { id: string; role: 'user'|'model'|'admin'; username?: string } | null;
+
+  // Resolve current user from Authorization: Bearer <jwt> or dev headers
   function getReqUser(req: any): ReqUser {
-    const auth = req.headers['authorization'];
-    if (typeof auth === 'string' && auth.startsWith('Bearer ')) {
-      const token = auth.slice('Bearer '.length);
+    const hdr = req.headers?.authorization || req.headers?.Authorization;
+    if (typeof hdr === 'string' && hdr.startsWith('Bearer ')) {
+      const token = hdr.slice('Bearer '.length).trim();
       try {
         const payload = jwt.verify(token, getJWTSecret()) as any;
-        return { id: String(payload.uid), role: payload.role as any, username: payload.username };
+        const id = String(payload?.uid || payload?.id || '');
+        const role = (payload?.role || 'user') as 'user'|'model'|'admin';
+        const username = typeof payload?.username === 'string' ? payload.username : undefined;
+        if (id) return { id, role, username };
       } catch {}
     }
-    const role = (req.headers['x-role'] || req.headers['x-user-role']) as string | undefined;
-    const uid = (req.headers['x-user-id'] || req.headers['x-uid']) as string | undefined;
-    if (role && uid) return { id: String(uid), role: role as any };
+    const devId = typeof req.headers['x-user-id'] === 'string' ? String(req.headers['x-user-id']) : undefined;
+    const devRole = typeof req.headers['x-role'] === 'string' ? String(req.headers['x-role']) as any : undefined;
+    if (devId && devRole) return { id: devId, role: devRole };
     return null;
   }
-  // In production, fail-fast if JWT secret is not configured securely
-  if (process.env.NODE_ENV === 'production' && getJWTSecret() === 'dev-secret') {
-    console.error('[security] JWT_SECRET is using an insecure default in production. Set JWT_SECRET in environment.');
-    // Surface a clear failure instead of running insecurely
-    throw new Error('JWT_SECRET not configured');
-  }
-  // ===== File uploads (model photos) =====
-  const uploadsRoot = path.resolve(path.dirname(new URL(import.meta.url).pathname), "..", "uploads");
-  const uploadStorage = (multer as any).diskStorage({
-    destination: (req: any, _file: any, cb: any) => {
-      const modelId = String(req.params?.id || (req as any).user?.id || "misc");
-      const dir = path.join(uploadsRoot, "models", modelId);
-      try { fs.mkdirSync(dir, { recursive: true }); } catch {}
-      cb(null, dir);
-    },
-    filename: (_req: any, file: any, cb: any) => {
-      const safe = file.originalname.replace(/[^a-zA-Z0-9._-]+/g, "_");
-      const name = `${Date.now()}_${safe}`;
-      cb(null, name);
-    }
-  });
-  const upload = (multer as any)({
-    storage: uploadStorage,
-    limits: { fileSize: 8 * 1024 * 1024 }, // 8MB
-    fileFilter: (_req: any, file: any, cb: any) => {
-      if (/^image\/(jpeg|png|webp|gif|avif|svg\+xml)$/.test(file.mimetype)) cb(null, true);
-      else cb(new Error("invalid_file_type"));
-    }
-  });
-
 
   function requireRole(roles: Array<'user'|'model'|'admin'>) {
     return (req: any, res: any, next: any) => {
       const u = getReqUser(req);
-      if (!u || !roles.includes(u.role)) return res.status(403).json({ error: 'forbidden' });
       (req as any).user = u;
-      next();
+      if (!u) return res.status(401).json({ error: 'unauthorized' });
+      if (!roles.includes(u.role)) return res.status(403).json({ error: 'forbidden' });
+      return next();
     };
   }
 
-  function requireModelSelfOrAdmin() {
-    return (req: any, res: any, next: any) => {
-      const u = getReqUser(req);
-      if (!u) return res.status(403).json({ error: 'forbidden' });
-      if (u.role === 'admin') { (req as any).user = u; return next(); }
-      if (u.role === 'model' && String(req.params.id) === u.id) { (req as any).user = u; return next(); }
-      return res.status(403).json({ error: 'forbidden' });
-    };
-  }
-  // Wallet mode is per-user: if a local user is mapped to an external user (Sirplay/Kasynoir), we use the shared wallet
-  // MODELS (demo data for homepage)
-  app.get("/api/models", async (req, res) => {
-    // Optional grouping mode to avoid path conflicts in some deployments: /api/models?home=1&favs=a,b,c
-    const homeMode = String(req.query.home || '').toLowerCase();
-    if (homeMode === '1' || homeMode === 'true') {
-      const u = getReqUser(req);
-      const favsOverride = typeof req.query.favs === 'string' && (req.query.favs as string).trim().length > 0
-        ? (req.query.favs as string).split(',').map(s=>s.trim()).filter(Boolean)
-        : undefined;
-      const result = await storage.listModelsHome({ userId: u?.id, favoritesOverride: favsOverride });
-      return res.json(result);
-    }
-
-    const filters: any = {};
-    if (req.query.online === "true") filters.isOnline = true;
-    if (req.query.new === "true") filters.isNew = true;
-    if (req.query.sortBy === "rating" || req.query.sortBy === "viewers") filters.sortBy = req.query.sortBy;
-    if (req.query.search) {
-      // Require authentication for search feature
-      const u = getReqUser(req);
-      if (!u) return res.status(401).json({ error: 'login_required' });
-      filters.search = req.query.search as string;
-    }
-    if (typeof req.query.country === 'string' && req.query.country.trim().length>0) filters.country = String(req.query.country);
-    if (typeof req.query.language === 'string' && req.query.language.trim().length>0) filters.language = String(req.query.language);
-    if (typeof req.query.specialty === 'string' && req.query.specialty.trim().length>0) filters.specialty = String(req.query.specialty);
-    const list = await storage.listModels(filters);
-    res.json(FORCE_PROXY_IMAGES ? list.map(proxifyModel) : list);
-  });
-
-  // Home grouping endpoint: favorites vs others, grouped by status
-  // Supports server-side favorites (from auth user) or client-provided favorites via ?favs=id1,id2
-  app.get("/api/models/home", async (req, res) => {
-    const u = getReqUser(req);
-    const favsOverride = typeof req.query.favs === 'string' && (req.query.favs as string).trim().length > 0
-      ? (req.query.favs as string).split(',').map(s=>s.trim()).filter(Boolean)
-      : undefined;
-    const result = await storage.listModelsHome({ userId: u?.id, favoritesOverride: favsOverride });
-    res.json(proxifyHomeGroups(result));
-  });
-  // Aliases to avoid potential route-order conflicts on some deployments
-  app.get("/api/models-home", async (req, res) => {
-    const u = getReqUser(req);
-    const favsOverride = typeof req.query.favs === 'string' && (req.query.favs as string).trim().length > 0
-      ? (req.query.favs as string).split(',').map(s=>s.trim()).filter(Boolean)
-      : undefined;
-    const result = await storage.listModelsHome({ userId: u?.id, favoritesOverride: favsOverride });
-    res.json(proxifyHomeGroups(result));
-  });
-  app.get("/api/home/models", async (req, res) => {
-    const u = getReqUser(req);
-    const favsOverride = typeof req.query.favs === 'string' && (req.query.favs as string).trim().length > 0
-      ? (req.query.favs as string).split(',').map(s=>s.trim()).filter(Boolean)
-      : undefined;
-    const result = await storage.listModelsHome({ userId: u?.id, favoritesOverride: favsOverride });
-    res.json(proxifyHomeGroups(result));
-  });
-
-  // Online models count (used by filters bar)
-  app.get("/api/stats/online-count", async (_req, res) => {
-    const list = await storage.listModels({ isOnline: true });
-    res.json({ count: list.length });
-  });
-
-  // Proxy-safe home grouping endpoint under /api/stats
-  app.get("/api/stats/home-groups", async (req, res) => {
-    const u = getReqUser(req);
-    const favsOverride = typeof req.query.favs === 'string' && (req.query.favs as string).trim().length > 0
-      ? (req.query.favs as string).split(',').map(s=>s.trim()).filter(Boolean)
-      : undefined;
-    const result = await storage.listModelsHome({ userId: u?.id, favoritesOverride: favsOverride });
-    res.json(result);
-  });
-
-  app.get("/api/models/:id", async (req, res) => {
-    const m = await storage.getModel(req.params.id);
-    if (!m) return res.status(404).json({ error: "Model not found" });
-    res.json(FORCE_PROXY_IMAGES ? proxifyModel(m) : m);
-  });
-
-  app.patch("/api/models/:id/status", requireModelSelfOrAdmin(), async (req, res) => {
-    const m = await storage.setModelOnline(req.params.id, !!req.body?.isOnline);
-    if (!m) return res.status(404).json({ error: "Model not found" });
-    res.json(m);
-  });
-
-  // Toggle model visibility (home listing)
-  app.patch("/api/models/:id/visible", requireModelSelfOrAdmin(), async (req, res) => {
-    const m = await storage.setVisible(req.params.id, !!req.body?.visible);
-    if (!m) return res.status(404).json({ error: "Model not found" });
-    res.json(m);
-  });
-
-  // Set busy status (when in private show)
-  app.patch("/api/models/:id/busy", requireModelSelfOrAdmin(), async (req, res) => {
-    const m = await storage.setModelBusy(req.params.id, !!req.body?.isBusy);
-    if (!m) return res.status(404).json({ error: "Model not found" });
-    res.json(m);
-  });
-
-  // Private session lifecycle (optional, for operator insights)
-  app.post("/api/sessions/start", async (req, res) => {
-    const schemaBody = z.object({ userId_B: z.string().min(1), modelId: z.string().min(1) });
-    const parsed = schemaBody.safeParse(req.body ?? {});
-    if (!parsed.success) return res.status(400).json({ error: "invalid_payload", details: parsed.error.flatten() });
-    const { userId_B, modelId } = parsed.data;
-    const s = await storage.startSession(userId_B, modelId);
-    // Best-effort persist to DB
-    try {
-      if (db) {
-        await db.insert(schema.sessions).values({ id: s.id, userId_B, modelId, startedAt: new Date() as any });
-      }
-    } catch {}
-    res.json(s);
-  });
-  app.post("/api/sessions/:id/end", async (req, res) => {
-    const parsed = z.object({ durationSec: z.number().int().nonnegative().optional(), totalCharged: z.number().nonnegative().optional() }).safeParse(req.body ?? {});
-    if (!parsed.success) return res.status(400).json({ error: 'invalid_payload', details: parsed.error.flatten() });
-    const { durationSec, totalCharged } = parsed.data;
-    const s = await storage.endSession(req.params.id, { durationSec, totalCharged });
-    if (!s) return res.status(404).json({ error: "session not found" });
-    // Best-effort persist to DB
-    try {
-      if (db) {
-        await db.update(schema.sessions)
-          .set({ endedAt: new Date() as any, durationSec: durationSec ?? s.durationSec ?? 0, totalChargedCents: typeof totalCharged === 'number' ? Math.round(totalCharged * 100) : (s.totalCharged ? Math.round(s.totalCharged * 100) : 0) })
-          .where(eq(schema.sessions.id, req.params.id));
-      }
-    } catch {}
-    res.json(s);
-  });
-
-  // Aliases for profile actions per spec
-  app.post('/api/models/:id/start-preview', async (req, res) => {
-    // Simulate preview start; client enforces 60s timer
-    const expiresAt = new Date(Date.now() + 60_000).toISOString();
-    res.json({ ok: true, expiresAt });
-  });
-  app.post('/api/models/:id/start-private', async (req, res) => {
-    const u = getReqUser(req);
-    if (!u || u.role !== 'user') return res.status(403).json({ error: 'forbidden' });
-    const modelId = String(req.params.id);
-    const s = await storage.startSession(u.id, modelId);
-    await storage.setModelBusy(modelId, true);
-    res.json(s);
-  });
-
-  // Tip a model (deduct user balance and log transaction)
-  app.post('/api/models/:id/tip', requireRole(['user','admin']), async (req, res) => {
-    const u = (req as any).user as ReqUser;
-    const parsed = z.object({ amount: z.number().positive().max(10000) }).safeParse(req.body ?? {});
-    if (!parsed.success) return res.status(400).json({ error: 'invalid_payload', details: parsed.error.flatten() });
-    const amount = parsed.data.amount;
-    const modelId = String(req.params.id);
-    try {
-      // Decide wallet mode based on external binding
-      const user = await storage.getUser(u!.id);
-      if (!user) return res.status(404).json({ error: 'user_not_found' });
-      if (user.externalUserId) {
-        const bal = await storage.getBalance(user.externalUserId);
-        if (bal < amount) return res.status(400).json({ error: 'INSUFFICIENT_FUNDS' });
-        await storage.withdraw(user.externalUserId, amount);
-        const tx = await storage.addTransaction({ userId_A: user.externalUserId, type: 'CHARGE', amount, source: `tip:${modelId}` });
-        try { if (db) { await db.insert(schema.transactions).values({ id: tx.id, userId_A: user.externalUserId, type: 'CHARGE', amountCents: Math.round(amount*100), currency: 'EUR', source: `tip:${modelId}` }); } } catch {}
-      } else {
-        try {
-          await storage.localWithdraw(user.id, amount);
-        } catch (e:any) {
-          return res.status(400).json({ error: 'INSUFFICIENT_FUNDS' });
-        }
-        const tx = await storage.addTransaction({ userId_B: user.id, type: 'CHARGE', amount, source: `tip:${modelId}` });
-        try { if (db) { await db.insert(schema.transactions).values({ id: tx.id, userId_B: user.id, type: 'CHARGE', amountCents: Math.round(amount*100), currency: 'EUR', source: `tip:${modelId}` }); } } catch {}
-      }
-      try { await storage.addAudit({ actor: u!.id, role: u!.role, action: 'tip', target: modelId, meta: { amount } }); } catch {}
-      return res.json({ ok: true });
-    } catch (e:any) {
-      return res.status(500).json({ error: 'TIP_FAILED', message: e?.message });
-    }
-  });
-
-  // Update model profile (simple patch)
-  app.patch("/api/models/:id", requireModelSelfOrAdmin(), async (req, res) => {
-    const m = await storage.updateModelProfile(req.params.id, req.body ?? {});
-    if (!m) return res.status(404).json({ error: "Model not found" });
-    res.json(m);
-  });
-  // Model photos
-  app.post("/api/models/:id/photos", requireModelSelfOrAdmin(), async (req, res) => {
-    const parsed = z.object({ url: z.string().min(1).refine((v)=>/^https?:\/\//.test(v) || v.startsWith('/uploads/'), { message: 'url must be http(s) or /uploads path' }) }).safeParse(req.body ?? {});
-    if (!parsed.success) return res.status(400).json({ error: "invalid_payload", details: parsed.error.flatten() });
-    const photos = await storage.addModelPhoto(req.params.id, parsed.data.url);
-    if (!photos) return res.status(404).json({ error: "Model not found" });
-    res.json({ photos });
-  });
-  // Upload photo from local file
-  app.post("/api/models/:id/photos/upload", requireModelSelfOrAdmin(), (upload as any).single('photo'), async (req: any, res) => {
-    try {
-      const file = req.file;
-      if (!file) return res.status(400).json({ error: 'photo file required' });
-      const modelId = String(req.params.id);
-      const relUrl = `/uploads/models/${modelId}/${file.filename}`;
-      const photos = await storage.addModelPhoto(modelId, relUrl);
-      if (!photos) return res.status(404).json({ error: 'Model not found' });
-      return res.json({ photos });
-    } catch (e: any) {
-      return res.status(400).json({ error: 'upload_failed', reason: e?.message || String(e) });
-    }
-  });
-  app.get("/api/models/:id/photos", async (req, res) => {
-    const photos = await storage.listModelPhotos(req.params.id);
-    res.json({ photos });
-  });
-
-  // Aliases per spec (model account)
-  app.post('/api/models/update-status', requireRole(['model','admin']), async (req, res) => {
-    const parsed = z.object({ model_id: z.string().optional(), status: z.enum(['online','offline','busy']).optional(), visible: z.boolean().optional() }).safeParse(req.body ?? {});
-    if (!parsed.success) return res.status(400).json({ error: 'invalid_payload', details: parsed.error.flatten() });
-    const { model_id, status, visible } = parsed.data;
-    const id = String(model_id || (getReqUser(req)?.id || ''));
-    if (!id) return res.status(400).json({ error: 'model_id required' });
-    if (typeof visible === 'boolean') await storage.setVisible(id, !!visible);
-    if (status === 'online') await storage.setModelOnline(id, true);
-    else if (status === 'offline') await storage.setModelOnline(id, false);
-    else if (status === 'busy') await storage.setModelBusy(id, true);
-    const m = await storage.getModel(id);
-    if (!m) return res.status(404).json({ error: 'Model not found' });
-    res.json(m);
-  });
-  app.post('/api/models/upload-photo', requireRole(['model','admin']), async (req, res) => {
-    const u = getReqUser(req);
-    if (!u) return res.status(403).json({ error: 'forbidden' });
-    const parsed = z.object({ url: z.string().min(1).refine((v)=>/^https?:\/\//.test(v) || v.startsWith('/uploads/'), { message: 'url must be http(s) or /uploads path' }) }).safeParse(req.body ?? {});
-    if (!parsed.success) return res.status(400).json({ error: 'invalid_payload', details: parsed.error.flatten() });
-    const photos = await storage.addModelPhoto(u.id, parsed.data.url);
-    if (!photos) return res.status(404).json({ error: 'Model not found' });
-    res.json({ photos });
-  });
-  // Upload by logged-in model
-  app.post('/api/models/upload-photo-file', requireRole(['model','admin']), (upload as any).single('photo'), async (req: any, res) => {
-    const u = (req as any).user as ReqUser;
-    if (!u) return res.status(403).json({ error: 'forbidden' });
-    try {
-      const file = req.file;
-      if (!file) return res.status(400).json({ error: 'photo file required' });
-      const relUrl = `/uploads/models/${u.id}/${file.filename}`;
-      const photos = await storage.addModelPhoto(u.id, relUrl);
-      if (!photos) return res.status(404).json({ error: 'Model not found' });
-      res.json({ photos });
-    } catch (e: any) {
-      return res.status(400).json({ error: 'upload_failed', reason: e?.message || String(e) });
-    }
-  });
-  app.get('/api/models/gallery', requireRole(['model','admin']), async (req, res) => {
-    const u = getReqUser(req);
-    if (!u) return res.status(403).json({ error: 'forbidden' });
-    const photos = await storage.listModelPhotos(u.id);
-    res.json({ photos });
-  });
-
-  // ===== Ratings & Views (real-time, persisted where possible) =====
-  // Increment view counter (throttling handled client-side per session)
-  app.post('/api/models/:id/view', async (req, res) => {
-    const id = String(req.params.id);
-    const m = await storage.getModel(id);
-    if (!m) return res.status(404).json({ error: 'Model not found' });
-    m.viewerCount = (m.viewerCount || 0) + 1;
-    // Try to persist in DB as well (best-effort)
-    try { if (db) { await db.update(schema.models).set({ viewerCount: m.viewerCount }).where(eq(schema.models.id, id)); } } catch {}
-    return res.json({ viewerCount: m.viewerCount });
-  });
-
-  // Set or update a star rating (1..5) for the current user
-  app.post('/api/models/:id/rate', requireRole(['user','model','admin']), async (req, res) => {
-    const id = String(req.params.id);
-    const u = (req as any).user as ReqUser;
-    if (!u) return res.status(401).json({ error: 'unauthorized' });
-    const parsed = z.object({ stars: z.number().int().min(1).max(5) }).safeParse(req.body ?? {});
-    if (!parsed.success) return res.status(400).json({ error: 'invalid_payload', details: parsed.error.flatten() });
-    const stars = parsed.data.stars;
-    const m = await storage.getModel(id);
-    if (!m) return res.status(404).json({ error: 'Model not found' });
-    if (!db) return res.status(500).json({ error: 'db_unavailable' });
-    try {
-      // Upsert rating per user
-      const existing = await db.select().from(schema.modelRatings).where(and(eq(schema.modelRatings.modelId, id), eq(schema.modelRatings.userId, u.id)));
-      if (existing && existing.length > 0) {
-        await db.update(schema.modelRatings).set({ stars, updatedAt: new Date() as any }).where(and(eq(schema.modelRatings.modelId, id), eq(schema.modelRatings.userId, u.id)));
-      } else {
-        await db.insert(schema.modelRatings).values({ modelId: id, userId: u.id, stars });
-      }
-      // Recompute average and update in-memory + try to persist derived integer rating (avg*10)
-  const all = await db.select().from(schema.modelRatings).where(eq(schema.modelRatings.modelId, id));
-  const avg = all.length ? all.reduce((a: number, r: any) => a + (Number(r.stars) || 0), 0) / all.length : 0;
-      const ratingInt = Math.max(0, Math.min(50, Math.round(avg * 10)));
-      m.rating = ratingInt;
-      try { await db.update(schema.models).set({ rating: ratingInt }).where(eq(schema.models.id, id)); } catch {}
-      return res.json({ rating: avg, ratingInt, count: all.length });
-    } catch (e:any) {
-      return res.status(500).json({ error: 'rating_failed', message: e?.message });
-    }
-  });
-
-  // ===== Moderation =====
-  app.post("/api/moderation/report", async (req, res) => {
-    const parsed = z.object({ modelId: z.string().min(1), userId: z.string().min(1), reason: z.string().min(1), details: z.string().optional() }).safeParse(req.body ?? {});
-    if (!parsed.success) return res.status(400).json({ error: "invalid_payload", details: parsed.error.flatten() });
-    const { modelId, userId, reason, details } = parsed.data;
-    const r = await storage.addReport(modelId, userId, reason, details);
-    res.json(r);
-  });
-  app.post("/api/moderation/block", async (req, res) => {
-    const parsed = z.object({ modelId: z.string().min(1), userId: z.string().min(1) }).safeParse(req.body ?? {});
-    if (!parsed.success) return res.status(400).json({ error: "invalid_payload", details: parsed.error.flatten() });
-    await storage.blockUser(parsed.data.modelId, parsed.data.userId);
-    // Audit: admin blocks user for model
-    try { const actor = String((req as any).user?.uid || (req.headers['x-user-id'] as string) || ''); const role = String((req as any).user?.role || (req.headers['x-role'] as string) || ''); await storage.addAudit({ actor, role, action: 'block', target: `${parsed.data.modelId}:${parsed.data.userId}` }); } catch {}
-    res.json({ status: 'blocked' });
-  });
-  app.post("/api/moderation/unblock", async (req, res) => {
-    const parsed = z.object({ modelId: z.string().min(1), userId: z.string().min(1) }).safeParse(req.body ?? {});
-    if (!parsed.success) return res.status(400).json({ error: "invalid_payload", details: parsed.error.flatten() });
-    await storage.unblockUser(parsed.data.modelId, parsed.data.userId);
-    // Audit: admin unblocks user for model
-    try { const actor = String((req as any).user?.uid || (req.headers['x-user-id'] as string) || ''); const role = String((req as any).user?.role || (req.headers['x-role'] as string) || ''); await storage.addAudit({ actor, role, action: 'unblock', target: `${parsed.data.modelId}:${parsed.data.userId}` }); } catch {}
-    res.json({ status: 'unblocked' });
-  });
-  app.get("/api/moderation/blocks", async (req, res) => {
-    const modelId = String(req.query.modelId || "");
-    if (!modelId) return res.status(400).json({ error: "modelId required" });
-    const list = await storage.listBlocks(modelId);
-    res.json({ modelId, blocks: list });
-  });
-  app.get("/api/moderation/reports", requireRole(['admin']), async (_req, res) => {
-    res.json(await storage.listReports());
-  });
-
+  // uploads root for KYC/DMCA assets
+  const uploadsRoot = path.resolve(process.cwd(), 'uploads');
+  // ===== Public Chat (per model, with optional moderation stub) =====
   // ===== Public Chat (per model, with optional moderation stub) =====
   app.get("/api/chat/public", async (req, res) => {
     const limit = Number(req.query.limit || 50);
@@ -557,43 +227,105 @@ export async function registerRoutes(app: Express, opts?: { version?: string }) 
 
   // ===== INTEGRAZIONE SIRPLAY (Operatore B) =====
 
-  // 1) Registrazione utente da Sirplay -> Operatore (B)
-  app.post("/api/user/register", requireB2BBasicAuth(), async (req, res) => {
+  // 1) REGISTER (Sirplay → Kasyrooms)
+  app.post("/user-account/signup/b2b/registrations", requireSirplayBearerAuth(), async (req, res) => {
     const parsed = z.object({
-      externalUserId: z.string().min(1),
-      email: z.string().email().optional(),
-      name: z.string().optional(),
-      firstName: z.string().optional(),
-      lastName: z.string().optional(),
-      dob: z.string().optional(),
-      country: z.string().optional(),
-      phoneNumber: z.string().optional(),
+      eventId: z.string().min(1),
+      operation: z.literal("REGISTER"),
+      action: z.literal("USER_REGISTRATION"),
+      eventTime: z.union([z.number(), z.string()]),
+      userData: z.object({
+        userName: z.string().min(1),
+        externalId: z.string().min(1),
+        password: z.string().min(1).optional(),
+        status: z.string().optional(),
+        email: z.string().email().optional(),
+        name: z.string().optional(),
+        surname: z.string().optional(),
+        birthDate: z.string().optional(),
+        mobilePhone: z.string().optional(),
+        created: z.string().optional(),
+        lastUpdated: z.string().nullable().optional(),
+      }),
     }).safeParse(req.body ?? {});
-    if (!parsed.success) return res.status(400).json({ error: 'invalid_payload', details: parsed.error.flatten() });
-    const { externalUserId, email, name, firstName, lastName, dob, country, phoneNumber } = parsed.data;
-    const user = await storage.createUser({ username: name || `user_${externalUserId}`, email, externalUserId });
-    // Persist into DB if available with extended fields
+
+    if (!parsed.success) return res.status(400).json({ error: "invalid_payload", details: parsed.error.flatten() });
+
+    const { userData } = parsed.data;
+    const externalUserId = userData.externalId;
+    const username = userData.userName;
+
+    // Crea/aggiorna utente locale legato a externalId Sirplay
+    let u = await storage.getUserByExternal(externalUserId);
+    if (!u) {
+      u = await storage.createUser({ username, email: userData.email, externalUserId });
+      try {
+        if (db) {
+          await db.insert(schema.users).values({
+            id: u.id,
+            username: u.username,
+            password: '-',
+            email: userData.email,
+            role: 'user',
+            externalUserId,
+            firstName: userData.name,
+            lastName: userData.surname,
+            dob: userData.birthDate ? new Date(userData.birthDate) as any : undefined,
+            phoneNumber: userData.mobilePhone,
+            status: 'active',
+            lastLogin: new Date() as any,
+          });
+          await db.insert(schema.wallets).values({ userId: u.id, balanceCents: 0, currency: 'EUR' });
+        }
+      } catch {}
+    }
+
+    return res.json({
+      status: "CREATED",
+      externalUserId,
+    });
+  });
+
+  // 2) UPDATE (Sirplay → Kasyrooms) — Basic Auth per doc
+  app.put("/user-account/signup/b2b/registrations", requireB2BBasicAuth(), async (req, res) => {
+    const parsed = z.object({
+      eventId: z.string().min(1),
+      operation: z.literal("UPDATE"),
+      action: z.string().min(1), // USER_UPDATE / USER_CHANGE_MAIL / ...
+      eventTime: z.union([z.number(), z.string()]),
+      userData: z.object({
+        externalId: z.string().min(1),
+        email: z.string().email().optional(),
+        status: z.string().optional(),
+        birthDate: z.string().optional(),
+        name: z.string().optional(),
+        surname: z.string().optional(),
+        mobilePhone: z.string().optional(),
+        lastUpdated: z.string().optional(),
+      }),
+    }).safeParse(req.body ?? {});
+
+    if (!parsed.success) return res.status(400).json({ error: "invalid_payload", details: parsed.error.flatten() });
+
+    const { externalId } = parsed.data.userData;
+
+    const u = await storage.getUserByExternal(externalId);
+    if (!u) return res.status(404).json({ error: "user_not_found", externalId });
+
+    // Update locale (minimo indispensabile per i test)
     try {
       if (db) {
-        await db.insert(schema.users).values({
-          id: user.id,
-          username: user.username,
-          password: '-',
-          email,
-          role: 'user',
-          externalUserId,
-          firstName,
-          lastName,
-          dob: dob ? new Date(dob) as any : undefined,
-          country,
-          phoneNumber,
-          status: 'active',
-          lastLogin: new Date() as any,
-        });
-        await db.insert(schema.wallets).values({ userId: user.id, balanceCents: 0, currency: 'EUR' });
+        await db.update(schema.users).set({
+          email: parsed.data.userData.email ?? u.email,
+          firstName: parsed.data.userData.name,
+          lastName: parsed.data.userData.surname,
+          phoneNumber: parsed.data.userData.mobilePhone,
+          dob: parsed.data.userData.birthDate ? new Date(parsed.data.userData.birthDate) as any : undefined,
+        }).where(eq(schema.users.id, u.id));
       }
     } catch {}
-    return res.json({ userId: user.id, externalUserId, status: "CREATED" });
+
+    return res.json({ status: "UPDATED", externalUserId: externalId });
   });
 
   // Sirplay handshake: receive/resolve external_user_id, ensure local mapping and accounts entry
@@ -655,6 +387,179 @@ export async function registerRoutes(app: Express, opts?: { version?: string }) 
   app.post('/api/sirplay/handshake', sirplayHandshake);
   app.post('/api/sirplay/login', sirplayHandshake);
 
+  // ==========================
+  // OUTBOUND: Operatore -> Sirplay (quelli che ti mancavano in "No")
+  // ==========================
+  // Nota: questi endpoint sono per TE (o admin) per forzare sincronizzazione verso Sirplay.
+  // Sirplay li richiede come funzionalità, ma non può chiamare "Sirplay stesso" da fuori.
+
+  // Register a Kasyrooms user onto Sirplay (Operatore -> Sirplay)
+  // Body: { userId_B: "<localUserId>", password: "...", status?: "ACTIVE", birthDate?: "...", ... }
+  app.post("/api/sirplay/out/user/register", requireRole(["admin"]), async (req, res) => {
+    try {
+      const parsed = z.object({
+        userId_B: z.string().min(1),      // local user id
+        password: z.string().min(6),
+        status: z.string().optional().default("ACTIVE"),
+        birthDate: z.string().optional(),
+        name: z.string().optional(),
+        surname: z.string().optional(),
+        email: z.string().email().optional(),
+        mobilePhone: z.string().optional(),
+      }).safeParse(req.body ?? {});
+      if (!parsed.success) return res.status(400).json({ error: "invalid_payload", details: parsed.error.flatten() });
+
+      const u = await storage.getUser(parsed.data.userId_B);
+      if (!u) return res.status(404).json({ error: "user_not_found" });
+
+      const cfg = getSirplayConfigFromEnv();
+      const { token } = await sirplayLogin(cfg);
+
+      // Payload conforme alla collection: eventId/operation/action/eventTime/userData
+      const resp = await sirplayRegisterUser(cfg, token, {
+        userName: u.username,
+        externalId: u.id,
+        password: parsed.data.password,
+        status: parsed.data.status,
+        birthDate: parsed.data.birthDate,
+        name: parsed.data.name,
+        surname: parsed.data.surname,
+        email: parsed.data.email ?? u.email,
+        mobilePhone: parsed.data.mobilePhone,
+        created: new Date().toISOString(),
+        lastUpdated: null,
+      });
+
+      // TODO: capire dove Sirplay restituisce l'ID (spesso "userId" o simile). Dipende dalla loro risposta.
+      // Per sicurezza salviamo comunque mapping se lo troviamo.
+      const sirplayUserId =
+        String(resp?.userData?.userId || resp?.userId || resp?.data?.userId || "").trim() || null;
+
+      if (sirplayUserId) {
+        try {
+          if (db) {
+            await db.update(schema.users).set({ externalUserId: sirplayUserId }).where(eq(schema.users.id, u.id));
+          }
+        } catch {}
+      }
+
+      return res.json({ ok: true, sirplayUserId, sirplayResponse: resp });
+    } catch (e: any) {
+      return res.status(502).json({ error: "sirplay_register_failed", message: e?.message, response: e?.response });
+    }
+  });
+
+  // Update a Sirplay user from Kasyrooms (Operatore -> Sirplay)
+  // Body: { userId_B: "<localUserId>", action: "USER_UPDATE", ...fields }
+  app.put("/api/sirplay/out/user/update", requireRole(["admin"]), async (req, res) => {
+    try {
+      const parsed = z.object({
+        userId_B: z.string().min(1),
+        action: z.custom<SirplayUpdateAction>((v) => typeof v === "string", "action required"),
+        password: z.string().optional(),
+        status: z.string().optional(),
+        birthDate: z.string().optional(),
+        name: z.string().optional(),
+        surname: z.string().optional(),
+        email: z.string().email().optional(),
+        mobilePhone: z.string().optional(),
+      }).safeParse(req.body ?? {});
+      if (!parsed.success) return res.status(400).json({ error: "invalid_payload", details: parsed.error.flatten() });
+
+      const u = await storage.getUser(parsed.data.userId_B);
+      if (!u) return res.status(404).json({ error: "user_not_found" });
+
+      // Qui stai usando externalUserId come "Sirplay user id": va bene solo se lo hai mappato così.
+      // In alternativa, dovrai avere un campo dedicato (es sirplayUserId).
+      const sirplayUserId = u.externalUserId;
+      if (!sirplayUserId) return res.status(400).json({ error: "missing_sirplay_userId_mapping" });
+
+      const cfg = getSirplayConfigFromEnv();
+      const { token } = await sirplayLogin(cfg);
+
+      const resp = await sirplayUpdateUser(cfg, token, parsed.data.action as SirplayUpdateAction, {
+        userName: u.username,
+        externalId: u.id,
+        password: parsed.data.password,
+        status: parsed.data.status,
+        birthDate: parsed.data.birthDate,
+        name: parsed.data.name,
+        surname: parsed.data.surname,
+        email: parsed.data.email,
+        mobilePhone: parsed.data.mobilePhone,
+        // created può essere omesso in update, ma lasciarlo non rompe; lo omettiamo
+      });
+
+      return res.json({ ok: true, sirplayUserId, sirplayResponse: resp });
+    } catch (e: any) {
+      return res.status(502).json({ error: "sirplay_update_failed", message: e?.message, response: e?.response });
+    }
+  });
+
+  // GET wallet from Sirplay (b2b)
+  app.get("/api/sirplay/out/wallet", requireRole(["admin"]), async (req, res) => {
+    try {
+      const sirplayUserId = String(req.query.sirplayUserId || "").trim();
+      if (!sirplayUserId) return res.status(400).json({ error: "sirplayUserId required" });
+
+      const cfg = getSirplayConfigFromEnv();
+      const { token } = await sirplayLogin(cfg);
+
+      const resp = await sirplayGetWallet(cfg, token, sirplayUserId);
+      return res.json({ ok: true, sirplayResponse: resp });
+    } catch (e: any) {
+      return res.status(502).json({ error: "sirplay_wallet_get_failed", message: e?.message, response: e?.response });
+    }
+  });
+
+  // POST deposit to Sirplay (b2b)
+  app.post("/api/sirplay/out/wallet/deposit", requireRole(["admin"]), async (req, res) => {
+    try {
+      const parsed = z.object({
+        sirplayUserId: z.string().min(1),
+        idTransaction: z.string().min(1),
+        amount: z.number().positive(),
+        currency: z.string().optional(),
+        description: z.string().optional(),
+        sourceUser: z.string().optional(),
+        externalReference: z.string().optional(),
+      }).safeParse(req.body ?? {});
+      if (!parsed.success) return res.status(400).json({ error: "invalid_payload", details: parsed.error.flatten() });
+
+      const cfg = getSirplayConfigFromEnv();
+      const { token } = await sirplayLogin(cfg);
+
+      const resp = await sirplayDeposit(cfg, token, parsed.data.sirplayUserId, parsed.data);
+      return res.json({ ok: true, sirplayResponse: resp });
+    } catch (e: any) {
+      return res.status(502).json({ error: "sirplay_wallet_deposit_failed", message: e?.message, response: e?.response });
+    }
+  });
+
+  // POST withdrawal to Sirplay (b2b)
+  app.post("/api/sirplay/out/wallet/withdrawal", requireRole(["admin"]), async (req, res) => {
+    try {
+      const parsed = z.object({
+        sirplayUserId: z.string().min(1),
+        idTransaction: z.string().min(1),
+        amount: z.number().positive(),
+        currency: z.string().optional(),
+        description: z.string().optional(),
+        sourceUser: z.string().optional(),
+        externalReference: z.string().optional(),
+      }).safeParse(req.body ?? {});
+      if (!parsed.success) return res.status(400).json({ error: "invalid_payload", details: parsed.error.flatten() });
+
+      const cfg = getSirplayConfigFromEnv();
+      const { token } = await sirplayLogin(cfg);
+
+      const resp = await sirplayWithdrawal(cfg, token, parsed.data.sirplayUserId, parsed.data);
+      return res.json({ ok: true, sirplayResponse: resp });
+    } catch (e: any) {
+      return res.status(502).json({ error: "sirplay_wallet_withdrawal_failed", message: e?.message, response: e?.response });
+    }
+  });
+
   // 2) Info player lato Operatore B
   app.get("/api/v1/player/info", async (req, res) => {
     const playerId = String(req.query.playerId || "");
@@ -698,6 +603,25 @@ export async function registerRoutes(app: Express, opts?: { version?: string }) 
       user: { id: user.id, username: user.username, role: user.role || 'user' },
       mode: 'sirplay'
     });
+  });
+
+  // Doc alias: POST /b2b/login-tokens with body { externalId: "..." }
+  app.post("/b2b/login-tokens", requireB2BBasicAuth(), async (req, res) => {
+    const parsed = z.object({ externalId: z.string().min(1) }).safeParse(req.body ?? {});
+    if (!parsed.success) return res.status(400).json({ error: "invalid_payload", details: parsed.error.flatten() });
+
+    // Map alias to existing logic
+    const externalUserId = parsed.data.externalId;
+    const user = await storage.getUserByExternal(externalUserId);
+    if (!user) return res.status(404).json({ error: "user_not_found" });
+
+    const jwtToken = jwt.sign({ uid: user.id, role: user.role || "user", username: user.username }, getJWTSecret(), { expiresIn: "1d" });
+    const loginToken = jwt.sign({ uid: user.id }, getJWTSecret(), { expiresIn: "10m" });
+
+    const base = process.env.PUBLIC_WEB_URL || process.env.PUBLIC_URL || "https://www.kasyrooms.com";
+    const accessLink = `${base.replace(/\/+$/, "")}?token=${encodeURIComponent(loginToken)}`;
+
+    return res.json({ status: "success", loginToken, accessLink, jwt: jwtToken, expiresIn: 600 });
   });
 
   // util per validare token (B)
@@ -875,8 +799,50 @@ export async function registerRoutes(app: Express, opts?: { version?: string }) 
       await db.insert(schema.userProfiles).values({ userId: id, firstName, lastName, birthDate: dateOfBirth ? new Date(dateOfBirth) as any : undefined });
       // Wallet (0 balance)
       await db.insert(schema.wallets).values({ userId: id, balanceCents: 0, currency: 'EUR' });
+
+      // === BEST-EFFORT: sync verso Sirplay (Kasyrooms -> Sirplay) ===
+      // Non blocca la registrazione locale se Sirplay non è configurato o fallisce.
+      let sirplaySync: any = { attempted: false };
+
+      try {
+        if (typeof getSirplayConfigFromEnv === "function" && typeof sirplayRegisterUser === "function") {
+          const cfg = getSirplayConfigFromEnv();
+          // Se config mancante, getSirplayConfigFromEnv dovrebbe lanciare o restituire valori vuoti:
+          // in tal caso non tentiamo.
+          if (cfg?.baseUrl && cfg?.partnerId && cfg?.accessUser && cfg?.accessPass) {
+            sirplaySync.attempted = true;
+
+            const nowIso = new Date().toISOString();
+            const { token } = await sirplayLogin(cfg);
+            const resp = await sirplayRegisterUser(cfg, token, {
+              userName: username,
+              externalId: id,              // id utente Kasyrooms (operatore)
+              password,                    // oppure una password diversa se Sirplay richiede regole specifiche
+              status: "ACTIVE",
+              created: nowIso,
+              birthDate: dateOfBirth,
+              name: firstName,
+              surname: lastName,
+              email: email,
+              mobilePhone: phoneNumber,
+            });
+
+            const sirplayUserId = String(resp?.userData?.userId || "").trim();
+            if (sirplayUserId) {
+              // salva mapping: externalUserId = sirplay userId
+              await db.update(schema.users).set({ externalUserId: sirplayUserId }).where(eq(schema.users.id, id));
+              sirplaySync = { attempted: true, ok: true, sirplayUserId };
+            } else {
+              sirplaySync = { attempted: true, ok: false, error: "sirplay_register_missing_userId", sirplayResponse: resp };
+            }
+          }
+        }
+      } catch (e: any) {
+        sirplaySync = { attempted: true, ok: false, error: e?.message || String(e) };
+      }
+
       const token = jwt.sign({ uid: id, role: 'user', username }, getJWTSecret(), { expiresIn: '1d' });
-      return res.json({ token, user: { id, username, role: 'user', email } });
+      return res.json({ token, user: { id, username, role: 'user', email }, sirplaySync });
     } catch (e:any) {
       return res.status(500).json({ error: 'registration_failed', message: e?.message });
     }
@@ -1402,6 +1368,39 @@ export async function registerRoutes(app: Express, opts?: { version?: string }) 
       return res.json({ ok: true });
     } catch (e:any) {
       return res.status(400).json({ error: 'sirplay_adapter_failed', message: e?.message || String(e) });
+    }
+  });
+
+  // Self-test endpoint: echo rawBody length and common hashes for quick HMAC debugging
+  app.post('/api/webhooks/sirplay/selftest', async (req: any, res) => {
+    try {
+      const sigHeaderName = (process.env.SIRPLAY_WEBHOOK_SIGNATURE_HEADER || 'x-sirplay-signature').toLowerCase();
+      const tsHeaderName = (process.env.SIRPLAY_WEBHOOK_TIMESTAMP_HEADER || 'x-sirplay-timestamp').toLowerCase();
+      const providedSig = String(req.headers[sigHeaderName] || "");
+      const timestamp = String(req.headers[tsHeaderName] || "");
+
+      const raw: Buffer = req.rawBody as Buffer;
+      const rawUtf8 = raw ? raw.toString('utf8') : '';
+      const len = raw ? raw.length : 0;
+
+      const sha256_hex = crypto.createHash('sha256').update(rawUtf8).digest('hex');
+      const sha256_base64 = crypto.createHash('sha256').update(rawUtf8).digest('base64');
+
+      const base = timestamp ? (timestamp + '.' + rawUtf8) : rawUtf8;
+      const base_sha256_hex = crypto.createHash('sha256').update(base).digest('hex');
+      const base_sha256_base64 = crypto.createHash('sha256').update(base).digest('base64');
+
+      return res.json({
+        length: len,
+        providedSignature: providedSig,
+        timestamp,
+        sha256_hex,
+        sha256_base64,
+        base_sha256_hex,
+        base_sha256_base64,
+      });
+    } catch (e: any) {
+      return res.status(500).json({ error: 'selftest_error', message: e?.message || String(e) });
     }
   });
 

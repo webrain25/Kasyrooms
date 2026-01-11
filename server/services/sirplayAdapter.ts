@@ -1,6 +1,8 @@
 import { and, eq, sql } from "drizzle-orm";
 import { db } from "../db";
 import { accounts } from "@shared/schema";
+import { createUserOnSirplay, updateUserOnSirplay } from "./sirplayUsers";
+export type { SirplayOutboundUser } from "./sirplayUsers";
 
 type CreateOrGetAccountInput = {
   externalUserId: string;
@@ -123,4 +125,13 @@ export async function recordWalletTransactionIdempotent(params: {
     if (err?.code === "23505") return;
     throw err;
   }
+}
+
+// Outbound to Sirplay: user create/update via adapter facade
+export async function outboundCreateUserOnSirplay(user: import("./sirplayUsers").SirplayOutboundUser) {
+  return createUserOnSirplay(user);
+}
+
+export async function outboundUpdateUserOnSirplay(user: import("./sirplayUsers").SirplayOutboundUser) {
+  return updateUserOnSirplay(user);
 }

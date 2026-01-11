@@ -11,7 +11,7 @@ async function main() {
   const B2B_PASS = process.env.B2B_BASIC_AUTH_PASS || 's3cr3t';
   const basicAuth = 'Basic ' + Buffer.from(`${B2B_USER}:${B2B_PASS}`).toString('base64');
 
-  async function req(method: string, path: string, body?: any, headers?: Record<string,string>) {
+  async function req(method: string, path: string, body?: any, headers?: Record<string,string>, rawBody?: string) {
     const server = app.listen(0);
     const address: any = server.address();
     const url = `http://127.0.0.1:${address.port}${path}`;
@@ -19,7 +19,7 @@ async function main() {
       const res = await fetch(url, {
         method,
         headers: { 'Content-Type': 'application/json', 'Authorization': basicAuth, ...(headers||{}) },
-        body: body ? JSON.stringify(body) : undefined,
+        body: rawBody !== undefined ? rawBody : (body ? JSON.stringify(body) : undefined),
       } as any);
       const text = await res.text();
       let json: any = undefined;
@@ -76,6 +76,14 @@ async function main() {
   }
   console.log('balance(B->shared) OK', balSharedViaB.json);
 
+  // 5b) B2B login-tokens for external userId (positive Authorization)
+  const loginTokens = await req('POST', '/api/b2b/login-tokens', { userId: extId });
+  if (!loginTokens.ok || !loginTokens.json?.jwt || !loginTokens.json?.ssoToken || loginTokens.json?.mode !== 'sirplay') {
+    console.error('b2b login-tokens FAILED:', loginTokens.status, loginTokens.text);
+    process.exit(1);
+  }
+  console.log('b2b login-tokens OK');
+
   // 6) SSO token for userId_B and validate
   const sso = await req('POST', '/api/sso/token', { userId_B });
   if (!sso.ok || !sso.json?.token) {
@@ -89,6 +97,14 @@ async function main() {
     process.exit(1);
   }
   console.log('sso validate OK');
+
+  // 7) Invalid JSON payload should return 400 (never 500)
+  const bad = await req('POST', '/api/b2b/login-tokens', undefined, { 'Content-Type': 'application/json' }, '{');
+  if (bad.status !== 400) {
+    console.error('invalid json check FAILED:', bad.status, bad.text);
+    process.exit(1);
+  }
+  console.log('invalid json check OK');
 
   console.log('Sirplay smoke tests PASSED');
 }
