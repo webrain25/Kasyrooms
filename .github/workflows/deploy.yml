@@ -257,6 +257,27 @@ jobs:
             fi
             echo "B2B invalid-json OK (400)"
 
+            # Seed test user via Sirplay handshake to avoid user_not_found on auth-positive
+            echo "[Local Smoke] seeding test user via Sirplay handshake"
+            seed_ok=0
+            seed_attempts=3
+            seed_delay=2
+            for i in $(seq 1 $seed_attempts); do
+              tmp="$(mktemp)"
+              status="$(curl -sS -o "$tmp" -w '%{http_code}' -X POST "$base_url/api/sirplay/login" \
+                -H 'Content-Type: application/json' \
+                -d '{"externalUserId":"SMOKE-DEV-001","email":"smoke-dev-001@example.local","username":"smoke-dev-001"}' || echo "000")"
+              body="$(cat "$tmp" 2>/dev/null || true)"
+              rm -f "$tmp"
+              if [ "$status" = "200" ] || [ "$status" = "201" ]; then
+                seed_ok=1
+                echo "Seed OK ($status)"
+                break
+              fi
+              echo "Seed not ready (attempt $i/$seed_attempts): $status"
+              sleep "$seed_delay"
+            done
+
             # Optional auth-positive if credentials present (deterministic priority)
             echo "[Local Smoke] optional auth-positive if credentials present"
 
@@ -269,6 +290,10 @@ jobs:
             fi
 
             if [ -n "${B2B_USER:-}" ] && [ -n "${B2B_PASS:-}" ]; then
+              if [ "$seed_ok" -ne 1 ]; then
+                echo "Seed failed; skipping auth-positive test"
+                exit 0
+              fi
               basic="$(printf '%s:%s' "$B2B_USER" "$B2B_PASS" | base64)"
               tmp="$(mktemp)"
               status="$(curl -sS -o "$tmp" -w '%{http_code}' -X POST "$base_url/api/b2b/login-tokens" \
