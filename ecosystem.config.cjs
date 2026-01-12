@@ -7,6 +7,9 @@ module.exports = {
       instances: 2,
       exec_mode: 'cluster',
       watch: false,
+      
+      // Load all env from file written by the workflow
+      env_file: '/var/www/kasyrooms/.env',
       env: {
         NODE_ENV: 'production',
         HOST: '127.0.0.1',
