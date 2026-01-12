@@ -27,6 +27,15 @@ export function getSirplayConfigFromEnv(): SirplayEnvConfig {
   };
 }
 
+// Passport header for wallet calls
+export function getSirplayPassportFromEnv(): string {
+  const p = (process.env.SIRPLAY_PASSPORT || "").trim();
+  if (!p && process.env.NODE_ENV === "production") {
+    throw new Error("Missing SIRPLAY_PASSPORT in environment");
+  }
+  return p;
+}
+
 function joinUrl(base: string, path: string) {
   return base.replace(/\/+$/, "") + "/" + path.replace(/^\/+/, "");
 }
@@ -71,6 +80,135 @@ async function httpJson<T>(
     return json as T;
   } finally {
     clearTimeout(t);
+  }
+}
+
+// ---------------------------------
+// Lightweight client for outbound endpoints (Basic auth)
+// Matches usage in server/services/sirplayUsers.ts
+// ---------------------------------
+export class SirplayClient {
+  private baseUrl: string;
+  private defaultHeaders: Record<string, string>;
+  // Backward-compatible wrapper state
+  private cfg?: SirplayEnvConfig;
+  private token?: string;
+  private tokenFetchedAt?: number;
+  private tokenTtlMs: number = 5 * 60 * 1000; // 5 minutes default
+
+  private constructor(baseUrl: string, headers: Record<string, string>) {
+    this.baseUrl = baseUrl;
+    this.defaultHeaders = headers;
+  }
+
+  /**
+   * Build client from environment variables.
+   * Uses Basic auth if credentials are provided; otherwise no Authorization header.
+   */
+  static fromEnv(): SirplayClient {
+    const baseUrl = (process.env.SIRPLAY_OUTBOUND_BASE_URL || process.env.SIRPLAY_API_URL || process.env.SIRPLAY_BASE_URL || "").trim();
+    if (!baseUrl) throw new Error("Missing SIRPLAY_OUTBOUND_BASE_URL (or SIRPLAY_API_URL/SIRPLAY_BASE_URL)");
+
+    // Prefer explicit B2B basic auth vars; fallback to generic ones if present
+    const basicUser = (process.env.SIRPLAY_B2B_USER || process.env.B2B_BASIC_AUTH_USER || "").trim();
+    const basicPass = (process.env.SIRPLAY_B2B_PASSWORD || process.env.B2B_BASIC_AUTH_PASS || "").trim();
+
+    const headers: Record<string, string> = { "Content-Type": "application/json" };
+    if (basicUser && basicPass) {
+      const b64 = Buffer.from(`${basicUser}:${basicPass}`, "utf8").toString("base64");
+      headers["Authorization"] = `Basic ${b64}`;
+    }
+
+    const inst = new SirplayClient(baseUrl, headers);
+    // Also prepare config for token-based helpers
+    try {
+      inst.cfg = getSirplayConfigFromEnv();
+    } catch {
+      // leave cfg undefined if env not suitable for bearer helpers
+    }
+    inst.tokenTtlMs = 5 * 60 * 1000;
+    return inst;
+  }
+
+  /**
+   * Perform a JSON request with tolerant response shape.
+   * Returns status and ok flag without throwing on non-2xx.
+   */
+  async request<T = any>(method: string, path: string, body?: any, extraHeaders?: Record<string, string>) {
+    const url = joinUrl(this.baseUrl, path);
+    const headers = { ...this.defaultHeaders, ...(extraHeaders || {}) };
+
+    const res = await fetch(url, {
+      method,
+      headers,
+      body: body != null ? JSON.stringify(body) : undefined,
+    } as any);
+
+    const status = res.status;
+    const ok = res.ok;
+    const text = await res.text();
+    let json: any = null;
+    try {
+      json = text ? JSON.parse(text) : null;
+    } catch {
+      // keep raw text when not JSON
+    }
+
+    return { ok, status, json, text } as { ok: boolean; status: number; json?: T; text?: string };
+  }
+
+  // -----------------------------------------------------------------------------
+  // Backward-compatible OOP wrapper (some modules import SirplayClient)
+  // -----------------------------------------------------------------------------
+  private isTokenValid() {
+    if (!this.token || !this.tokenFetchedAt) return false;
+    return Date.now() - this.tokenFetchedAt < this.tokenTtlMs;
+  }
+
+  async getAccessToken(): Promise<string> {
+    const cfg = this.cfg ?? getSirplayConfigFromEnv();
+    if (this.isTokenValid()) return this.token!;
+    const resp = await sirplayGetAccessToken(cfg);
+    this.token = resp.token;
+    this.tokenFetchedAt = Date.now();
+    if (typeof resp.expiresIn === "number" && resp.expiresIn > 10) {
+      this.tokenTtlMs = Math.max(10_000, (resp.expiresIn - 10) * 1000);
+    }
+    return this.token!;
+  }
+
+  // Convenience methods wrapping existing helpers
+  async registerUser(payload: Parameters<typeof sirplayRegisterUser>[1]) {
+    const cfg = this.cfg ?? getSirplayConfigFromEnv();
+    return sirplayRegisterUser(cfg, payload as any);
+  }
+
+  async updateUser(payload: Parameters<typeof sirplayUpdateUser>[1]) {
+    const cfg = this.cfg ?? getSirplayConfigFromEnv();
+    return sirplayUpdateUser(cfg, payload as any);
+  }
+
+  async getWallet(token: string, sirplayUserId: string) {
+    const cfg = this.cfg ?? getSirplayConfigFromEnv();
+    return sirplayGetWallet(cfg, token, sirplayUserId);
+  }
+
+  async deposit(
+    token: string,
+    sirplayUserId: string,
+    args: Parameters<typeof sirplayDeposit>[3]
+  ) {
+    const cfg = this.cfg ?? getSirplayConfigFromEnv();
+    return sirplayDeposit(cfg, token, sirplayUserId, args as any);
+  }
+
+  async withdrawal(
+    token: string,
+    sirplayUserId: string,
+    args: Parameters<typeof sirplayWithdrawal>[3]
+  ) {
+    const cfg = this.cfg ?? getSirplayConfigFromEnv();
+    return sirplayWithdrawal(cfg, token, sirplayUserId, args as any);
   }
 }
 
@@ -323,7 +461,7 @@ export async function sirplayWalletGet(
       passport,
     },
   } as any);
-  const text = await res.text();
+  const text = typeof (res as any).text === 'function' ? await (res as any).text() : '';
   if (!res.ok) throw new Error(`Sirplay wallet get failed: ${res.status} ${text}`);
   return text ? JSON.parse(text) : null;
 }
@@ -354,7 +492,7 @@ export async function sirplayWalletDeposit(
     },
     body: JSON.stringify(body),
   } as any);
-  const text = await res.text();
+  const text = typeof (res as any).text === 'function' ? await (res as any).text() : '';
   if (!res.ok) throw new Error(`Sirplay deposit failed: ${res.status} ${text}`);
   return text ? JSON.parse(text) : null;
 }
@@ -385,7 +523,7 @@ export async function sirplayWalletWithdrawal(
     },
     body: JSON.stringify(body),
   } as any);
-  const text = await res.text();
+  const text = typeof (res as any).text === 'function' ? await (res as any).text() : '';
   if (!res.ok) throw new Error(`Sirplay withdrawal failed: ${res.status} ${text}`);
   return text ? JSON.parse(text) : null;
 }
