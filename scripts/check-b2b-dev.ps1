@@ -33,7 +33,7 @@ if (-not $B2B_USER) { $B2B_USER = 'sirplay' }
 $B2B_PASS = $env:B2B_BASIC_AUTH_PASS
 if (-not $B2B_PASS) { $B2B_PASS = $env:SIRPLAY_B2B_PASS }
 if (-not $B2B_PASS) { $B2B_PASS = 's3cr3t' }
-$basicAuth = 'Basic ' + [Convert]::ToBase64String([Text.Encoding]::UTF8.GetBytes("$B2B_USER:$B2B_PASS"))
+$basicAuth = 'Basic ' + [Convert]::ToBase64String([Text.Encoding]::UTF8.GetBytes("${B2B_USER}:${B2B_PASS}"))
 
 Write-Host "Seeding user via Sirplay handshake..." -ForegroundColor Yellow
 $seedBody = @{ externalUserId = $ExternalUserId; email = $Email; username = $Username }
