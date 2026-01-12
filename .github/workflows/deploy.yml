@@ -35,19 +35,27 @@ jobs:
           fi
 
           required=(
+            # Core
             DATABASE_URL
             JWT_SECRET
             BASE_URL
 
-            SIRPLAY_BASE_URL
-            SIRPLAY_API_KEY
-            SIRPLAY_HMAC_SECRET
+            # Sirplay inbound (Sirplay -> Kasyrooms)
             SIRPLAY_WEBHOOK_SECRET
             SIRPLAY_CUSTOMER_ID
             SIRPLAY_PARTNER_ID
 
-            SIRPLAY_B2B_USER
-            SIRPLAY_B2B_PASSWORD
+            # B2B basic auth (Sirplay -> Kasyrooms)
+            B2B_BASIC_AUTH_USER
+            B2B_BASIC_AUTH_PASS
+            # legacy aliases (not required if B2B_BASIC_* are set)
+            # SIRPLAY_B2B_USER
+            # SIRPLAY_B2B_PASSWORD
+
+            # Sirplay outbound (Kasyrooms -> Sirplay)
+            SIRPLAY_API_URL
+            SIRPLAY_ACCESS_USER
+            SIRPLAY_ACCESS_PASS
           )
 
           missing=0
@@ -59,6 +67,13 @@ jobs:
               missing=1
             fi
           done
+
+          # Optional check: SIRPLAY_WALLET_PASSPORT key existence (may be empty). Warn only.
+          if printf "%s\n" "$APP_ENV_FILE" | grep -Eq "^[[:space:]]*SIRPLAY_WALLET_PASSPORT[[:space:]]*="; then
+            echo "OK SIRPLAY_WALLET_PASSPORT (may be empty)"
+          else
+            echo "WARN missing SIRPLAY_WALLET_PASSPORT key"
+          fi
 
           test $missing -eq 0
 
