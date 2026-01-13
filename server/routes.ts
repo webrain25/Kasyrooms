@@ -163,9 +163,8 @@ function requireSirplayBearerVerified() {
       const introspectOk = await verifyWithIntrospection(token).catch(() => false);
       if (introspectOk) return next();
       const mode = (process.env.SIRPLAY_VERIFY_MODE || '').trim().toLowerCase();
-      // strict = require verification (prod)
-      // relaxed = allow pass-through if not verifiable (dev/staging)
-      const strict = mode === 'strict';
+      // Force strict in production regardless of mode; else follow configured mode
+      const strict = process.env.NODE_ENV === 'production' ? true : (mode === 'strict');
 
       if (!strict) {
         // In relaxed mode, allow integration tests even if JWKS/introspection are not configured
@@ -302,7 +301,7 @@ export async function registerRoutes(app: Express, opts?: { version?: string }) 
   // ===== INTEGRAZIONE SIRPLAY (Operatore B) =====
 
   // 1) REGISTER (Sirplay → Kasyrooms)
-  app.post("/user-account/signup/b2b/registrations", requireSirplayBearerVerified, async (req, res) => {
+  app.post("/user-account/signup/b2b/registrations", requireSirplayBearerVerified(), async (req, res) => {
     const parsed = z.object({ // User registration
       eventId: z.string().min(1),
       operation: z.literal("REGISTER"),

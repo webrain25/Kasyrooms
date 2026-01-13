@@ -25,6 +25,7 @@ function basicHeader(user: string, pass: string): string {
 async function run() {
   // Ensure dev mode so Bearer verify falls back to format-only
   process.env.NODE_ENV = process.env.NODE_ENV || 'development';
+  process.env.SIRPLAY_VERIFY_MODE = process.env.SIRPLAY_VERIFY_MODE || 'relaxed';
   // Set B2B creds for Basic-protected endpoints
   process.env.B2B_BASIC_AUTH_USER = process.env.B2B_BASIC_AUTH_USER || 'demo';
   process.env.B2B_BASIC_AUTH_PASS = process.env.B2B_BASIC_AUTH_PASS || 'demo';
@@ -41,6 +42,19 @@ async function run() {
 
   const demoBasic = basicHeader('demo', 'demo');
 
+  // Seed via Sirplay handshake to obtain a Bearer token (relaxed mode)
+  console.log('--- HANDSHAKE seed');
+  const externalUserId = 'sirplay-usr-001';
+  const seedRes = await agent
+    .post('/api/sirplay/login')
+    .send({ externalUserId, email: 'user@example.com', username: 'utente' });
+  console.log('HANDSHAKE status:', seedRes.status, 'body:', seedRes.body);
+  if (!(seedRes.status === 200 || seedRes.status === 201) || !seedRes.body?.token) {
+    console.error('Handshake FAILED:', seedRes.status, seedRes.body);
+    process.exit(1);
+  }
+  const handshakeToken = seedRes.body.token as string;
+
   console.log('--- REGISTER inbound');
   const regPayload = {
     eventId: 'evt-001',
@@ -49,7 +63,7 @@ async function run() {
     eventTime: new Date().toISOString(),
     userData: {
       userName: 'utente',
-      externalId: 'sirplay-usr-001',
+      externalId: externalUserId,
       password: 'Secret123!',
       status: 'ACTIVE',
       email: 'user@example.com'
@@ -57,9 +71,24 @@ async function run() {
   };
   const regRes = await agent
     .post('/user-account/signup/b2b/registrations')
-    .set('Authorization', 'Bearer test-token')
+    .set('Authorization', `Bearer ${handshakeToken}`)
     .send(regPayload);
   console.log('REGISTER status:', regRes.status, 'body:', regRes.body);
+
+  // Strict negative: ensure strict mode blocks unverified tokens
+  console.log('--- REGISTER inbound strict negative');
+  process.env.SIRPLAY_VERIFY_MODE = 'strict';
+  const regStrict = await agent
+    .post('/user-account/signup/b2b/registrations')
+    .set('Authorization', `Bearer ${handshakeToken}`)
+    .send(regPayload);
+  console.log('REGISTER strict status:', regStrict.status, 'body:', regStrict.body);
+  if (regStrict.status !== 401) {
+    console.error('Expected 401 in strict mode');
+    process.exit(1);
+  }
+  // restore relaxed for rest of test
+  process.env.SIRPLAY_VERIFY_MODE = 'relaxed';
 
   console.log('--- UPDATE inbound');
   const updPayload = {
@@ -68,7 +97,7 @@ async function run() {
     action: 'USER_CHANGE_MAIL',
     eventTime: new Date().toISOString(),
     userData: {
-      externalId: 'sirplay-usr-001',
+      externalId: externalUserId,
       email: 'user.updated@example.com',
       status: 'ACTIVE'
     }
@@ -79,11 +108,21 @@ async function run() {
     .send(updPayload);
   console.log('UPDATE status:', updRes.status, 'body:', updRes.body);
 
+  console.log('--- GET USER INFO');
+  const infoRes = await agent
+    .get(`/api/user/getUserInfo?externalUserId=${encodeURIComponent(externalUserId)}`)
+    .set('Authorization', demoBasic);
+  console.log('INFO status:', infoRes.status, 'body:', infoRes.body);
+  if (infoRes.status !== 200) {
+    console.error('getUserInfo FAILED');
+    process.exit(1);
+  }
+
   console.log('--- LOGIN TOKENS');
   const tokRes = await agent
     .post('/api/b2b/login-tokens')
     .set('Authorization', demoBasic)
-    .send({ userId: 'sirplay-usr-001' });
+    .send({ userId: externalUserId });
   console.log('TOKENS status:', tokRes.status, 'body keys:', Object.keys(tokRes.body));
 
   console.log('--- WEBHOOK correct signature');
