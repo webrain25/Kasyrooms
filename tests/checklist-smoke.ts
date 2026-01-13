@@ -44,7 +44,7 @@ async function run() {
 
   // Seed via Sirplay handshake to obtain a Bearer token (relaxed mode)
   console.log('--- HANDSHAKE seed');
-  const externalUserId = 'sirplay-usr-001';
+  const externalUserId = 'SIRPLAY-SMOKE-001';
   const seedRes = await agent
     .post('/api/sirplay/login')
     .send({ externalUserId, email: 'user@example.com', username: 'utente' });
@@ -60,7 +60,7 @@ async function run() {
     eventId: 'evt-001',
     operation: 'REGISTER',
     action: 'USER_REGISTRATION',
-    eventTime: new Date().toISOString(),
+    eventTime: Date.now(),
     userData: {
       userName: 'utente',
       externalId: externalUserId,
@@ -95,7 +95,7 @@ async function run() {
     eventId: 'evt-002',
     operation: 'UPDATE',
     action: 'USER_CHANGE_MAIL',
-    eventTime: new Date().toISOString(),
+    eventTime: Date.now(),
     userData: {
       externalId: externalUserId,
       email: 'user.updated@example.com',
@@ -128,7 +128,7 @@ async function run() {
   console.log('--- WEBHOOK correct signature');
   const webhookBody = {
     transactionId: 'tx-001',
-    externalUserId: 'sirplay-usr-001',
+    externalUserId,
     email: 'user.updated@example.com',
     type: 'deposit',
     amount: 10.5,
@@ -190,21 +190,21 @@ async function run() {
   const dep1 = await agent
     .post('/api/sirplay/out/wallet/deposit')
     .set('x-user-id', 'a-001').set('x-role', 'admin')
-    .send({ sirplayUserId: 'sirplay-usr-001', idTransaction: 'dup-001', amount: 5.00, currency: 'EUR' });
+    .send({ sirplayUserId: externalUserId, idTransaction: 'dup-001', amount: 5.00, currency: 'EUR' });
   const dep2 = await agent
     .post('/api/sirplay/out/wallet/deposit')
     .set('x-user-id', 'a-001').set('x-role', 'admin')
-    .send({ sirplayUserId: 'sirplay-usr-001', idTransaction: 'dup-001', amount: 5.00, currency: 'EUR' });
+    .send({ sirplayUserId: externalUserId, idTransaction: 'dup-001', amount: 5.00, currency: 'EUR' });
   console.log('DEPOSIT statuses:', dep1.status, dep1.body, dep2.status, dep2.body);
 
   const w1 = await agent
     .post('/api/sirplay/out/wallet/withdrawal')
     .set('x-user-id', 'a-001').set('x-role', 'admin')
-    .send({ sirplayUserId: 'sirplay-usr-001', idTransaction: 'dup-002', amount: 3.00, currency: 'EUR' });
+    .send({ sirplayUserId: externalUserId, idTransaction: 'dup-002', amount: 3.00, currency: 'EUR' });
   const w2 = await agent
     .post('/api/sirplay/out/wallet/withdrawal')
     .set('x-user-id', 'a-001').set('x-role', 'admin')
-    .send({ sirplayUserId: 'sirplay-usr-001', idTransaction: 'dup-002', amount: 3.00, currency: 'EUR' });
+    .send({ sirplayUserId: externalUserId, idTransaction: 'dup-002', amount: 3.00, currency: 'EUR' });
   console.log('WITHDRAWAL statuses:', w1.status, w1.body, w2.status, w2.body);
 
   // Restore fetch
