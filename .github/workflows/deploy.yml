@@ -145,9 +145,9 @@ jobs:
             # PM2
             command -v pm2 >/dev/null 2>&1 || npm i -g pm2
             if [ -f pm2.config.cjs ]; then
-              pm2 reload pm2.config.cjs --update-env || pm2 start pm2.config.cjs
+              pm2 reload pm2.config.cjs --only kasyrooms --env production --update-env || pm2 start pm2.config.cjs
             elif [ -f ecosystem.config.cjs ]; then
-              pm2 reload ecosystem.config.cjs --update-env || pm2 start ecosystem.config.cjs
+              pm2 reload ecosystem.config.cjs --only kasyrooms --env production --update-env || pm2 start ecosystem.config.cjs
             else
               pm2 restart all || true
             fi
@@ -167,7 +167,7 @@ jobs:
 
             # Ensure single instance to avoid PM2 cluster memory divergence during local smoke
             pm2 scale kasyrooms 1 || true
-            pm2 reload kasyrooms || true
+            pm2 reload ecosystem.config.cjs --only kasyrooms --env production --update-env || pm2 reload kasyrooms --update-env || true
 
             # Local healthz with retry (avoid flakiness right after PM2 reload)
             echo "[Local Smoke] healthz at $base_url/api/healthz"
