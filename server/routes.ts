@@ -95,7 +95,7 @@ function requireB2BBasicAuth() {
 // Sirplay inbound: Bearer token verification via JWKS or introspection
 function requireSirplayBearerVerified() {
   // Simple in-memory JWKS cache
-  let jwksCache: { url: string; fetchedAt: number; keys: any[] } | null = null;
+    let jwksCache: { url: string; fetchedAt: number; keys: any[] } | null = null; // JWKS cache
 
   const fetchJwks = async (url: string) => {
     const now = Date.now();
@@ -302,8 +302,8 @@ export async function registerRoutes(app: Express, opts?: { version?: string }) 
   // ===== INTEGRAZIONE SIRPLAY (Operatore B) =====
 
   // 1) REGISTER (Sirplay → Kasyrooms)
-  app.post("/user-account/signup/b2b/registrations", requireSirplayBearerVerified(), async (req, res) => {
-    const parsed = z.object({
+  app.post("/user-account/signup/b2b/registrations", requireSirplayBearerVerified, async (req, res) => {
+    const parsed = z.object({ // User registration
       eventId: z.string().min(1),
       operation: z.literal("REGISTER"),
       action: z.literal("USER_REGISTRATION"),
