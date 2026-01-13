@@ -162,10 +162,16 @@ function requireSirplayBearerVerified() {
       if (jwksOk) return next();
       const introspectOk = await verifyWithIntrospection(token).catch(() => false);
       if (introspectOk) return next();
-      if (process.env.NODE_ENV !== 'production') {
-        // In non-prod, allow format-only for integration testing
+      const mode = (process.env.SIRPLAY_VERIFY_MODE || '').trim().toLowerCase();
+      // strict = require verification (prod)
+      // relaxed = allow pass-through if not verifiable (dev/staging)
+      const strict = mode === 'strict';
+
+      if (!strict) {
+        // In relaxed mode, allow integration tests even if JWKS/introspection are not configured
         return next();
       }
+
       return res.status(401).json({ error: 'sirplay_token_not_verified' });
     } catch (e: any) {
       return res.status(401).json({ error: 'sirplay_token_invalid', message: e?.message || String(e) });
