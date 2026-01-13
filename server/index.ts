@@ -364,6 +364,17 @@ if (IS_PROD) {
 
   app.use(["/api/sirplay/handshake", "/api/sirplay/login"], sirplayAuthLimiter);
   app.use(["/api/webhooks/sirplay"], sirplayWebhookLimiter);
+
+  // Inbound Sirplay user registrations/update (operator callbacks)
+  const sirplayInboundLimiter = rateLimit({
+    windowMs: 60 * 1000,
+    max: 120,
+    standardHeaders: true,
+    legacyHeaders: false,
+    keyGenerator: rlKey,
+  });
+  // Applies to both POST/PUT as they share the same path
+  app.use(["/user-account/signup/b2b/registrations"], sirplayInboundLimiter);
 }
 
 // API routes (pass app version for diagnostics)

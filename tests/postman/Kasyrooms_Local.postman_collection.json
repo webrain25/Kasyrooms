@@ -1,0 +1,117 @@
+{
+  "info": {
+    "name": "Kasyrooms Local (Sirplay B2B)",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "item": [
+    {
+      "name": "Login Admin",
+      "request": {
+        "method": "POST",
+        "header": [
+          { "key": "Content-Type", "value": "application/json" }
+        ],
+        "body": { "mode": "raw", "raw": "{\n  \"username\": \"admin\"\n}" },
+        "url": { "raw": "{{baseUrl}}/api/auth/login", "host": ["{{baseUrl}}"], "path": ["api","auth","login"] }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "const json = pm.response.json();",
+              "pm.environment.set('adminJwt', json.token);",
+              "pm.test('Login succeeded', function () { pm.expect(pm.response.code).to.be.oneOf([200]); });"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "REGISTER (Inbound)",
+      "request": {
+        "auth": { "type": "bearer", "bearer": [{ "key": "token", "value": "{{sirplayBearer}}", "type": "string" }] },
+        "method": "POST",
+        "header": [ { "key": "Content-Type", "value": "application/json" } ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"eventId\": \"evt-reg-{{externalId}}\",\n  \"operation\": \"REGISTER\",\n  \"action\": \"USER_REGISTRATION\",\n  \"eventTime\": {{timestamp}},\n  \"userData\": {\n    \"userName\": \"{{userName}}\",\n    \"externalId\": \"{{externalId}}\",\n    \"email\": \"{{email}}\",\n    \"status\": \"ACTIVE\"\n  }\n}"
+        },
+        "url": { "raw": "{{baseUrl}}/user-account/signup/b2b/registrations", "host": ["{{baseUrl}}"], "path": ["user-account","signup","b2b","registrations"] }
+      },
+      "event": [
+        { "listen": "prerequest", "script": { "type": "text/javascript", "exec": ["pm.variables.set('timestamp', Date.now());"] } },
+        { "listen": "test", "script": { "type": "text/javascript", "exec": [
+          "pm.test('Created 201', function () { pm.expect(pm.response.code).to.eql(201); });",
+          "const j = pm.response.json(); pm.environment.set('registeredExternalId', j.externalUserId || pm.environment.get('externalId'));"
+        ] } }
+      ]
+    },
+    {
+      "name": "UPDATE (Inbound)",
+      "request": {
+        "auth": { "type": "basic", "basic": [ { "key": "username", "value": "{{b2bUser}}", "type": "string" }, { "key": "password", "value": "{{b2bPass}}", "type": "string" } ] },
+        "method": "PUT",
+        "header": [ { "key": "Content-Type", "value": "application/json" } ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"eventId\": \"evt-upd-{{externalId}}\",\n  \"operation\": \"UPDATE\",\n  \"action\": \"USER_UPDATE\",\n  \"eventTime\": {{timestamp}},\n  \"userData\": {\n    \"externalId\": \"{{externalId}}\",\n    \"email\": \"{{email}}\"\n  }\n}"
+        },
+        "url": { "raw": "{{baseUrl}}/user-account/signup/b2b/registrations", "host": ["{{baseUrl}}"], "path": ["user-account","signup","b2b","registrations"] }
+      },
+      "event": [
+        { "listen": "prerequest", "script": { "type": "text/javascript", "exec": ["pm.variables.set('timestamp', Date.now());"] } },
+        { "listen": "test", "script": { "type": "text/javascript", "exec": ["pm.test('OK 200', function () { pm.expect(pm.response.code).to.eql(200); });"] } }
+      ]
+    },
+    {
+      "name": "LOGIN TOKENS (B2B)",
+      "request": {
+        "auth": { "type": "basic", "basic": [ { "key": "username", "value": "{{b2bUser}}", "type": "string" }, { "key": "password", "value": "{{b2bPass}}", "type": "string" } ] },
+        "method": "POST",
+        "header": [ { "key": "Content-Type", "value": "application/json" } ],
+        "body": { "mode": "raw", "raw": "{\n  \"userId\": \"{{externalId}}\"\n}" },
+        "url": { "raw": "{{baseUrl}}/api/b2b/login-tokens", "host": ["{{baseUrl}}"], "path": ["api","b2b","login-tokens"] }
+      },
+      "event": [
+        { "listen": "test", "script": { "type": "text/javascript", "exec": [
+          "pm.test('Login tokens 200', function () { pm.expect(pm.response.code).to.eql(200); });",
+          "const j = pm.response.json(); pm.environment.set('adminJwt', j.jwt);"
+        ] } }
+      ]
+    },
+    {
+      "name": "Webhook (valid signature)",
+      "request": {
+        "method": "POST",
+        "header": [ { "key": "Content-Type", "value": "application/json" } ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"eventId\": \"evt-webhook-{{externalId}}\",\n  \"type\": \"DEPOSIT\",\n  \"userId\": \"{{externalId}}\",\n  \"amount\": 1,\n  \"currency\": \"EUR\"\n}"
+        },
+        "url": { "raw": "{{baseUrl}}/api/webhooks/sirplay", "host": ["{{baseUrl}}"], "path": ["api","webhooks","sirplay"] }
+      },
+      "event": [
+        {
+          "listen": "prerequest",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "const body = pm.request.body.raw;",
+              "const ts = String(Math.floor(Date.now()/1000));",
+              "pm.variables.set('ts', ts);",
+              "const secret = pm.environment.get('webhookSecret');",
+              "const sig = CryptoJS.HmacSHA256(body, secret).toString(CryptoJS.enc.Hex);",
+              "const sigHeader = pm.environment.get('sigHeader') || 'x-sirplay-signature';",
+              "const tsHeader = pm.environment.get('tsHeader') || 'x-sirplay-timestamp';",
+              "pm.request.headers.add({ key: sigHeader, value: sig });",
+              "pm.request.headers.add({ key: tsHeader, value: ts });"
+            ]
+          }
+        },
+        { "listen": "test", "script": { "type": "text/javascript", "exec": ["pm.test('Webhook 200', function(){ pm.expect(pm.response.code).to.eql(200); });"] } }
+      ]
+    }
+  ]
+}

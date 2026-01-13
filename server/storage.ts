@@ -410,6 +410,13 @@ export class MemStorage {
   }
 
   // helpers
+  async updateUserById(id: string, patch: Partial<User>) {
+    const u = this.users.get(id);
+    if (!u) return undefined;
+    const next: User = { ...u, ...patch } as User;
+    this.users.set(id, next);
+    return next;
+  }
   async getUserByUsername(username: string) {
     const target = username.toLowerCase();
     for (const u of this.users.values()) {

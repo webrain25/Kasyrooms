@@ -1,0 +1,329 @@
+{
+	"info": {
+		"_postman_id": "6a1f41b0-6bfa-4937-8164-5bf06e8fe101",
+		"name": "Proxy b2b",
+		"schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json",
+		"_exporter_id": "2332152",
+		"_collection_link": "https://sirplay.postman.co/workspace/My-Workspace~814e6b0b-11fb-4784-8ec1-6abcfb26e3cb/collection/2332152-6a1f41b0-6bfa-4937-8164-5bf06e8fe101?action=share&source=collection_link&creator=2332152"
+	},
+	"item": [
+		{
+			"name": "refresh",
+			"protocolProfileBehavior": {
+				"disableBodyPruning": true
+			},
+			"request": {
+				"auth": {
+					"type": "bearer",
+					"bearer": [
+						{
+							"key": "token",
+							"value": "eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJpc3MiOiJodHRwczovL3Byb3h5Mi5zcnAudG9vbHMiLCJzdWIiOiIwNjQ3NzRiMS0yNGRiLTU2NWItYjY2YS1hYjUwMzhjODNlZDciLCJpYXQiOjE3NjQ5NTA2MjYsImV4cCI6MTc2NTEyMzQyNiwibmFtZSI6ImFydHVyb3Rlc3QyLTQ0NCJ9.gqFzmYn4aZXGmo_TT9rQyS205VopbhUluAarVarKtA4",
+							"type": "string"
+						}
+					]
+				},
+				"method": "GET",
+				"header": [
+					{
+						"key": "Content-Type",
+						"value": "application/json"
+					},
+					{
+						"key": "Authorization",
+						"value": "Bearer eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJpc3MiOiJodHRwczovL3Byb3h5LnNycC50b29scyIsInN1YiI6IjBlMjA2Y2U1LWQ2NjMtNTQ3ZC1hNzc2LTY4NjQyMWY1ZmVjNCIsImlhdCI6MTcxNzQ5NjE5NywiZXhwIjoxNzE3NjY4OTk3LCJuYW1lIjoic3lzdGVtIn0.FbYDgqfRiE7E1MlfpNlEyX-xl8kQKNCheIiMTkGp2gs"
+					}
+				],
+				"body": {
+					"mode": "raw",
+					"raw": "",
+					"options": {
+						"raw": {
+							"language": "json"
+						}
+					}
+				},
+				"url": {
+					"raw": "https://proxykasynoir.kasynoir.com/user-account/signup/auth/validation?refresh=e32486a43e4c492336bd-1507d989a6ba6f78f07c5a2715e01718a62a39a653feb32f-f7dfe745a7",
+					"protocol": "https",
+					"host": [
+						"proxykasynoir",
+						"kasynoir",
+						"com"
+					],
+					"path": [
+						"user-account",
+						"signup",
+						"auth",
+						"validation"
+					],
+					"query": [
+						{
+							"key": "refresh",
+							"value": "e32486a43e4c492336bd-1507d989a6ba6f78f07c5a2715e01718a62a39a653feb32f-f7dfe745a7"
+						}
+					]
+				},
+				"description": "Generated from cURL: curl --location 'https://proxy2.srp.tools/backend/user' \\n--header 'Content-Type: application/json' \\\n--header 'Authorization: Bearer eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJpc3MiOiJodHRwczovL3Byb3h5LnNycC50b29scyIsInN1YiI6IjBlMjA2Y2U1LWQ2NjMtNTQ3ZC1hNzc2LTY4NjQyMWY1ZmVjNCIsImlhdCI6MTcxNzQ5NjE5NywiZXhwIjoxNzE3NjY4OTk3LCJuYW1lIjoic3lzdGVtIn0.FbYDgqfRiE7E1MlfpNlEyX-xl8kQKNCheIiMTkGp2gs' \\\n--data-raw '{\n    \"roleId\": 3,\n    \"name\": \"testplayer-700\",\n    \"email\": \"testplayer-700@sirplay.com\",\n    \"password\": \"12345678\",\n    \"status\": 1,\n    \"metadata\": {\n        \"userId\": \"1499\",\n        \"customerId\": \"700\",\n        \"profileType\": \"PLAYER\"\n    }\n}'"
+			},
+			"response": []
+		},
+		{
+			"name": "Auth",
+			"request": {
+				"method": "POST",
+				"header": [
+					{
+						"key": "Content-Type",
+						"value": "application/json"
+					}
+				],
+				"body": {
+					"mode": "raw",
+					"raw": "{\n  \"userName\": \"integration\",\n  \"password\": \"FtMqEaDJmZ3m\"\n}",
+					"options": {
+						"raw": {
+							"language": "json"
+						}
+					}
+				},
+				"url": {
+					"raw": "https://proxykasynoir.kasynoir.com/user-account/signup/players/all/logins",
+					"protocol": "https",
+					"host": [
+						"proxykasynoir",
+						"kasynoir",
+						"com"
+					],
+					"path": [
+						"user-account",
+						"signup",
+						"players",
+						"all",
+						"logins"
+					]
+				},
+				"description": "Generated from cURL: curl --location 'https://proxy2.jugadonsanluis.bet.ar/consumer/login' \\n--header 'Content-Type: application/json' \\\n--data '{\n  \"username\": \"system\",\n  \"password\": \"G3MfNhyrbl&2nt5\"\n}'"
+			},
+			"response": []
+		},
+		{
+			"name": "Register",
+			"request": {
+				"auth": {
+					"type": "bearer",
+					"bearer": [
+						{
+							"key": "token",
+							"value": "eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJpc3MiOiJodHRwczovL3Byb3h5Mi5zcnAudG9vbHMiLCJzdWIiOiIwMjRhNjQzZS1iY2ZmLTVmYTYtYTExMC0wZjIxMTc2MWZhMzEiLCJpYXQiOjE3NjUzNzk4NjQsImV4cCI6MTc2NTU1MjY2NCwibmFtZSI6ImludGVncmF0aW9uLTU3MiJ9.nWH-r6uJe9YldgFZPd2yVbIDSW6NtQGB823r6RcSpXY",
+							"type": "string"
+						}
+					]
+				},
+				"method": "POST",
+				"header": [],
+				"body": {
+					"mode": "raw",
+					"raw": "{\r\n    \"eventId\": \"efrgegehrtwefwewweweewfhht\",\r\n    \"operation\": \"REGISTER\",\r\n    \"action\": \"USER_REGISTRATION\",\r\n    \"eventTime\": 1764868977638,\r\n    \"userData\": {\r\n        \"userName\": \"usrn1119958r\",\r\n        \"externalId\": \"3253e5rd5d444255134235\",\r\n        \"password\": \"passW9!@\",\r\n        \"name\": \"wenowedbgowe\",\r\n        \"surname\": \"vwerdfwefweg\",\r\n        \"email\": \"dwfwed5rr42dg55@wgewge.it\",\r\n        \"status\": \"ACTIVE\",\r\n        \"birthDate\": \"2000-01-01T00:00:00.000Z\",\r\n        \"lastUpdated\": null,\r\n        \"created\": \"2025-12-04T17:24:43.123Z\",\r\n        \"mobilePhone\": \"3241245423241255\"\r\n    }\r\n}",
+					"options": {
+						"raw": {
+							"language": "json"
+						}
+					}
+				},
+				"url": {
+					"raw": "https://proxykasynoir.kasynoir.com/user-account/signup/b2b/registrations",
+					"protocol": "https",
+					"host": [
+						"proxykasynoir",
+						"kasynoir",
+						"com"
+					],
+					"path": [
+						"user-account",
+						"signup",
+						"b2b",
+						"registrations"
+					]
+				}
+			}
+		},
+		{
+			"name": "update user",
+			"request": {
+				"auth": {
+					"type": "basic",
+					"basic": [
+						{
+							"key": "password",
+							"value": "test",
+							"type": "string"
+						},
+						{
+							"key": "username",
+							"value": "test",
+							"type": "string"
+						}
+					]
+				},
+				"method": "PUT",
+				"header": [],
+				"body": {
+					"mode": "raw",
+					"raw": "{\r\n    \"eventId\": \"efrgegehrthht\",\r\n    \"operation\": \"UPDATE\",\r\n    \"action\": \"USER_UPDATE\",\r\n    \"eventTime\": 1764868977638,\r\n    \"userData\": {\r\n        \"userName\": \"username11114445\",\r\n        \"externalId\": \"3255413423\",\r\n        \"password\": \"passW9!9999\",\r\n        \"name\": \"wenowebgowe99\",\r\n        \"surname\": \"vwerfwefweg99\",\r\n        \"email\": \"dwfwerg559@wgewge.it\",\r\n        \"status\": \"ACTIVE\",\r\n        \"birthDate\": \"2000-01-01T00:00:00.000Z\",\r\n        \"created\": \"2025-12-04T17:24:43.123Z\",\r\n        \"lastUpdated\": \"2025-12-05T17:24:43.123Z\",\r\n        \"mobilePhone\": \"33454566432322559\"\r\n    }\r\n}",
+					"options": {
+						"raw": {
+							"language": "json"
+						}
+					}
+				},
+				"url": {
+					"raw": "{{signup-url}}/signup/b2b/registrations",
+					"host": [
+						"{{signup-url}}"
+					],
+					"path": [
+						"signup",
+						"b2b",
+						"registrations"
+					]
+				}
+			}
+		},
+		{
+			"name": "withdrawal",
+			"request": {
+				"auth": {
+					"type": "bearer",
+					"bearer": [
+						{
+							"key": "token",
+							"value": "eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJpc3MiOiJodHRwczovL3Byb3h5Mi5zcnAudG9vbHMiLCJzdWIiOiIwMjRhNjQzZS1iY2ZmLTVmYTYtYTExMC0wZjIxMTc2MWZhMzEiLCJpYXQiOjE3NjUzODA1NDEsImV4cCI6MTc2NTU1MzM0MSwibmFtZSI6ImludGVncmF0aW9uLTU3MiJ9.zmKHz87Yejpcy3-ku33j2tlbYKQ5n6FE-cKGX_IAE6U",
+							"type": "string"
+						}
+					]
+				},
+				"method": "POST",
+				"header": [
+					{
+						"key": "Content-Type",
+						"value": "application/json",
+						"type": "text"
+					},
+					{
+						"key": "passport",
+						"value": "eyJ1c2VySW5mbyI6eyJjdXN0b21lcklkIjoiOTk5OSIsInVzZXJJZCI6IjE5OSIsImNyZWF0ZWQiOjE2ODc0MTk4NTI0ODF9LCJkZXZpY2VJbmZvIjp7InVzZXJBZ2VudCI6Ik1vemlsbGFcLzUuMCAoV2luZG93cyBOVCAxMC4wOyBXaW42NDsgeDY0KSBBcHBsZVdlYktpdFwvNTM3LjM2IChLSFRNTCwgbGlrZSBHZWNrbykgQ2hyb21lXC8xMTQuMC4wLjAgU2FmYXJpXC81MzcuMzYiLCJpcEFkZHJlc3MiOiI4Ny4yNi45My4xODUiLCJjcmVhdGVkIjoxNjg3NDE5ODUyNDgxfX0",
+						"type": "text"
+					}
+				],
+				"body": {
+					"mode": "raw",
+					"raw": "{\r\n    \"targetUser\": \"1252\",\r\n    \"idTransaction\": \"cl44r4osew\",\r\n    \"type\": \"EXTERNAL_WITHDRAWAL\",\r\n    \"amount\": 1,\r\n    \"currency\": \"EUR\",\r\n    \"description\": \"Close\",\r\n    \"sourceUser\": \"2\",\r\n    \"externalReference\": \"SC21227718\",\r\n    \"partnerId\": \"501\"\r\n}\r\n\r\n"
+				},
+				"url": {
+					"raw": "https://proxykasynoir.kasynoir.com/wallet/b2b/users/1252/withdrawals",
+					"protocol": "https",
+					"host": [
+						"proxykasynoir",
+						"kasynoir",
+						"com"
+					],
+					"path": [
+						"wallet",
+						"b2b",
+						"users",
+						"1252",
+						"withdrawals"
+					]
+				}
+			},
+			"response": []
+		},
+		{
+			"name": "deposit",
+			"request": {
+				"auth": {
+					"type": "bearer",
+					"bearer": [
+						{
+							"key": "token",
+							"value": "eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJpc3MiOiJodHRwczovL3Byb3h5Mi5zcnAudG9vbHMiLCJzdWIiOiIwMjRhNjQzZS1iY2ZmLTVmYTYtYTExMC0wZjIxMTc2MWZhMzEiLCJpYXQiOjE3NjUzODA1NDEsImV4cCI6MTc2NTU1MzM0MSwibmFtZSI6ImludGVncmF0aW9uLTU3MiJ9.zmKHz87Yejpcy3-ku33j2tlbYKQ5n6FE-cKGX_IAE6U",
+							"type": "string"
+						}
+					]
+				},
+				"method": "POST",
+				"header": [
+					{
+						"key": "Content-Type",
+						"value": "application/json"
+					},
+					{
+						"key": "passport",
+						"value": "eyJ1c2VySW5mbyI6eyJjdXN0b21lcklkIjoiOTk5OSIsInVzZXJJZCI6IjE5OSIsImNyZWF0ZWQiOjE2ODc0MTk4NTI0ODF9LCJkZXZpY2VJbmZvIjp7InVzZXJBZ2VudCI6Ik1vemlsbGFcLzUuMCAoV2luZG93cyBOVCAxMC4wOyBXaW42NDsgeDY0KSBBcHBsZVdlYktpdFwvNTM3LjM2IChLSFRNTCwgbGlrZSBHZWNrbykgQ2hyb21lXC8xMTQuMC4wLjAgU2FmYXJpXC81MzcuMzYiLCJpcEFkZHJlc3MiOiI4Ny4yNi45My4xODUiLCJjcmVhdGVkIjoxNjg3NDE5ODUyNDgxfX0",
+						"type": "text"
+					}
+				],
+				"body": {
+					"mode": "raw",
+					"raw": "{\n    \"targetUser\": \"1252\",\n    \"idTransaction\": \"99q0000\",\n    \"type\": \"EXTERNAL_DEPOSIT\",\n    \"amount\": 20,\n    \"currency\": \"EUR\",\n    \"description\": \"Credit\",\n    \"sourceUser\": \"2\",\n    \"externalReference\": \"2\",\n    \"partnerId\": \"501\"\n}"
+				},
+				"url": {
+					"raw": "https://proxykasynoir.kasynoir.com/wallet/b2b/users/1252/deposits",
+					"protocol": "https",
+					"host": [
+						"proxykasynoir",
+						"kasynoir",
+						"com"
+					],
+					"path": [
+						"wallet",
+						"b2b",
+						"users",
+						"1252",
+						"deposits"
+					]
+				}
+			},
+			"response": []
+		},
+		{
+			"name": "get wallet",
+			"request": {
+				"auth": {
+					"type": "bearer",
+					"bearer": [
+						{
+							"key": "token",
+							"value": "eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJpc3MiOiJodHRwczovL3Byb3h5Mi5zcnAudG9vbHMiLCJzdWIiOiIwMjRhNjQzZS1iY2ZmLTVmYTYtYTExMC0wZjIxMTc2MWZhMzEiLCJpYXQiOjE3NjUzODA1NDEsImV4cCI6MTc2NTU1MzM0MSwibmFtZSI6ImludGVncmF0aW9uLTU3MiJ9.zmKHz87Yejpcy3-ku33j2tlbYKQ5n6FE-cKGX_IAE6U",
+							"type": "string"
+						}
+					]
+				},
+				"method": "GET",
+				"header": [
+					{
+						"key": "Content-Type",
+						"value": "application/json"
+					}
+				],
+				"url": {
+					"raw": "https://proxykasynoir.kasynoir.com/wallet/b2b/users/1252/wallets",
+					"protocol": "https",
+					"host": [
+						"proxykasynoir",
+						"kasynoir",
+						"com"
+					],
+					"path": [
+						"wallet",
+						"b2b",
+						"users",
+						"1252",
+						"wallets"
+					]
+				}
+			}
+		}
+	]
+}

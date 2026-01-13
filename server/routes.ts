@@ -10,15 +10,17 @@ import path from "path";
 import fs from "fs";
 import { and, eq } from "drizzle-orm";
 import { getOrCreateAccountBySirplayUserId, upsertWalletSnapshot, recordWalletTransactionIdempotent } from "./services/sirplayAdapter";
+import { ensureLocalUserForSirplay } from "./services/identity";
 // @ts-ignore - bundler resolves this TS module; suppress TS2306 in check
 import {
   getSirplayConfigFromEnv,
+  getSirplayPassportFromEnv,
   sirplayLogin,
   sirplayRegisterUser,
   sirplayUpdateUser,
-  sirplayGetWallet,
-  sirplayDeposit,
-  sirplayWithdrawal,
+  sirplayWalletGet,
+  sirplayWalletDeposit,
+  sirplayWalletWithdrawal,
   type SirplayUpdateAction,
 } from "./services/sirplayClient.ts";
 import { z } from "zod";
@@ -90,8 +92,63 @@ function requireB2BBasicAuth() {
 }
 
 // Sirplay inbound: require Bearer token presence (format-only check)
-function requireSirplayBearerAuth() {
-  return (req: any, res: any, next: any) => {
+// Sirplay inbound: Bearer token verification via JWKS or introspection
+function requireSirplayBearerVerified() {
+  // Simple in-memory JWKS cache
+  let jwksCache: { url: string; fetchedAt: number; keys: any[] } | null = null;
+
+  const fetchJwks = async (url: string) => {
+    const now = Date.now();
+    if (jwksCache && jwksCache.url === url && now - jwksCache.fetchedAt < 5 * 60 * 1000) {
+      return jwksCache.keys;
+    }
+    const res = await fetch(url, { method: 'GET' } as any);
+    if (!res.ok) throw new Error(`JWKS fetch failed: ${res.status}`);
+    const data = await res.json();
+    const keys = Array.isArray(data?.keys) ? data.keys : [];
+    jwksCache = { url, fetchedAt: now, keys };
+    return keys;
+  };
+
+  const verifyWithJwks = async (token: string) => {
+    const jwksUrl = (process.env.SIRPLAY_JWKS_URL || '').trim();
+    if (!jwksUrl) return false;
+    const decoded: any = jwt.decode(token, { complete: true });
+    const kid = decoded?.header?.kid;
+    const alg = decoded?.header?.alg;
+    if (!kid || !alg) throw new Error('jwt_header_missing_kid_alg');
+    const keys = await fetchJwks(jwksUrl);
+    const jwk = keys.find((k: any) => k.kid === kid);
+    if (!jwk) throw new Error('jwks_key_not_found');
+    // Build KeyObject from JWK (Node supports JWK format)
+    const keyObj = crypto.createPublicKey({ key: jwk, format: 'jwk' } as any);
+    const options: jwt.VerifyOptions = {};
+    if (process.env.SIRPLAY_JWT_ISSUER) options.issuer = process.env.SIRPLAY_JWT_ISSUER;
+    if (process.env.SIRPLAY_JWT_AUDIENCE) options.audience = process.env.SIRPLAY_JWT_AUDIENCE;
+    options.algorithms = [alg];
+    jwt.verify(token, keyObj as any, options);
+    return true;
+  };
+
+  const verifyWithIntrospection = async (token: string) => {
+    const url = (process.env.SIRPLAY_INTROSPECT_URL || '').trim();
+    if (!url) return false;
+    const user = (process.env.SIRPLAY_B2B_USER || process.env.B2B_BASIC_AUTH_USER || '').trim();
+    const pass = (process.env.SIRPLAY_B2B_PASSWORD || process.env.B2B_BASIC_AUTH_PASS || '').trim();
+    const hdrs: Record<string, string> = { 'Content-Type': 'application/json' };
+    if (user && pass) {
+      const b64 = Buffer.from(`${user}:${pass}`, 'utf8').toString('base64');
+      hdrs['Authorization'] = `Basic ${b64}`;
+    }
+    const res = await fetch(url, { method: 'POST', headers: hdrs, body: JSON.stringify({ token }) } as any);
+    if (!res.ok) throw new Error(`introspect_failed_${res.status}`);
+    const data = await res.json().catch(() => ({}));
+    // Accept common shapes: { active: true } or { valid: true }
+    const active = Boolean((data as any)?.active ?? (data as any)?.valid ?? true);
+    return active;
+  };
+
+  return async (req: any, res: any, next: any) => {
     const hdr = req.headers?.authorization || req.headers?.Authorization;
     if (typeof hdr !== 'string' || !hdr.startsWith('Bearer ')) {
       return res.status(401).json({ error: 'missing_bearer' });
@@ -99,9 +156,20 @@ function requireSirplayBearerAuth() {
     const token = hdr.slice('Bearer '.length).trim();
     if (!token) return res.status(401).json({ error: 'missing_bearer' });
 
-    // Nota: senza chiave pubblica / introspection endpoint non puoi verificare davvero il JWT Sirplay.
-    // Per i test di integrazione tipicamente basta controllare presenza/formato header.
-    return next();
+    try {
+      // Prefer JWKS, else introspection; fallback policy differs by env
+      const jwksOk = await verifyWithJwks(token).catch(() => false);
+      if (jwksOk) return next();
+      const introspectOk = await verifyWithIntrospection(token).catch(() => false);
+      if (introspectOk) return next();
+      if (process.env.NODE_ENV !== 'production') {
+        // In non-prod, allow format-only for integration testing
+        return next();
+      }
+      return res.status(401).json({ error: 'sirplay_token_not_verified' });
+    } catch (e: any) {
+      return res.status(401).json({ error: 'sirplay_token_invalid', message: e?.message || String(e) });
+    }
   };
 }
 
@@ -228,7 +296,7 @@ export async function registerRoutes(app: Express, opts?: { version?: string }) 
   // ===== INTEGRAZIONE SIRPLAY (Operatore B) =====
 
   // 1) REGISTER (Sirplay → Kasyrooms)
-  app.post("/user-account/signup/b2b/registrations", requireSirplayBearerAuth(), async (req, res) => {
+  app.post("/user-account/signup/b2b/registrations", requireSirplayBearerVerified(), async (req, res) => {
     const parsed = z.object({
       eventId: z.string().min(1),
       operation: z.literal("REGISTER"),
@@ -255,32 +323,19 @@ export async function registerRoutes(app: Express, opts?: { version?: string }) 
     const externalUserId = userData.externalId;
     const username = userData.userName;
 
-    // Crea/aggiorna utente locale legato a externalId Sirplay
-    let u = await storage.getUserByExternal(externalUserId);
-    if (!u) {
-      u = await storage.createUser({ username, email: userData.email, externalUserId });
-      try {
-        if (db) {
-          await db.insert(schema.users).values({
-            id: u.id,
-            username: u.username,
-            password: '-',
-            email: userData.email,
-            role: 'user',
-            externalUserId,
-            firstName: userData.name,
-            lastName: userData.surname,
-            dob: userData.birthDate ? new Date(userData.birthDate) as any : undefined,
-            phoneNumber: userData.mobilePhone,
-            status: 'active',
-            lastLogin: new Date() as any,
-          });
-          await db.insert(schema.wallets).values({ userId: u.id, balanceCents: 0, currency: 'EUR' });
-        }
-      } catch {}
-    }
+    // Centralized identity ensure to avoid duplicate inserts
+    await ensureLocalUserForSirplay({
+      externalUserId,
+      email: userData.email ?? null,
+      username,
+      role: 'user',
+      firstName: userData.name ?? null,
+      lastName: userData.surname ?? null,
+      birthDate: userData.birthDate ?? null,
+      phoneNumber: userData.mobilePhone ?? null,
+    });
 
-    return res.json({
+    return res.status(201).json({
       status: "CREATED",
       externalUserId,
     });
@@ -309,21 +364,24 @@ export async function registerRoutes(app: Express, opts?: { version?: string }) 
 
     const { externalId } = parsed.data.userData;
 
-    const u = await storage.getUserByExternal(externalId);
-    if (!u) return res.status(404).json({ error: "user_not_found", externalId });
+    // Upsert by externalId: ensure local user exists and update profile best-effort
+    const ensured = await ensureLocalUserForSirplay({
+      externalUserId: externalId,
+      email: parsed.data.userData.email ?? null,
+      firstName: parsed.data.userData.name ?? null,
+      lastName: parsed.data.userData.surname ?? null,
+      birthDate: parsed.data.userData.birthDate ?? null,
+      phoneNumber: parsed.data.userData.mobilePhone ?? null,
+      role: 'user',
+    });
 
-    // Update locale (minimo indispensabile per i test)
-    try {
-      if (db) {
-        await db.update(schema.users).set({
-          email: parsed.data.userData.email ?? u.email,
-          firstName: parsed.data.userData.name,
-          lastName: parsed.data.userData.surname,
-          phoneNumber: parsed.data.userData.mobilePhone,
-          dob: parsed.data.userData.birthDate ? new Date(parsed.data.userData.birthDate) as any : undefined,
-        }).where(eq(schema.users.id, u.id));
-      }
-    } catch {}
+    // Update in-memory record for immediate consistency
+    await storage.updateUserById(ensured.id, {
+      email: parsed.data.userData.email ?? ensured.email,
+    });
+
+    // TODO(refactor): align accounts mapping (schema.accounts) here to avoid divergence
+    // between users vs accounts when introducing dual-wallet setups.
 
     return res.json({ status: "UPDATED", externalUserId: externalId });
   });
@@ -341,31 +399,13 @@ export async function registerRoutes(app: Express, opts?: { version?: string }) 
     if (!parsed.success) return res.status(400).json({ error: 'invalid_payload', details: parsed.error.flatten() });
     const { externalUserId, email, username, displayName, avatarUrl, role } = parsed.data;
 
-    // Ensure a local user bound to this external id
-    let u = await storage.getUserByExternal(externalUserId);
-    if (!u) {
-      const uname = username && username.trim().length > 0 ? username.trim() : `sirplay_${externalUserId}`;
-      u = await storage.createUser({ username: uname, email, externalUserId, role: 'user' });
-      // Best-effort persist to DB: users + wallets
-      try {
-        if (db) {
-          await db.insert(schema.users).values({
-            id: u.id,
-            username: u.username,
-            password: '-',
-            email,
-            role: 'user',
-            externalUserId,
-            status: 'active',
-            lastLogin: new Date() as any,
-          });
-          await db.insert(schema.wallets).values({ userId: u.id, balanceCents: 0, currency: 'EUR' });
-        }
-      } catch {}
-    } else {
-      // Touch lastLogin when possible
-      try { if (db) { await db.update(schema.users).set({ lastLogin: new Date() as any }).where(eq(schema.users.id, u.id)); } } catch {}
-    }
+    // Ensure local user via centralized helper
+    const u = await ensureLocalUserForSirplay({
+      externalUserId,
+      email,
+      username: username ?? null,
+      role: 'user',
+    });
 
     // Ensure Accounts mapping exists (provider/user id) for Sirplay
     try {
@@ -395,7 +435,7 @@ export async function registerRoutes(app: Express, opts?: { version?: string }) 
 
   // Register a Kasyrooms user onto Sirplay (Operatore -> Sirplay)
   // Body: { userId_B: "<localUserId>", password: "...", status?: "ACTIVE", birthDate?: "...", ... }
-  app.post("/api/sirplay/out/user/register", requireRole(["admin"]), async (req, res) => {
+  app.post("/api/sirplay/out/user-registrations", requireRole(["admin"]), async (req, res) => {
     try {
       const parsed = z.object({
         userId_B: z.string().min(1),      // local user id
@@ -505,7 +545,8 @@ export async function registerRoutes(app: Express, opts?: { version?: string }) 
       const cfg = getSirplayConfigFromEnv();
       const { token } = await sirplayLogin(cfg);
 
-      const resp = await sirplayGetWallet(cfg, token, sirplayUserId);
+      const passport = getSirplayPassportFromEnv();
+      const resp = await sirplayWalletGet(cfg, token, passport, sirplayUserId);
       return res.json({ ok: true, sirplayResponse: resp });
     } catch (e: any) {
       return res.status(502).json({ error: "sirplay_wallet_get_failed", message: e?.message, response: e?.response });
@@ -529,8 +570,31 @@ export async function registerRoutes(app: Express, opts?: { version?: string }) 
       const cfg = getSirplayConfigFromEnv();
       const { token } = await sirplayLogin(cfg);
 
-      const resp = await sirplayDeposit(cfg, token, parsed.data.sirplayUserId, parsed.data);
-      return res.json({ ok: true, sirplayResponse: resp });
+      const passport = getSirplayPassportFromEnv();
+      const body = {
+        idTransaction: parsed.data.idTransaction,
+        amount: parsed.data.amount,
+        currency: parsed.data.currency || "EUR",
+        type: "EXTERNAL_DEPOSIT" as const,
+        partnerId: cfg.partnerId || (process.env.SIRPLAY_PARTNER_ID || "").trim(),
+        description: parsed.data.description,
+        sourceUser: parsed.data.sourceUser,
+        externalReference: parsed.data.externalReference || parsed.data.idTransaction,
+      };
+      try {
+        const resp = await sirplayWalletDeposit(cfg, token, passport, parsed.data.sirplayUserId, body);
+        return res.json({ ok: true, sirplayResponse: resp });
+      } catch (e: any) {
+        const msg = String(e?.message || "");
+        // Map common Sirplay errors
+        if (/NOT_CONSUMED_AMOUNT/i.test(msg)) {
+          return res.status(409).json({ error: "not_consumed_amount", message: msg });
+        }
+        if (/duplicate|already exists|idTransaction/i.test(msg)) {
+          return res.status(409).json({ error: "idempotent_conflict", message: msg });
+        }
+        throw e;
+      }
     } catch (e: any) {
       return res.status(502).json({ error: "sirplay_wallet_deposit_failed", message: e?.message, response: e?.response });
     }
@@ -553,8 +617,30 @@ export async function registerRoutes(app: Express, opts?: { version?: string }) 
       const cfg = getSirplayConfigFromEnv();
       const { token } = await sirplayLogin(cfg);
 
-      const resp = await sirplayWithdrawal(cfg, token, parsed.data.sirplayUserId, parsed.data);
-      return res.json({ ok: true, sirplayResponse: resp });
+      const passport = getSirplayPassportFromEnv();
+      const body = {
+        idTransaction: parsed.data.idTransaction,
+        amount: parsed.data.amount,
+        currency: parsed.data.currency || "EUR",
+        type: "EXTERNAL_WITHDRAWAL" as const,
+        partnerId: cfg.partnerId || (process.env.SIRPLAY_PARTNER_ID || "").trim(),
+        description: parsed.data.description,
+        sourceUser: parsed.data.sourceUser,
+        externalReference: parsed.data.externalReference || parsed.data.idTransaction,
+      };
+      try {
+        const resp = await sirplayWalletWithdrawal(cfg, token, passport, parsed.data.sirplayUserId, body);
+        return res.json({ ok: true, sirplayResponse: resp });
+      } catch (e: any) {
+        const msg = String(e?.message || "");
+        if (/NOT_CONSUMED_AMOUNT/i.test(msg)) {
+          return res.status(409).json({ error: "not_consumed_amount", message: msg });
+        }
+        if (/duplicate|already exists|idTransaction/i.test(msg)) {
+          return res.status(409).json({ error: "idempotent_conflict", message: msg });
+        }
+        throw e;
+      }
     } catch (e: any) {
       return res.status(502).json({ error: "sirplay_wallet_withdrawal_failed", message: e?.message, response: e?.response });
     }
@@ -578,6 +664,39 @@ export async function registerRoutes(app: Express, opts?: { version?: string }) 
     });
   });
 
+  // ===== Pull user info by externalUserId (Sirplay -> Kasyrooms) =====
+  // Secured via B2B Basic Auth
+  app.get('/api/user/getUserInfo', requireB2BBasicAuth(), async (req, res) => {
+    const externalUserId = String(req.query.externalUserId || '').trim();
+    if (!externalUserId) return res.status(400).json({ error: 'externalUserId required' });
+
+    const user = await storage.getUserByExternal(externalUserId);
+    if (!user) return res.status(404).json({ status: 'not_found' });
+
+    // Return basic profile + wallet snapshot (shared A when mapped)
+    let wallet: any = null;
+    try {
+      const balance = await storage.getBalance(externalUserId);
+      wallet = { balance, currency: 'EUR', mode: 'shared' };
+    } catch {}
+
+    return res.json({
+      status: 'ok',
+      user: {
+        id: user.id,
+        username: user.username,
+        email: user.email,
+        role: user.role || 'user',
+        externalUserId: user.externalUserId,
+        firstName: (user as any).firstName,
+        lastName: (user as any).lastName,
+        phoneNumber: (user as any).phoneNumber,
+        status: (user as any).status,
+      },
+      wallet,
+    });
+  });
+
   // 3) SSO: Sirplay chiede token per userId_B
   app.post("/api/sso/token", requireB2BBasicAuth(), async (req, res) => {
     const parsed = z.object({ userId_B: z.string().min(1) }).safeParse(req.body ?? {});
@@ -598,9 +717,10 @@ export async function registerRoutes(app: Express, opts?: { version?: string }) 
     const ssoToken = jwt.sign({ uid: user.id }, getJWTSecret(), { expiresIn: '10m' });
     return res.json({
       jwt: jwtToken,
+      token: jwtToken,
       ssoToken,
       expiresIn: 600,
-      user: { id: user.id, username: user.username, role: user.role || 'user' },
+      user: { id: user.id, username: user.username, role: user.role || 'user', externalUserId: user.externalUserId },
       mode: 'sirplay'
     });
   });
@@ -621,7 +741,7 @@ export async function registerRoutes(app: Express, opts?: { version?: string }) 
     const base = process.env.PUBLIC_WEB_URL || process.env.PUBLIC_URL || "https://www.kasyrooms.com";
     const accessLink = `${base.replace(/\/+$/, "")}?token=${encodeURIComponent(loginToken)}`;
 
-    return res.json({ status: "success", loginToken, accessLink, jwt: jwtToken, expiresIn: 600 });
+    return res.json({ status: "success", loginToken, accessLink, jwt: jwtToken, token: jwtToken, expiresIn: 600 });
   });
 
   // util per validare token (B)
@@ -1312,7 +1432,9 @@ export async function registerRoutes(app: Express, opts?: { version?: string }) 
     if (!secret) return res.status(500).json({ error: "missing webhook secret" });
     const sigHeaderName = (process.env.SIRPLAY_WEBHOOK_SIGNATURE_HEADER || 'x-sirplay-signature').toLowerCase();
     const tsHeaderName = (process.env.SIRPLAY_WEBHOOK_TIMESTAMP_HEADER || 'x-sirplay-timestamp').toLowerCase();
-    const providedSig = String(req.headers[sigHeaderName] || "");
+    const raw: Buffer = (req as any).rawBody ?? Buffer.from(JSON.stringify(req.body ?? {}));
+    const sigHdr = String(req.headers[sigHeaderName] || "");
+    const providedSig = sigHdr.startsWith('sha256=') ? sigHdr.slice(7) : sigHdr;
     const timestamp = String(req.headers[tsHeaderName] || "");
 
     try {
@@ -1323,12 +1445,14 @@ export async function registerRoutes(app: Express, opts?: { version?: string }) 
           return res.status(401).json({ error: 'stale webhook' });
         }
       }
-      // Compute HMAC over raw body (and timestamp if required by provider)
-      const raw = req.rawBody as Buffer;
-      const base = timestamp ? (timestamp + '.' + raw.toString('utf8')) : raw.toString('utf8');
-      const hmac = crypto.createHmac('sha256', secret).update(base).digest('hex');
-      if (!crypto.timingSafeEqual(Buffer.from(hmac), Buffer.from(providedSig))) {
-        return res.status(401).json({ error: 'invalid signature' });
+      // Compute HMAC over raw body bytes only (signature covers payload);
+      // timestamp is validated above to prevent replay.
+      const computed = crypto.createHmac('sha256', secret).update(raw).digest('hex');
+      // constant-time compare (hex -> buffers) and enforce equal-length
+      const a = Buffer.from(String(providedSig), 'hex');
+      const b = Buffer.from(computed, 'hex');
+      if (a.length !== b.length || !crypto.timingSafeEqual(a, b)) {
+        return res.status(401).json({ error: 'invalid_signature' });
       }
     } catch (e:any) {
       return res.status(401).json({ error: 'verification failed' });
@@ -1346,6 +1470,10 @@ export async function registerRoutes(app: Express, opts?: { version?: string }) 
     if (!externalUserId || !email) return res.status(400).json({ error: 'missing_identity' });
 
     try {
+      // If DB is disabled, acknowledge event for DEV environments while skipping persistence
+      if (!db) {
+        return res.json({ ok: true, accepted: true, stored: false });
+      }
       const acc = await getOrCreateAccountBySirplayUserId({ externalUserId, email });
       const type = String(event?.type || '').toLowerCase();
       const amountCents = Number(event?.amountCents ?? (Number(event?.amount) * 100));
