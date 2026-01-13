@@ -165,6 +165,10 @@ jobs:
 
             base_url="http://127.0.0.1:5000"
 
+            # Ensure single instance to avoid PM2 cluster memory divergence during local smoke
+            pm2 scale kasyrooms 1 || true
+            pm2 reload kasyrooms || true
+
             # Local healthz with retry (avoid flakiness right after PM2 reload)
             echo "[Local Smoke] healthz at $base_url/api/healthz"
             attempts=5
@@ -272,6 +276,12 @@ jobs:
               if [ "$status" = "200" ] || [ "$status" = "201" ]; then
                 seed_ok=1
                 echo "Seed OK ($status)"
+                # Extract handshake token
+                token="$(printf '%s' "$body" | sed -nE 's/.*"token"[[:space:]]*:[[:space:]]*"([^"]+)".*/\1/p')"
+                if [ -z "$token" ]; then
+                  echo "Handshake token not found in response" >&2
+                  seed_ok=0
+                fi
                 break
               fi
               echo "Seed not ready (attempt $i/$seed_attempts): $status"
@@ -294,6 +304,15 @@ jobs:
                 echo "Seed failed; skipping auth-positive test"
                 exit 0
               fi
+              echo "[Local Smoke] register inbound to persist mapping"
+              tmp="$(mktemp)"
+              status="$(curl -sS -o "$tmp" -w '%{http_code}' -X POST "$base_url/user-account/signup/b2b/registrations" \
+                -H 'Content-Type: application/json' \
+                -H "Authorization: Bearer $token" \
+                -d '{"eventId":"smoke-evt","operation":"REGISTER","action":"USER_REGISTRATION","eventTime":"'"$(date -Iseconds)"'"',"userData":{"userName":"smoke-user","externalId":"SMOKE-DEV-001","password":"Secret123!","status":"ACTIVE","email":"smoke-dev-001@example.local"}}' || echo "000")"
+              body="$(cat "$tmp" 2>/dev/null || true)"
+              rm -f "$tmp"
+              echo "Register inbound status: $status"
               basic="$(printf '%s:%s' "$B2B_USER" "$B2B_PASS" | base64)"
               tmp="$(mktemp)"
               status="$(curl -sS -o "$tmp" -w '%{http_code}' -X POST "$base_url/api/b2b/login-tokens" \
