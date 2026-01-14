@@ -110,7 +110,7 @@ async function run() {
   const tokRes = await agent
     .post('/api/b2b/login-tokens')
     .set('Authorization', demoBasic)
-    .send({ externalId: externalUserId });
+    .send({ externalId: infoRes.body.user.id });
   console.log('TOKENS status:', tokRes.status, 'body keys:', Object.keys(tokRes.body));
 
   console.log('--- WEBHOOK correct signature');

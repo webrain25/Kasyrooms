@@ -60,8 +60,13 @@ async function main() {
     console.error('seed handshake FAILED:', seed.status, seed.text);
     process.exit(1);
   }
+  const localId = seed.json?.user?.id;
+  if (!localId) {
+    console.error('seed handshake FAILED: missing local user id');
+    process.exit(1);
+  }
 
-  const lt = await req('POST', '/api/b2b/login-tokens', { externalId: extId });
+  const lt = await req('POST', '/api/b2b/login-tokens', { externalId: localId });
   if (!lt.ok || lt.json?.status !== 'success' || !lt.json?.loginToken || !lt.json?.accessLink) {
     console.error('login-tokens FAILED:', lt.status, lt.text);
     process.exit(1);
@@ -69,7 +74,7 @@ async function main() {
   console.log('b2b login-tokens OK (new contract)');
 
   // Negative test: well-formed JSON without Authorization must not return 500; expect 401
-  const ltNoAuth = await reqNoAuth('POST', '/api/b2b/login-tokens', { externalId: extId });
+  const ltNoAuth = await reqNoAuth('POST', '/api/b2b/login-tokens', { externalId: localId });
   if (ltNoAuth.status === 500) {
     console.error('login-tokens REGRESSION: got 500 without Authorization');
     process.exit(1);

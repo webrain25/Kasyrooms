@@ -76,13 +76,13 @@ async function main() {
   }
   console.log('balance(B->shared) OK', balSharedViaB.json);
 
-  // 5b) B2B login-tokens for external userId (positive Authorization)
-  const loginTokens = await req('POST', '/api/b2b/login-tokens', { userId: extId });
-  if (!loginTokens.ok || !loginTokens.json?.jwt || !loginTokens.json?.ssoToken || loginTokens.json?.mode !== 'sirplay') {
+  // 5b) B2B login-tokens using Kasyrooms externalId (local user id)
+  const loginTokens = await req('POST', '/api/b2b/login-tokens', { externalId: userId_B });
+  if (!loginTokens.ok || loginTokens.json?.status !== 'success' || !loginTokens.json?.loginToken || !loginTokens.json?.accessLink) {
     console.error('b2b login-tokens FAILED:', loginTokens.status, loginTokens.text);
     process.exit(1);
   }
-  console.log('b2b login-tokens OK');
+  console.log('b2b login-tokens OK (new contract)');
 
   // 6) SSO token for userId_B and validate
   const sso = await req('POST', '/api/sso/token', { userId_B });

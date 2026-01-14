@@ -325,25 +325,19 @@ export async function registerRoutes(app: any, opts?: { version?: string }): Pro
     const createdInput = pickStr(payload.created);
     const sirplayUserId = pickStr(payload.userId);
     const customerId = pickStr((raw && raw.customerId) ?? (payload && (payload as any).customerId));
-    // externalId must be equal to userData.userId (Sirplay ID)
-    const externalId = sirplayUserId;
+    // externalId for response is the Kasyrooms user id (local id), not Sirplay id
+    // We'll generate/ensure local user mapped to Sirplay id and return local id as externalId
 
     // Validate mandatory fields after normalization
     if (!sirplayUserId || !userName || !email || !status) {
       return res.status(400).json({ error: 'invalid_payload', details: { userId: !!sirplayUserId, userName: !!userName, email: !!email, status: !!status } });
     }
-    // ExternalId must exist and be valid
-    const isValidExternalId = (id?: string) => !!id && String(id).trim().length > 0;
-    if (!isValidExternalId(externalId)) {
-      return res.status(400).json({ error: 'invalid_externalId', details: { externalId } });
-    }
-
-    // Detect if user existed before upsert
-    const existed = !!(await storage.getUserByExternal(externalId!));
+    // Detect if user existed before upsert via Sirplay mapping
+    const existed = !!(await storage.getUserByExternal(sirplayUserId!));
 
     // Ensure/create local mapping and update minimal profile
     const ensured = await ensureLocalUserForSirplay({
-      externalUserId: externalId!,
+      externalUserId: sirplayUserId!,
       email: email ?? null,
       username: userName,
       role: 'user',
@@ -354,7 +348,7 @@ export async function registerRoutes(app: any, opts?: { version?: string }): Pro
     });
 
     // Best-effort: update email + sirplay fields immediately in memory
-    await storage.updateUserById(ensured.id, { email, externalUserId: externalId!, sirplayUserId: sirplayUserId, sirplayCustomerId: customerId });
+    await storage.updateUserById(ensured.id, { email, externalUserId: sirplayUserId!, sirplayUserId: sirplayUserId, sirplayCustomerId: customerId });
 
     // Persist createdAt and sirplay identifiers on first insert if provided and DB is available
     try {
@@ -363,7 +357,7 @@ export async function registerRoutes(app: any, opts?: { version?: string }): Pro
           await db.update(schema.users).set({ createdAt: new Date(createdInput) as any }).where(eq(schema.users.id, ensured.id));
         }
         await db.update(schema.users).set({
-          externalUserId: externalId!,
+          externalUserId: sirplayUserId!,
           externalProvider: 'sirplay',
           sirplayUserId: sirplayUserId,
           sirplayCustomerId: customerId,
@@ -376,7 +370,7 @@ export async function registerRoutes(app: any, opts?: { version?: string }): Pro
 
     const userData = {
       userName: userName,
-      externalId: externalId!,
+      externalId: ensured.id,
       password: password ?? null,
       name: name ?? null,
       surname: surname ?? null,
@@ -391,7 +385,7 @@ export async function registerRoutes(app: any, opts?: { version?: string }): Pro
 
     // Always success response per Sirplay contract
     const httpStatus = existed ? 200 : 201;
-    logger.info("sirplay_registration.success", { path: req.path, existed, httpStatus, externalId, sirplayUserId, customerId });
+    logger.info("sirplay_registration.success", { path: req.path, existed, httpStatus, externalId: ensured.id, sirplayUserId, customerId });
     return res.status(httpStatus).json({ status: 'success', userData });
   });
 
@@ -773,8 +767,8 @@ export async function registerRoutes(app: any, opts?: { version?: string }): Pro
       return res.status(400).json({ error: 'invalid_payload', details: { externalId: false } });
     }
 
-    // Lookup strictly by Sirplay user id (externalId == sirplayUserId)
-    const user = await storage.getUserBySirplayUserId(externalId);
+    // Lookup strictly by Kasyrooms local id (externalId == local user id)
+    const user = await storage.getUser(externalId);
     if (!user) {
       return res.status(404).json({ error: 'user_not_found', externalId });
     }
