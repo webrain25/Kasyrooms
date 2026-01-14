@@ -283,17 +283,19 @@ jobs:
               -H "Authorization: Basic $BASIC" \
               -d "{
                 \"eventId\":\"smoke-001\",
+                \"customerId\":\"572\",\
                 \"operation\":\"REGISTER\",
                 \"action\":\"USER_REGISTRATION\",
                 \"eventTime\": $(date +%s%3N),
                 \"userData\": {
-                  \"userName\":\"smokeuser\",
-                  \"externalId\":\"$EXTERNAL_USER_ID\",
+                  \"userId\":\"1258\",\
+                  \"userName\":\"smokeuser\",\
                   \"password\":\"Secret123!\",
                   \"name\":\"Smoke\",
                   \"surname\":\"Test\",
                   \"email\":\"smoke-$EXTERNAL_USER_ID@sirplay.com\",
-                  \"status\":\"ACTIVE\"
+                  \"status\":\"ACTIVE\",\
+                  \"profileType\":\"PLAYER\"
                 }
               }")"
 
