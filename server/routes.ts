@@ -3,6 +3,7 @@ import type { Express } from "express";
 import { createServer } from "http";
 import jwt from "jsonwebtoken";
 import { storage } from "./storage.js";
+import { logger } from "./logger.js";
 import crypto from "crypto";
 import { db, schema } from "./db.js";
 import multer from "multer";
@@ -41,6 +42,7 @@ function requireB2BBasicAuth() {
   return (req: any, res: any, next: any) => {
     const unauthorized = () => {
       res.set('WWW-Authenticate', 'Basic realm="Kasyrooms B2B"');
+      logger.info("b2b_auth.fail", { path: req.path, reason: "unauthorized" });
       return res.status(401).json({ error: 'unauthorized' });
     };
 
@@ -86,7 +88,7 @@ function requireB2BBasicAuth() {
     } catch {
       return unauthorized();
     }
-
+    logger.info("b2b_auth.ok", { path: req.path, user: user ? "present" : "missing" });
     return next();
   };
 }
@@ -151,6 +153,7 @@ function requireSirplayBearerVerified() {
   return async (req: any, res: any, next: any) => {
     const hdr = req.headers?.authorization || req.headers?.Authorization;
     if (typeof hdr !== 'string' || !hdr.startsWith('Bearer ')) {
+      logger.info("sirplay_bearer.blocked", { path: req.path, reason: 'missing_bearer' });
       return res.status(401).json({ error: 'missing_bearer' });
     }
     const token = hdr.slice('Bearer '.length).trim();
@@ -171,8 +174,10 @@ function requireSirplayBearerVerified() {
         return next();
       }
 
+      logger.info("sirplay_bearer.blocked", { path: req.path, reason: 'not_verified' });
       return res.status(401).json({ error: 'sirplay_token_not_verified' });
     } catch (e: any) {
+      logger.info("sirplay_bearer.blocked", { path: req.path, reason: 'invalid', message: e?.message || String(e) });
       return res.status(401).json({ error: 'sirplay_token_invalid', message: e?.message || String(e) });
     }
   };
@@ -350,8 +355,8 @@ export async function registerRoutes(app: any, opts?: { version?: string }): Pro
       }
     } catch {}
 
-    const createdOut = createdInput || ensured.createdAt || new Date().toISOString();
-    const lastUpdatedOut = existed ? new Date().toISOString() : null;
+    const createdOut = new Date().toISOString();
+    const lastUpdatedOut = null;
 
     const userData = {
       userName: userName,
@@ -360,7 +365,7 @@ export async function registerRoutes(app: any, opts?: { version?: string }): Pro
       name: name ?? null,
       surname: surname ?? null,
       email: email ?? null,
-      status: status ?? null,
+      status: status ?? 'ACTIVE',
       birthDate: birthDate ?? null,
       lastUpdated: lastUpdatedOut,
       created: createdOut,
@@ -369,7 +374,9 @@ export async function registerRoutes(app: any, opts?: { version?: string }): Pro
     } as const;
 
     // Always success response per Sirplay contract
-    return res.status(existed ? 200 : 201).json({ status: 'success', userData });
+    const httpStatus = existed ? 200 : 201;
+    logger.info("sirplay_registration.success", { path: req.path, existed, httpStatus, externalId });
+    return res.status(httpStatus).json({ status: 'success', userData });
   });
 
   // 2) UPDATE (Sirplay → Kasyrooms) — Basic Auth per doc
@@ -742,7 +749,7 @@ export async function registerRoutes(app: any, opts?: { version?: string }): Pro
     const body = req.body ?? {};
     const externalId = typeof body.externalId === 'string' && body.externalId.trim().length > 0
       ? String(body.externalId)
-      : (typeof body.userId === 'string' && body.userId.trim().length > 0 ? String(body.userId) : undefined);
+      : undefined;
     if (!externalId) {
       return res.status(400).json({ error: 'invalid_payload', details: { externalId: false } });
     }
@@ -750,11 +757,13 @@ export async function registerRoutes(app: any, opts?: { version?: string }): Pro
     const user = await storage.getUserByExternal(externalId);
     if (!user) return res.status(404).json({ error: 'user_not_found', externalId });
 
-    const loginToken = jwt.sign({ uid: user.id }, getJWTSecret(), { expiresIn: '10m' });
+    // Generate random opaque login token (no JWT)
+    const loginToken = crypto.randomBytes(24).toString('base64url');
     const base = (process.env.BASE_URL || '').trim();
     if (!base) return res.status(500).json({ error: 'base_url_not_configured' });
     const accessLink = `${base.replace(/\/+$/, '')}?token=${encodeURIComponent(loginToken)}`;
 
+    logger.info("b2b_login_token.issued", { path: req.path, externalId, accessLinkPreview: accessLink.slice(0, 80) });
     return res.json({ status: 'success', loginToken, accessLink });
   }
 

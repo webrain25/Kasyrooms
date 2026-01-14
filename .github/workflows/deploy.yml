@@ -271,11 +271,16 @@ jobs:
             HANDSHAKE_TOKEN="$(node -e "const o=JSON.parse(process.argv[1]); if(!o.token) process.exit(2); process.stdout.write(o.token);" "$HANDSHAKE_JSON")"
             echo "Seed OK (token captured)"
 
-            echo "[Local Smoke] register inbound to persist mapping"
+            echo "[Local Smoke] register inbound to persist mapping (Basic Auth)"
+            # Build Basic header from .env credentials (required by registrations endpoint)
+            u="$(grep -E '^(B2B_BASIC_AUTH_USER|SIRPLAY_B2B_USER)=' .env | tail -n1 | cut -d= -f2-)"
+            p="$(grep -E '^(B2B_BASIC_AUTH_PASS|SIRPLAY_B2B_PASSWORD)=' .env | tail -n1 | cut -d= -f2-)"
+            BASIC="$(printf '%s' "$u:$p" | base64 | tr -d '\n')"
+
             REG_STATUS="$(curl -sS -o /tmp/reg.json -w "%{http_code}" \
               -X POST "$base_url/user-account/signup/b2b/registrations" \
               -H "Content-Type: application/json" \
-              -H "Authorization: Bearer $HANDSHAKE_TOKEN" \
+              -H "Authorization: Basic $BASIC" \
               -d "{
                 \"eventId\":\"smoke-001\",
                 \"operation\":\"REGISTER\",
@@ -301,10 +306,6 @@ jobs:
             echo "Register OK ($REG_STATUS)"
 
             echo "[Local Smoke] optional auth-positive if credentials present"
-            # Build Basic header from .env credentials
-            u="$(grep -E '^(B2B_BASIC_AUTH_USER|SIRPLAY_B2B_USER)=' .env | tail -n1 | cut -d= -f2-)"
-            p="$(grep -E '^(B2B_BASIC_AUTH_PASS|SIRPLAY_B2B_PASSWORD)=' .env | tail -n1 | cut -d= -f2-)"
-            BASIC="$(printf '%s' "$u:$p" | base64 | tr -d '\n')"
 
             echo "[Local Smoke] verify mapping via getUserInfo"
             tmp="$(mktemp)"
@@ -324,7 +325,7 @@ jobs:
               -X POST "$base_url/api/b2b/login-tokens" \
               -H "Content-Type: application/json" \
               -H "Authorization: Basic $BASIC" \
-              -d "{\"userId\":\"$EXTERNAL_USER_ID\"}")"
+              -d "{\"externalId\":\"$EXTERNAL_USER_ID\"}")"
 
             cat /tmp/tok.json || true
 
