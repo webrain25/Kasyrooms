@@ -315,27 +315,37 @@ export async function registerRoutes(app: any, opts?: { version?: string }): Pro
 
     const pickStr = (v: any) => (typeof v === 'string' ? v : undefined);
     const userName = pickStr(payload.userName);
-    const externalId = pickStr(payload.externalId);
     const email = pickStr(payload.email);
     const status = pickStr(payload.status) || 'ACTIVE';
-
-    if (!userName || !externalId || !email || !status) {
-      return res.status(400).json({ error: 'invalid_payload', details: { userName: !!userName, externalId: !!externalId, email: !!email, status: !!status } });
-    }
-
     const password = pickStr(payload.password);
     const name = pickStr(payload.name);
     const surname = pickStr(payload.surname);
     const birthDate = pickStr(payload.birthDate);
     const mobilePhone = pickStr(payload.mobilePhone);
     const createdInput = pickStr(payload.created);
+    const sirplayUserId = pickStr(payload.userId);
+    const customerId = pickStr((raw && raw.customerId) ?? (payload && (payload as any).customerId));
+    // Normalize externalId if missing: prefer provided externalId, else _id, else `${customerId}-${userId}`
+    const providedExternalId = pickStr(payload.externalId);
+    const localIdCandidate = pickStr((payload as any)._id);
+    let externalId = providedExternalId ?? localIdCandidate ?? (customerId && sirplayUserId ? `${customerId}-${sirplayUserId}` : undefined);
+
+    // Validate mandatory fields after normalization
+    if (!userName || !email || !status) {
+      return res.status(400).json({ error: 'invalid_payload', details: { userName: !!userName, email: !!email, status: !!status } });
+    }
+    // ExternalId must exist and be valid
+    const isValidExternalId = (id?: string) => !!id && /^[A-Za-z0-9._-]{3,128}$/.test(id);
+    if (!isValidExternalId(externalId)) {
+      return res.status(400).json({ error: 'invalid_externalId', details: { externalId } });
+    }
 
     // Detect if user existed before upsert
-    const existed = !!(await storage.getUserByExternal(externalId));
+    const existed = !!(await storage.getUserByExternal(externalId!));
 
     // Ensure/create local mapping and update minimal profile
     const ensured = await ensureLocalUserForSirplay({
-      externalUserId: externalId,
+      externalUserId: externalId!,
       email: email ?? null,
       username: userName,
       role: 'user',
@@ -345,13 +355,21 @@ export async function registerRoutes(app: any, opts?: { version?: string }): Pro
       phoneNumber: mobilePhone ?? null,
     });
 
-    // Best-effort: update email immediately in memory
-    await storage.updateUserById(ensured.id, { email });
+    // Best-effort: update email + sirplay fields immediately in memory
+    await storage.updateUserById(ensured.id, { email, externalUserId: externalId!, sirplayUserId: sirplayUserId, sirplayCustomerId: customerId });
 
-    // Persist createdAt on first insert if provided and DB is available
+    // Persist createdAt and sirplay identifiers on first insert if provided and DB is available
     try {
-      if (!existed && createdInput && db) {
-        await db.update(schema.users).set({ createdAt: new Date(createdInput) as any }).where(eq(schema.users.id, ensured.id));
+      if (db) {
+        if (!existed && createdInput) {
+          await db.update(schema.users).set({ createdAt: new Date(createdInput) as any }).where(eq(schema.users.id, ensured.id));
+        }
+        await db.update(schema.users).set({
+          externalUserId: externalId!,
+          externalProvider: 'sirplay',
+          sirplayUserId: sirplayUserId,
+          sirplayCustomerId: customerId,
+        }).where(eq(schema.users.id, ensured.id));
       }
     } catch {}
 
@@ -360,7 +378,7 @@ export async function registerRoutes(app: any, opts?: { version?: string }): Pro
 
     const userData = {
       userName: userName,
-      externalId: externalId,
+      externalId: externalId!,
       password: password ?? null,
       name: name ?? null,
       surname: surname ?? null,
@@ -375,7 +393,7 @@ export async function registerRoutes(app: any, opts?: { version?: string }): Pro
 
     // Always success response per Sirplay contract
     const httpStatus = existed ? 200 : 201;
-    logger.info("sirplay_registration.success", { path: req.path, existed, httpStatus, externalId });
+    logger.info("sirplay_registration.success", { path: req.path, existed, httpStatus, externalId, sirplayUserId, customerId });
     return res.status(httpStatus).json({ status: 'success', userData });
   });
 
@@ -747,15 +765,17 @@ export async function registerRoutes(app: any, opts?: { version?: string }): Pro
   // Contract: input { externalId } or legacy { userId }, output { status, loginToken, accessLink }
   async function issueLoginTokenHandler(req: any, res: any) {
     const body = req.body ?? {};
-    const externalId = typeof body.externalId === 'string' && body.externalId.trim().length > 0
-      ? String(body.externalId)
-      : undefined;
-    if (!externalId) {
-      return res.status(400).json({ error: 'invalid_payload', details: { externalId: false } });
-    }
+    const pickStr = (v: any) => (typeof v === 'string' ? v : undefined);
+    const externalId = pickStr(body.externalId);
+    const sirplayUserId = pickStr(body.sirplayUserId) ?? pickStr(body.userId);
 
-    const user = await storage.getUserByExternal(externalId);
-    if (!user) return res.status(404).json({ error: 'user_not_found', externalId });
+    let user = externalId ? await storage.getUserByExternal(externalId) : undefined;
+    if (!user && sirplayUserId) {
+      user = await storage.getUserBySirplayUserId(sirplayUserId);
+    }
+    if (!user) {
+      return res.status(404).json({ error: 'user_not_found', externalId, sirplayUserId });
+    }
 
     // Generate random opaque login token (no JWT)
     const loginToken = crypto.randomBytes(24).toString('base64url');
@@ -763,7 +783,7 @@ export async function registerRoutes(app: any, opts?: { version?: string }): Pro
     if (!base) return res.status(500).json({ error: 'base_url_not_configured' });
     const accessLink = `${base.replace(/\/+$/, '')}?token=${encodeURIComponent(loginToken)}`;
 
-    logger.info("b2b_login_token.issued", { path: req.path, externalId, accessLinkPreview: accessLink.slice(0, 80) });
+    logger.info("b2b_login_token.issued", { path: req.path, externalId: user.externalUserId, sirplayUserId: (user as any).sirplayUserId, accessLinkPreview: accessLink.slice(0, 80) });
     return res.json({ status: 'success', loginToken, accessLink });
   }
 

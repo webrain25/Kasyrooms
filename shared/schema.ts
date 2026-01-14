@@ -26,6 +26,9 @@ export const users = pgTable("users", {
   // External identity mapping (provider + user id)
   externalProvider: text("external_provider"),
   externalUserId: text("external_user_id"),
+  // Sirplay-specific identifiers (b2b mapping)
+  sirplayUserId: text("sirplay_user_id"),
+  sirplayCustomerId: text("sirplay_customer_id"),
   // Extended profile fields per new schema
   firstName: text("first_name"),
   lastName: text("last_name"),

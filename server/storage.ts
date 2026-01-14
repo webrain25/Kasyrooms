@@ -7,6 +7,8 @@ export type User = {
   username: string;
   email?: string;
   externalUserId?: string; // A id
+  sirplayUserId?: string;  // Sirplay userId
+  sirplayCustomerId?: string; // Sirplay customerId
   role: 'user' | 'model' | 'admin';
   createdAt: string;
 };
@@ -135,6 +137,11 @@ export class MemStorage {
   async getUser(id: string) { return this.users.get(id); }
   async getUserByExternal(externalId: string) {
     for (const u of this.users.values()) if (u.externalUserId === externalId) return u;
+    return undefined;
+  }
+  async getUserBySirplayUserId(sirplayUserId: string) {
+    const key = String(sirplayUserId);
+    for (const u of this.users.values()) if (u.sirplayUserId === key) return u;
     return undefined;
   }
 
