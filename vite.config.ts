@@ -3,6 +3,11 @@ import react from "@vitejs/plugin-react";
 import path from "path";
 import runtimeErrorOverlay from "@replit/vite-plugin-runtime-error-modal";
 
+const extraAllowed = (process.env.VITE_ALLOWED_HOSTS || process.env.ALLOWED_HOSTS || "")
+  .split(",")
+  .map((s) => s.trim())
+  .filter(Boolean);
+
 export default defineConfig({
   plugins: [
     react(),
@@ -78,5 +83,11 @@ export default defineConfig({
       strict: true,
       deny: ["**/.*"],
     },
+    // Allow external dev hosts (e.g., Replit worf.replit.dev) and env-provided hosts
+    allowedHosts: [
+      ".worf.replit.dev",
+      ...extraAllowed,
+    ],
+    host: true,
   },
 });

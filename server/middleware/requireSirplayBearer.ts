@@ -1,5 +1,5 @@
 import jwt from 'jsonwebtoken';
-import { SIRPLAY_VERIFY_MODE } from '../config/sirplay';
+import { SIRPLAY_VERIFY_MODE } from '../config/sirplay.js';
 
 export function requireSirplayBearerVerified(req: any, res: any, next: any) {
   const auth: string | undefined = (req.headers?.authorization || req.headers?.Authorization) as any;

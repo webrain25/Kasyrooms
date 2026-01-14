@@ -1,6 +1,6 @@
 
 import { randomUUID } from "crypto";
-import { db, schema } from "./db";
+import { db, schema } from "./db.js";
 
 export type User = {
   id: string;           // local B id

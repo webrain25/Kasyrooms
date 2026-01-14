@@ -1,4 +1,4 @@
-import { SirplayClient } from "./sirplayClient";
+import { SirplayClient } from "./sirplayClient.js";
 
 export type SirplayOutboundUser = {
   id: string;

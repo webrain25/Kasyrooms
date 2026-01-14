@@ -1,8 +1,8 @@
 // server/scripts/reconcile-sirplay-mapping.ts
 // Scan users without Sirplay mapping and reconcile using accounts table.
 import dotenv from 'dotenv';
-import { db } from '../db';
-import { users, accounts } from '@shared/schema';
+import { db } from '../db.js';
+import { users, accounts } from '../../shared/schema.js';
 import { sql, and, eq } from 'drizzle-orm';
 
 async function main() {

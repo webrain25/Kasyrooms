@@ -2,15 +2,15 @@
 import type { Express } from "express";
 import { createServer } from "http";
 import jwt from "jsonwebtoken";
-import { storage } from "./storage";
+import { storage } from "./storage.js";
 import crypto from "crypto";
-import { db, schema } from "./db";
+import { db, schema } from "./db.js";
 import multer from "multer";
 import path from "path";
 import fs from "fs";
 import { and, eq } from "drizzle-orm";
-import { getOrCreateAccountBySirplayUserId, upsertWalletSnapshot, recordWalletTransactionIdempotent } from "./services/sirplayAdapter";
-import { ensureLocalUserForSirplay } from "./services/identity";
+import { getOrCreateAccountBySirplayUserId, upsertWalletSnapshot, recordWalletTransactionIdempotent } from "./services/sirplayAdapter.js";
+import { ensureLocalUserForSirplay } from "./services/identity.js";
 // @ts-ignore - bundler resolves this TS module; suppress TS2306 in check
 import {
   getSirplayConfigFromEnv,
@@ -22,10 +22,10 @@ import {
   sirplayWalletDeposit,
   sirplayWalletWithdrawal,
   type SirplayUpdateAction,
-} from "./services/sirplayClient.ts";
+} from "./services/sirplayClient.js";
 import { z } from "zod";
-import { ensureCacheDir, downloadAndCache } from "./image-cache";
-import { getCachedImage } from "./image-cache";
+import { ensureCacheDir, downloadAndCache } from "./image-cache.js";
+import { getCachedImage } from "./image-cache.js";
 
 // Read JWT secret lazily to ensure dotenv/config has been applied by the entrypoint
 const getJWTSecret = () => process.env.JWT_SECRET || "dev-secret";
@@ -104,7 +104,7 @@ function requireSirplayBearerVerified() {
     }
     const res = await fetch(url, { method: 'GET' } as any);
     if (!res.ok) throw new Error(`JWKS fetch failed: ${res.status}`);
-    const data = await res.json();
+    const data: any = await res.json();
     const keys = Array.isArray(data?.keys) ? data.keys : [];
     jwksCache = { url, fetchedAt: now, keys };
     return keys;
@@ -122,7 +122,7 @@ function requireSirplayBearerVerified() {
     if (!jwk) throw new Error('jwks_key_not_found');
     // Build KeyObject from JWK (Node supports JWK format)
     const keyObj = crypto.createPublicKey({ key: jwk, format: 'jwk' } as any);
-    const options: jwt.VerifyOptions = {};
+    const options: any = {};
     if (process.env.SIRPLAY_JWT_ISSUER) options.issuer = process.env.SIRPLAY_JWT_ISSUER;
     if (process.env.SIRPLAY_JWT_AUDIENCE) options.audience = process.env.SIRPLAY_JWT_AUDIENCE;
     options.algorithms = [alg];
@@ -178,7 +178,7 @@ function requireSirplayBearerVerified() {
   };
 }
 
-export async function registerRoutes(app: Express, opts?: { version?: string }) {
+export async function registerRoutes(app: any, opts?: { version?: string }): Promise<any> {
   const appVersion = opts?.version || "dev";
   // Force proxying of external images at API level when enabled, so the client always receives self-origin URLs
   const FORCE_PROXY_IMAGES = process.env.FORCE_PROXY_IMAGES === '1';
@@ -259,12 +259,12 @@ export async function registerRoutes(app: Express, opts?: { version?: string }) 
   const uploadsRoot = path.resolve(process.cwd(), 'uploads');
   // ===== Public Chat (per model, with optional moderation stub) =====
   // ===== Public Chat (per model, with optional moderation stub) =====
-  app.get("/api/chat/public", async (req, res) => {
+  app.get("/api/chat/public", async (req: any, res: any) => {
     const limit = Number(req.query.limit || 50);
     const modelId = typeof req.query.modelId === 'string' ? String(req.query.modelId) : undefined;
     res.json(await storage.listPublicMessages(modelId, limit));
   });
-  app.post("/api/chat/public", async (req, res) => {
+  app.post("/api/chat/public", async (req: any, res: any) => {
     const parsed = z.object({ user: z.string().min(1).max(40), text: z.string().min(1).max(500), userId_B: z.string().optional(), modelId: z.string().optional() }).safeParse(req.body ?? {});
     if (!parsed.success) return res.status(400).json({ error: "invalid_payload", details: parsed.error.flatten() });
     // Simple moderation stub: block if contains banned word
@@ -277,19 +277,19 @@ export async function registerRoutes(app: Express, opts?: { version?: string }) 
   });
 
   // Favorites API (optional, complements client local favorites)
-  app.get('/api/favorites', requireRole(['user','model','admin']), async (req, res) => {
+  app.get('/api/favorites', requireRole(['user','model','admin']), async (req: any, res: any) => {
     const u = (req as any).user as ReqUser;
     const list = await storage.getFavorites(u!.id);
     res.json({ favorites: list });
   });
-  app.post('/api/favorites/:modelId', requireRole(['user','model','admin']), async (req, res) => {
+  app.post('/api/favorites/:modelId', requireRole(['user','model','admin']), async (req: any, res: any) => {
     const u = (req as any).user as ReqUser;
     const list = await storage.toggleFavorite(u!.id, String(req.params.modelId));
     res.json({ favorites: list });
   });
 
   // Convenience: allow starting a private show by username (useful from recent public chat list)
-  app.post('/api/sessions/start-by-username', async (req, res) => {
+  app.post('/api/sessions/start-by-username', async (req: any, res: any) => {
     const parsed = z.object({ username: z.string().min(1), modelId: z.string().min(1) }).safeParse(req.body ?? {});
     if (!parsed.success) return res.status(400).json({ error: 'invalid_payload', details: parsed.error.flatten() });
     const user = await storage.getUserByUsername(String(parsed.data.username));
@@ -301,53 +301,79 @@ export async function registerRoutes(app: Express, opts?: { version?: string }) 
   // ===== INTEGRAZIONE SIRPLAY (Operatore B) =====
 
   // 1) REGISTER (Sirplay → Kasyrooms)
-  app.post("/user-account/signup/b2b/registrations", requireSirplayBearerVerified(), async (req, res) => {
-    const parsed = z.object({ // User registration
-      eventId: z.string().min(1),
-      operation: z.literal("REGISTER"),
-      action: z.literal("USER_REGISTRATION"),
-      eventTime: z.union([z.number(), z.string()]),
-      userData: z.object({
-        userName: z.string().min(1),
-        externalId: z.string().min(1),
-        password: z.string().min(1).optional(),
-        status: z.string().optional(),
-        email: z.string().email().optional(),
-        name: z.string().optional(),
-        surname: z.string().optional(),
-        birthDate: z.string().optional(),
-        mobilePhone: z.string().optional(),
-        created: z.string().optional(),
-        lastUpdated: z.string().nullable().optional(),
-      }),
-    }).safeParse(req.body ?? {});
+  // Requirements: Basic Auth, robust payload (nested userData or flat), minimal validation, upsert by externalId,
+  // respond with normalized userData including nulls and profileType=PLAYER.
+  app.post("/user-account/signup/b2b/registrations", requireB2BBasicAuth(), async (req: any, res: any) => {
+    const raw = req.body ?? {};
+    const isNested = raw && typeof raw === 'object' && raw.userData && typeof raw.userData === 'object';
+    const payload = isNested ? raw.userData : raw;
 
-    if (!parsed.success) return res.status(400).json({ error: "invalid_payload", details: parsed.error.flatten() });
+    const pickStr = (v: any) => (typeof v === 'string' ? v : undefined);
+    const userName = pickStr(payload.userName);
+    const externalId = pickStr(payload.externalId);
+    const email = pickStr(payload.email);
+    const status = pickStr(payload.status) || 'ACTIVE';
 
-    const { userData } = parsed.data;
-    const externalUserId = userData.externalId;
-    const username = userData.userName;
+    if (!userName || !externalId || !email || !status) {
+      return res.status(400).json({ error: 'invalid_payload', details: { userName: !!userName, externalId: !!externalId, email: !!email, status: !!status } });
+    }
 
-    // Centralized identity ensure to avoid duplicate inserts
-    await ensureLocalUserForSirplay({
-      externalUserId,
-      email: userData.email ?? null,
-      username,
+    const password = pickStr(payload.password);
+    const name = pickStr(payload.name);
+    const surname = pickStr(payload.surname);
+    const birthDate = pickStr(payload.birthDate);
+    const mobilePhone = pickStr(payload.mobilePhone);
+    const createdInput = pickStr(payload.created);
+
+    // Detect if user existed before upsert
+    const existed = !!(await storage.getUserByExternal(externalId));
+
+    // Ensure/create local mapping and update minimal profile
+    const ensured = await ensureLocalUserForSirplay({
+      externalUserId: externalId,
+      email: email ?? null,
+      username: userName,
       role: 'user',
-      firstName: userData.name ?? null,
-      lastName: userData.surname ?? null,
-      birthDate: userData.birthDate ?? null,
-      phoneNumber: userData.mobilePhone ?? null,
+      firstName: name ?? null,
+      lastName: surname ?? null,
+      birthDate: birthDate ?? null,
+      phoneNumber: mobilePhone ?? null,
     });
 
-    return res.status(201).json({
-      status: "CREATED",
-      externalUserId,
-    });
+    // Best-effort: update email immediately in memory
+    await storage.updateUserById(ensured.id, { email });
+
+    // Persist createdAt on first insert if provided and DB is available
+    try {
+      if (!existed && createdInput && db) {
+        await db.update(schema.users).set({ createdAt: new Date(createdInput) as any }).where(eq(schema.users.id, ensured.id));
+      }
+    } catch {}
+
+    const createdOut = createdInput || ensured.createdAt || new Date().toISOString();
+    const lastUpdatedOut = existed ? new Date().toISOString() : null;
+
+    const userData = {
+      userName: userName,
+      externalId: externalId,
+      password: password ?? null,
+      name: name ?? null,
+      surname: surname ?? null,
+      email: email ?? null,
+      status: status ?? null,
+      birthDate: birthDate ?? null,
+      lastUpdated: lastUpdatedOut,
+      created: createdOut,
+      mobilePhone: mobilePhone ?? null,
+      profileType: 'PLAYER',
+    } as const;
+
+    // Always success response per Sirplay contract
+    return res.status(existed ? 200 : 201).json({ status: 'success', userData });
   });
 
   // 2) UPDATE (Sirplay → Kasyrooms) — Basic Auth per doc
-  app.put("/user-account/signup/b2b/registrations", requireB2BBasicAuth(), async (req, res) => {
+  app.put("/user-account/signup/b2b/registrations", requireB2BBasicAuth(), async (req: any, res: any) => {
     const parsed = z.object({
       eventId: z.string().min(1),
       operation: z.literal("UPDATE"),
@@ -440,7 +466,7 @@ export async function registerRoutes(app: Express, opts?: { version?: string }) 
 
   // Register a Kasyrooms user onto Sirplay (Operatore -> Sirplay)
   // Body: { userId_B: "<localUserId>", password: "...", status?: "ACTIVE", birthDate?: "...", ... }
-  app.post("/api/sirplay/out/user-registrations", requireRole(["admin"]), async (req, res) => {
+  app.post("/api/sirplay/out/user-registrations", requireRole(["admin"]), async (req: any, res: any) => {
     try {
       const parsed = z.object({
         userId_B: z.string().min(1),      // local user id
@@ -496,11 +522,11 @@ export async function registerRoutes(app: Express, opts?: { version?: string }) 
 
   // Update a Sirplay user from Kasyrooms (Operatore -> Sirplay)
   // Body: { userId_B: "<localUserId>", action: "USER_UPDATE", ...fields }
-  app.put("/api/sirplay/out/user/update", requireRole(["admin"]), async (req, res) => {
+  app.put("/api/sirplay/out/user/update", requireRole(["admin"]), async (req: any, res: any) => {
     try {
       const parsed = z.object({
         userId_B: z.string().min(1),
-        action: z.custom<SirplayUpdateAction>((v) => typeof v === "string", "action required"),
+        action: z.custom((v: any) => typeof v === "string", "action required"),
         password: z.string().optional(),
         status: z.string().optional(),
         birthDate: z.string().optional(),
@@ -542,7 +568,7 @@ export async function registerRoutes(app: Express, opts?: { version?: string }) 
   });
 
   // GET wallet from Sirplay (b2b)
-  app.get("/api/sirplay/out/wallet", requireRole(["admin"]), async (req, res) => {
+  app.get("/api/sirplay/out/wallet", requireRole(["admin"]), async (req: any, res: any) => {
     try {
       const sirplayUserId = String(req.query.sirplayUserId || "").trim();
       if (!sirplayUserId) return res.status(400).json({ error: "sirplayUserId required" });
@@ -559,7 +585,7 @@ export async function registerRoutes(app: Express, opts?: { version?: string }) 
   });
 
   // POST deposit to Sirplay (b2b)
-  app.post("/api/sirplay/out/wallet/deposit", requireRole(["admin"]), async (req, res) => {
+  app.post("/api/sirplay/out/wallet/deposit", requireRole(["admin"]), async (req: any, res: any) => {
     try {
       const parsed = z.object({
         sirplayUserId: z.string().min(1),
@@ -606,7 +632,7 @@ export async function registerRoutes(app: Express, opts?: { version?: string }) 
   });
 
   // POST withdrawal to Sirplay (b2b)
-  app.post("/api/sirplay/out/wallet/withdrawal", requireRole(["admin"]), async (req, res) => {
+  app.post("/api/sirplay/out/wallet/withdrawal", requireRole(["admin"]), async (req: any, res: any) => {
     try {
       const parsed = z.object({
         sirplayUserId: z.string().min(1),
@@ -652,7 +678,7 @@ export async function registerRoutes(app: Express, opts?: { version?: string }) 
   });
 
   // 2) Info player lato Operatore B
-  app.get("/api/v1/player/info", async (req, res) => {
+  app.get("/api/v1/player/info", async (req: any, res: any) => {
     const playerId = String(req.query.playerId || "");
     const user = playerId ? await storage.getUser(playerId) : undefined;
     if (!user) return res.status(404).json({ status: "not_found" });
@@ -671,7 +697,7 @@ export async function registerRoutes(app: Express, opts?: { version?: string }) 
 
   // ===== Pull user info by externalUserId (Sirplay -> Kasyrooms) =====
   // Secured via B2B Basic Auth
-  app.get('/api/user/getUserInfo', requireB2BBasicAuth(), async (req, res) => {
+  app.get('/api/user/getUserInfo', requireB2BBasicAuth(), async (req: any, res: any) => {
     const externalUserId = String(req.query.externalUserId || '').trim();
     if (!externalUserId) return res.status(400).json({ error: 'externalUserId required' });
 
@@ -703,54 +729,42 @@ export async function registerRoutes(app: Express, opts?: { version?: string }) 
   });
 
   // 3) SSO: Sirplay chiede token per userId_B
-  app.post("/api/sso/token", requireB2BBasicAuth(), async (req, res) => {
+  app.post("/api/sso/token", requireB2BBasicAuth(), async (req: any, res: any) => {
     const parsed = z.object({ userId_B: z.string().min(1) }).safeParse(req.body ?? {});
     if (!parsed.success) return res.status(400).json({ error: 'invalid_payload', details: parsed.error.flatten() });
     const token = jwt.sign({ uid: parsed.data.userId_B }, getJWTSecret(), { expiresIn: "10m" });
     res.json({ token, expiresIn: 600 });
   });
 
-  // B2B: issue login tokens for an existing Sirplay external userId
-  // Body: { userId: "<externalUserId>" }
-  app.post("/api/b2b/login-tokens", requireB2BBasicAuth(), async (req, res) => {
-    const parsed = z.object({ userId: z.string().min(1) }).safeParse(req.body ?? {});
-    if (!parsed.success) return res.status(400).json({ error: 'invalid_payload', details: parsed.error.flatten() });
-    const externalUserId = parsed.data.userId;
-    const user = await storage.getUserByExternal(externalUserId);
-    if (!user) return res.status(404).json({ error: 'user_not_found' });
-    const jwtToken = jwt.sign({ uid: user.id, role: user.role || 'user', username: user.username }, getJWTSecret(), { expiresIn: '1d' });
-    const ssoToken = jwt.sign({ uid: user.id }, getJWTSecret(), { expiresIn: '10m' });
-    return res.json({
-      jwt: jwtToken,
-      token: jwtToken,
-      ssoToken,
-      expiresIn: 600,
-      user: { id: user.id, username: user.username, role: user.role || 'user', externalUserId: user.externalUserId },
-      mode: 'sirplay'
-    });
-  });
+  // B2B: issue login token for existing Sirplay externalId
+  // Contract: input { externalId } or legacy { userId }, output { status, loginToken, accessLink }
+  async function issueLoginTokenHandler(req: any, res: any) {
+    const body = req.body ?? {};
+    const externalId = typeof body.externalId === 'string' && body.externalId.trim().length > 0
+      ? String(body.externalId)
+      : (typeof body.userId === 'string' && body.userId.trim().length > 0 ? String(body.userId) : undefined);
+    if (!externalId) {
+      return res.status(400).json({ error: 'invalid_payload', details: { externalId: false } });
+    }
+
+    const user = await storage.getUserByExternal(externalId);
+    if (!user) return res.status(404).json({ error: 'user_not_found', externalId });
+
+    const loginToken = jwt.sign({ uid: user.id }, getJWTSecret(), { expiresIn: '10m' });
+    const base = (process.env.BASE_URL || '').trim();
+    if (!base) return res.status(500).json({ error: 'base_url_not_configured' });
+    const accessLink = `${base.replace(/\/+$/, '')}?token=${encodeURIComponent(loginToken)}`;
+
+    return res.json({ status: 'success', loginToken, accessLink });
+  }
+
+  app.post("/api/b2b/login-tokens", requireB2BBasicAuth(), issueLoginTokenHandler);
 
   // Doc alias: POST /b2b/login-tokens with body { externalId: "..." }
-  app.post("/b2b/login-tokens", requireB2BBasicAuth(), async (req, res) => {
-    const parsed = z.object({ externalId: z.string().min(1) }).safeParse(req.body ?? {});
-    if (!parsed.success) return res.status(400).json({ error: "invalid_payload", details: parsed.error.flatten() });
-
-    // Map alias to existing logic
-    const externalUserId = parsed.data.externalId;
-    const user = await storage.getUserByExternal(externalUserId);
-    if (!user) return res.status(404).json({ error: "user_not_found" });
-
-    const jwtToken = jwt.sign({ uid: user.id, role: user.role || "user", username: user.username }, getJWTSecret(), { expiresIn: "1d" });
-    const loginToken = jwt.sign({ uid: user.id }, getJWTSecret(), { expiresIn: "10m" });
-
-    const base = process.env.PUBLIC_WEB_URL || process.env.PUBLIC_URL || "https://www.kasyrooms.com";
-    const accessLink = `${base.replace(/\/+$/, "")}?token=${encodeURIComponent(loginToken)}`;
-
-    return res.json({ status: "success", loginToken, accessLink, jwt: jwtToken, token: jwtToken, expiresIn: 600 });
-  });
+  app.post("/b2b/login-tokens", requireB2BBasicAuth(), issueLoginTokenHandler);
 
   // util per validare token (B)
-  app.get("/api/sso/validate", requireB2BBasicAuth(), async (req, res) => {
+  app.get("/api/sso/validate", requireB2BBasicAuth(), async (req: any, res: any) => {
     const token = String(req.query.token || "");
     try {
       const payload = jwt.verify(token, getJWTSecret()) as any;
@@ -762,7 +776,7 @@ export async function registerRoutes(app: Express, opts?: { version?: string }) 
 
   // 4) Wallet proxy lato B verso A (qui simulato in memoria)
   // Wallet: shared (A) or local (B)
-  app.get("/api/wallet/balance", requireB2BBasicAuth(), async (req, res) => {
+  app.get("/api/wallet/balance", requireB2BBasicAuth(), async (req: any, res: any) => {
     const explicitUserIdA = req.query.userId_A ? String(req.query.userId_A) : undefined;
     const userId = req.query.userId ? String(req.query.userId) : undefined;
     if (!explicitUserIdA && !userId) return res.status(400).json({ error: "userId or userId_A required" });
@@ -785,7 +799,7 @@ export async function registerRoutes(app: Express, opts?: { version?: string }) 
     }
   });
 
-  app.post("/api/wallet/deposit", requireB2BBasicAuth(), async (req, res) => {
+  app.post("/api/wallet/deposit", requireB2BBasicAuth(), async (req: any, res: any) => {
     const parsed = z.object({ userId_A: z.string().optional(), userId: z.string().optional(), amount: z.number(), transactionId: z.string().optional(), source: z.string().optional() }).safeParse(req.body ?? {});
     if (!parsed.success) return res.status(400).json({ error: 'invalid_payload', details: parsed.error.flatten() });
     const { userId_A, userId, amount, transactionId, source } = parsed.data;
@@ -814,7 +828,7 @@ export async function registerRoutes(app: Express, opts?: { version?: string }) 
     }
   });
 
-  app.post("/api/wallet/withdrawal", requireB2BBasicAuth(), async (req, res) => {
+  app.post("/api/wallet/withdrawal", requireB2BBasicAuth(), async (req: any, res: any) => {
     const parsed = z.object({ userId_A: z.string().optional(), userId: z.string().optional(), amount: z.number(), transactionId: z.string().optional(), source: z.string().optional() }).safeParse(req.body ?? {});
     if (!parsed.success) return res.status(400).json({ error: 'invalid_payload', details: parsed.error.flatten() });
     const { userId_A, userId, amount, transactionId, source } = parsed.data;
@@ -848,12 +862,12 @@ export async function registerRoutes(app: Express, opts?: { version?: string }) 
   });
 
   // Operator insights: transactions and sessions
-  app.get("/api/operator/transactions", requireRole(['admin']), async (req, res) => {
+  app.get("/api/operator/transactions", requireRole(['admin']), async (req: any, res: any) => {
     const limit = Number(req.query.limit || 100);
     const list = await storage.listTransactions(limit);
     res.json(list);
   });
-  app.get("/api/operator/sessions", requireRole(['admin']), async (req, res) => {
+  app.get("/api/operator/sessions", requireRole(['admin']), async (req: any, res: any) => {
     const userId_B = req.query.userId_B ? String(req.query.userId_B) : undefined;
     const modelId = req.query.modelId ? String(req.query.modelId) : undefined;
     const limit = Number(req.query.limit || 100);
@@ -862,7 +876,7 @@ export async function registerRoutes(app: Express, opts?: { version?: string }) 
   });
 
   // Demo login endpoint issuing JWT for seeded users
-  app.post('/api/auth/login', async (req, res) => {
+  app.post('/api/auth/login', async (req: any, res: any) => {
     const parsed = z.object({ username: z.string().min(1) }).safeParse(req.body ?? {});
     if (!parsed.success) return res.status(400).json({ error: 'invalid_payload', details: parsed.error.flatten() });
     const { username } = parsed.data;
@@ -882,7 +896,7 @@ export async function registerRoutes(app: Express, opts?: { version?: string }) 
   });
 
   // Registration endpoint capturing personal data and initializing wallet in DB
-  app.post('/api/auth/register', async (req, res) => {
+  app.post('/api/auth/register', async (req: any, res: any) => {
     if (!db) return res.status(500).json({ error: 'db_unavailable' });
     const parsed = z.object({
       username: z.string().min(3),
@@ -974,10 +988,10 @@ export async function registerRoutes(app: Express, opts?: { version?: string }) 
   });
 
   // Healthcheck
-  app.get("/api/healthz", (_req, res) => res.json({ ok: true }));
+  app.get("/api/healthz", (_req: any, res: any) => res.json({ ok: true }));
 
   // Admin: audit log
-  app.get('/api/operator/audit', requireRole(['admin']), async (req, res) => {
+  app.get('/api/operator/audit', requireRole(['admin']), async (req: any, res: any) => {
     const limit = Number(req.query.limit || 200);
     const actor = typeof req.query.actor === 'string' ? String(req.query.actor).toLowerCase() : undefined;
     const action = typeof req.query.action === 'string' ? String(req.query.action).toLowerCase() : undefined;
@@ -994,7 +1008,7 @@ export async function registerRoutes(app: Express, opts?: { version?: string }) 
     return res.json(list.slice(0, Math.max(1, Math.min(limit, 2000))));
   });
   // Audit export (CSV/JSON)
-  app.get('/api/operator/audit/export', requireRole(['admin']), async (req, res) => {
+  app.get('/api/operator/audit/export', requireRole(['admin']), async (req: any, res: any) => {
     const actor = typeof req.query.actor === 'string' ? String(req.query.actor).toLowerCase() : undefined;
     const action = typeof req.query.action === 'string' ? String(req.query.action).toLowerCase() : undefined;
     const from = typeof req.query.from === 'string' ? Date.parse(String(req.query.from)) : undefined;
@@ -1024,7 +1038,7 @@ export async function registerRoutes(app: Express, opts?: { version?: string }) 
   });
 
   // ===== DMCA =====
-  app.post('/api/dmca/report', async (req, res) => {
+  app.post('/api/dmca/report', async (req: any, res: any) => {
     const parsed = z.object({
       reporterName: z.string().min(1),
       reporterEmail: z.string().email(),
@@ -1052,7 +1066,7 @@ export async function registerRoutes(app: Express, opts?: { version?: string }) 
     } catch {}
     res.json(notice);
   });
-  app.get('/api/operator/dmca', requireRole(['admin']), async (req, res) => {
+  app.get('/api/operator/dmca', requireRole(['admin']), async (req: any, res: any) => {
     const status = typeof req.query.status === 'string' ? req.query.status as any : undefined;
     const email = typeof req.query.email === 'string' ? String(req.query.email).toLowerCase() : undefined;
     const from = typeof req.query.from === 'string' ? Date.parse(String(req.query.from)) : undefined;
@@ -1067,7 +1081,7 @@ export async function registerRoutes(app: Express, opts?: { version?: string }) 
     res.json(list);
   });
   // DMCA export (CSV/JSON)
-  app.get('/api/operator/dmca/export', requireRole(['admin']), async (req, res) => {
+  app.get('/api/operator/dmca/export', requireRole(['admin']), async (req: any, res: any) => {
     const status = typeof req.query.status === 'string' ? req.query.status as any : undefined;
     const email = typeof req.query.email === 'string' ? String(req.query.email).toLowerCase() : undefined;
     const from = typeof req.query.from === 'string' ? Date.parse(String(req.query.from)) : undefined;
@@ -1094,7 +1108,7 @@ export async function registerRoutes(app: Express, opts?: { version?: string }) 
     res.setHeader('Content-Disposition', `attachment; filename="dmca_${ts}.csv"`);
     return res.status(200).send(csv);
   });
-  app.patch('/api/operator/dmca/:id/status', requireRole(['admin']), async (req, res) => {
+  app.patch('/api/operator/dmca/:id/status', requireRole(['admin']), async (req: any, res: any) => {
     const parsed = z.object({ status: z.enum(['open','closed','rejected']), notes: z.string().optional() }).safeParse(req.body ?? {});
     if (!parsed.success) return res.status(400).json({ error: 'invalid_payload', details: parsed.error.flatten() });
     const n = await storage.updateDmcaStatus(String(req.params.id), parsed.data.status, parsed.data.notes);
@@ -1104,7 +1118,7 @@ export async function registerRoutes(app: Express, opts?: { version?: string }) 
   });
 
   // ===== KYC =====
-  app.post('/api/kyc/apply', async (req, res) => {
+  app.post('/api/kyc/apply', async (req: any, res: any) => {
     const user = getReqUser(req);
     const parsed = z.object({
       fullName: z.string().min(3),
@@ -1137,7 +1151,7 @@ export async function registerRoutes(app: Express, opts?: { version?: string }) 
     } catch {}
     res.json(appRec);
   });
-  app.get('/api/operator/kyc', requireRole(['admin']), async (req, res) => {
+  app.get('/api/operator/kyc', requireRole(['admin']), async (req: any, res: any) => {
     const status = typeof req.query.status === 'string' ? req.query.status as any : undefined;
     const fullName = typeof req.query.fullName === 'string' ? String(req.query.fullName).toLowerCase() : undefined;
     const from = typeof req.query.from === 'string' ? Date.parse(String(req.query.from)) : undefined;
@@ -1152,7 +1166,7 @@ export async function registerRoutes(app: Express, opts?: { version?: string }) 
     res.json(list);
   });
   // KYC export (CSV/JSON)
-  app.get('/api/operator/kyc/export', requireRole(['admin']), async (req, res) => {
+  app.get('/api/operator/kyc/export', requireRole(['admin']), async (req: any, res: any) => {
     const status = typeof req.query.status === 'string' ? req.query.status as any : undefined;
     const fullName = typeof req.query.fullName === 'string' ? String(req.query.fullName).toLowerCase() : undefined;
     const from = typeof req.query.from === 'string' ? Date.parse(String(req.query.from)) : undefined;
@@ -1179,7 +1193,7 @@ export async function registerRoutes(app: Express, opts?: { version?: string }) 
     res.setHeader('Content-Disposition', `attachment; filename="kyc_${ts}.csv"`);
     return res.status(200).send(csv);
   });
-  app.patch('/api/operator/kyc/:id/status', requireRole(['admin']), async (req, res) => {
+  app.patch('/api/operator/kyc/:id/status', requireRole(['admin']), async (req: any, res: any) => {
     const parsed = z.object({ status: z.enum(['pending','approved','rejected']), notes: z.string().optional() }).safeParse(req.body ?? {});
     if (!parsed.success) return res.status(400).json({ error: 'invalid_payload', details: parsed.error.flatten() });
     const k = await storage.updateKycStatus(String(req.params.id), parsed.data.status, parsed.data.notes);
@@ -1210,7 +1224,7 @@ export async function registerRoutes(app: Express, opts?: { version?: string }) 
     }
   });
   // Single endpoint allowing one file per call with a type query (?kind=front|back|selfie)
-  app.post('/api/kyc/:applicationId/upload', kycUpload.single('file'), async (req: any, res) => {
+  app.post('/api/kyc/:applicationId/upload', kycUpload.single('file'), async (req: any, res: any) => {
     try {
       const kind = String(req.query.kind || '').toLowerCase();
       if (!['front','back','selfie'].includes(kind)) return res.status(400).json({ error: 'invalid_kind' });
@@ -1241,10 +1255,10 @@ export async function registerRoutes(app: Express, opts?: { version?: string }) 
   });
 
   // Simple version endpoint to verify deployed build
-  app.get("/api/version", (_req, res) => res.json({ version: appVersion, time: new Date().toISOString() }));
+  app.get("/api/version", (_req: any, res: any) => res.json({ version: appVersion, time: new Date().toISOString() }));
 
   // RTC client config: expose ICE servers to browser
-  app.get('/api/rtc/config', (_req, res) => {
+  app.get('/api/rtc/config', (_req: any, res: any) => {
     const iceServers: any[] = [];
     // Always include a public STUN fallback
     iceServers.push({ urls: ['stun:stun.l.google.com:19302'] });
@@ -1255,7 +1269,7 @@ export async function registerRoutes(app: Express, opts?: { version?: string }) 
   });
 
   // Lightweight image proxy to bypass third-party CORP/CSP issues for remote thumbnails
-  app.get('/api/proxy/img', async (req, res) => {
+  app.get('/api/proxy/img', async (req: any, res: any) => {
     try {
       const rawParam = String(req.query.u || req.query.url || '');
       if (!rawParam) { res.setHeader('Cache-Control', 'no-store'); return res.status(400).json({ error: 'missing_url' }); }
@@ -1333,7 +1347,7 @@ export async function registerRoutes(app: Express, opts?: { version?: string }) 
       // Optional allowlist via env (comma-separated). If set, enforce it.
       const allowEnv = (process.env.IMAGE_PROXY_ALLOWED_HOSTS || '').trim();
       if (allowEnv) {
-        const allowed = new Set(allowEnv.split(',').map(s => s.trim().toLowerCase()).filter(Boolean));
+        const allowed = new Set(allowEnv.split(',').map((s: any) => s.trim().toLowerCase()).filter(Boolean));
         if (!allowed.has(host)) { res.setHeader('Cache-Control', 'no-store'); return res.status(400).json({ error: 'host_not_allowed' }); }
       }
 
@@ -1390,7 +1404,7 @@ export async function registerRoutes(app: Express, opts?: { version?: string }) 
 
   // Self-test endpoint for image proxy health. Fetches a representative Unsplash image
   // through the local proxy to validate outbound connectivity, caching, and CSP compatibility.
-  app.get('/api/selftest/images', async (_req, res) => {
+  app.get('/api/selftest/images', async (_req: any, res: any) => {
     const sample = 'https://images.unsplash.com/photo-1503023345310-bd7c1de61c7d?auto=format&fit=crop&w=400&q=60';
     const proxiedUrl = `/api/proxy/img?u=${encodeURIComponent(sample)}`;
     try {
@@ -1432,12 +1446,12 @@ export async function registerRoutes(app: Express, opts?: { version?: string }) 
   //   SIRPLAY_WEBHOOK_SECRET: chiave segreta condivisa per HMAC-SHA256
   //   SIRPLAY_WEBHOOK_SIGNATURE_HEADER: nome header contenente la firma (default: 'x-sirplay-signature')
   //   SIRPLAY_WEBHOOK_TIMESTAMP_HEADER: nome header per timestamp (opzionale, default: 'x-sirplay-timestamp')
-  app.post("/api/webhooks/sirplay", async (req: any, res) => {
+  app.post("/api/webhooks/sirplay", async (req: any, res: any) => {
     const secret = process.env.SIRPLAY_WEBHOOK_SECRET || "";
     if (!secret) return res.status(500).json({ error: "missing webhook secret" });
     const sigHeaderName = (process.env.SIRPLAY_WEBHOOK_SIGNATURE_HEADER || 'x-sirplay-signature').toLowerCase();
     const tsHeaderName = (process.env.SIRPLAY_WEBHOOK_TIMESTAMP_HEADER || 'x-sirplay-timestamp').toLowerCase();
-    const raw: Buffer = (req as any).rawBody ?? Buffer.from(JSON.stringify(req.body ?? {}));
+    const raw: any = (req as any).rawBody ?? Buffer.from(JSON.stringify(req.body ?? {}));
     const sigHdr = String(req.headers[sigHeaderName] || "");
     const providedSig = sigHdr.startsWith('sha256=') ? sigHdr.slice(7) : sigHdr;
     const timestamp = String(req.headers[tsHeaderName] || "");
@@ -1505,14 +1519,14 @@ export async function registerRoutes(app: Express, opts?: { version?: string }) 
   });
 
   // Self-test endpoint: echo rawBody length and common hashes for quick HMAC debugging
-  app.post('/api/webhooks/sirplay/selftest', async (req: any, res) => {
+  app.post('/api/webhooks/sirplay/selftest', async (req: any, res: any) => {
     try {
       const sigHeaderName = (process.env.SIRPLAY_WEBHOOK_SIGNATURE_HEADER || 'x-sirplay-signature').toLowerCase();
       const tsHeaderName = (process.env.SIRPLAY_WEBHOOK_TIMESTAMP_HEADER || 'x-sirplay-timestamp').toLowerCase();
       const providedSig = String(req.headers[sigHeaderName] || "");
       const timestamp = String(req.headers[tsHeaderName] || "");
 
-      const raw: Buffer = req.rawBody as Buffer;
+      const raw: any = req.rawBody as any;
       const rawUtf8 = raw ? raw.toString('utf8') : '';
       const len = raw ? raw.length : 0;
 

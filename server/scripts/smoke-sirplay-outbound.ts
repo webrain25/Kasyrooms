@@ -1,5 +1,5 @@
 import crypto from "crypto";
-import { createUserOnSirplay, updateUserOnSirplay } from "../services/sirplayUsers";
+import { createUserOnSirplay, updateUserOnSirplay } from "../services/sirplayUsers.js";
 
 function print(obj: any) {
   console.log(JSON.stringify(obj, null, 2));

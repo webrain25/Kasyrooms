@@ -1,5 +1,5 @@
-import { storage } from "../storage";
-import { db, schema } from "../db";
+import { storage } from "../storage.js";
+import { db, schema } from "../db.js";
 import { eq, sql } from "drizzle-orm";
 
 type Role = 'user'|'model'|'admin';

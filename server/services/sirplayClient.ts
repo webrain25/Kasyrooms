@@ -243,8 +243,46 @@ export async function sirplayGetAccessToken(cfg: SirplayEnvConfig): Promise<{
 }
 
 // Back-compat alias used by routes
-export async function sirplayLogin(cfg: SirplayEnvConfig) {
-  return sirplayGetAccessToken(cfg);
+// Simple env-based token cache (for service-style usage)
+export type TokenCache = {
+  token: string;
+  refreshToken: string;
+  expiresAtMs: number; // epoch ms
+};
+
+let envTokenCache: TokenCache | null = null;
+
+export function getSirplayAuthHeaders() {
+  if (!envTokenCache) throw new Error("Sirplay token cache empty");
+  return { Authorization: `Bearer ${envTokenCache.token}` } as Record<string, string>;
+}
+
+// Back-compat alias used by routes, now with optional cfg and env cache when cfg omitted
+export async function sirplayLogin(cfg?: SirplayEnvConfig): Promise<TokenCache> {
+  const effectiveCfg = cfg ?? getSirplayConfigFromEnv();
+  if (!cfg && envTokenCache && Date.now() < envTokenCache.expiresAtMs) {
+    return envTokenCache;
+  }
+
+  const resp = await sirplayGetAccessToken(effectiveCfg);
+  const expiresSec = typeof resp.expiresIn === "number" ? resp.expiresIn : 300;
+  const expiresAtMs = Date.now() + Math.max(0, expiresSec - 30) * 1000; // 30s safety margin
+
+  const cacheObj: TokenCache = {
+    token: resp.token,
+    refreshToken: resp.refreshToken || "",
+    expiresAtMs,
+  };
+
+  if (!cfg) envTokenCache = cacheObj;
+  return cacheObj;
+}
+
+export async function getSirplayToken(): Promise<string> {
+  if (!envTokenCache || Date.now() >= envTokenCache.expiresAtMs) {
+    await sirplayLogin();
+  }
+  return envTokenCache!.token;
 }
 
 /**

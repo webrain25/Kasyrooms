@@ -2,7 +2,7 @@
 
 // Load environment variables early
 import dotenv from "dotenv";
-import express, { Request, Response, NextFunction } from "express";
+import express from "express";
 import cors from "cors";
 import helmet from "helmet";
 import rateLimit, { ipKeyGenerator } from "express-rate-limit";
@@ -12,14 +12,14 @@ import fs from "fs/promises";
 import fsSync from "fs";
 import crypto from "crypto";
 
-import { registerRoutes } from "./routes";
-import limiterMiddleware from "./middleware/limiter";
-import { requestLogger, errorLogger } from "./middleware/request-logger";
-import { logger } from "./logger";
-import { storage } from "./storage";
-import { db, schema } from "./db";
+import { registerRoutes } from "./routes.js";
+import limiterMiddleware from "./middleware/limiter.js";
+import { requestLogger, errorLogger } from "./middleware/request-logger.js";
+import { logger } from "./logger.js";
+import { storage } from "./storage.js";
+import { db, schema } from "./db.js";
 import { eq } from "drizzle-orm";
-import { initSignaling } from "./rtc/signaling";
+import { initSignaling } from "./rtc/signaling.js";
 
 // Prefer loading env from APP_ENV_FILE (inline content or file path). Fallback to local .env only if absent.
 (() => {
@@ -107,7 +107,7 @@ if (IS_PROD || process.env.RATE_LIMIT_ENABLE_DEV === "1") {
  * ipKeyGenerator expects: (ip: string, ipv6Subnet?) => string
  * Bridge the two: extract best-effort client IP, then normalize with ipKeyGenerator(ip)
  */
-const rlKey: (req: Request) => string = (req) => {
+const rlKey: (req: any) => string = (req) => {
   const xff = req.headers["x-forwarded-for"];
   const xffFirst =
     typeof xff === "string"
@@ -126,7 +126,7 @@ const rlKey: (req: Request) => string = (req) => {
 };
 
 // Per-request CSP nonce
-app.use((req: Request, res: Response, next: NextFunction) => {
+app.use((req: any, res: any, next: any) => {
   res.locals = res.locals ?? {};
   res.locals.cspNonce = crypto.randomBytes(16).toString("base64");
   next();
@@ -204,7 +204,7 @@ app.use(
 );
 
 // Basic health endpoint (used by load balancers / monitors)
-app.get("/health", (_req: Request, res: Response) => {
+app.get("/health", (_req: any, res: any) => {
   res.setHeader("Cache-Control", "no-store");
   res.status(200).json({ ok: true, time: new Date().toISOString() });
 });
@@ -212,14 +212,14 @@ app.get("/health", (_req: Request, res: Response) => {
 // Capture raw body for HMAC verification while parsing JSON
 app.use(
   express.json({
-    verify: (req: any, _res: any, buf: Buffer) => {
+    verify: (req: any, _res: any, buf: any) => {
       req.rawBody = buf;
     },
   })
 );
 
 // Handle invalid JSON with 400 instead of 500
-app.use((err: unknown, _req: Request, res: Response, next: NextFunction) => {
+app.use((err: unknown, _req: any, res: any, next: any) => {
   const e = err as any;
 
   // body-parser sets err.status = 400 on invalid JSON; types don't expose it, so treat as unknown/any.
@@ -283,7 +283,7 @@ if (IS_PROD) {
   const ipHitCounter = new Map<string, { count: number; ts: number }>();
   app.use(
     ["/api/models", "/api/home/models", "/api/models-home"],
-    (req: Request, _res: Response, next: NextFunction) => {
+    (req: any, _res: any, next: any) => {
       try {
         const key = String(
           (req.headers["x-forwarded-for"] as string) ||
@@ -414,7 +414,7 @@ if (!isProd) {
 
   app.use(vite.middlewares);
 
-  app.get("*", async (req: Request, res: Response, next: NextFunction) => {
+  app.get("*", async (req: any, res: any, next: any) => {
     try {
       const url = req.originalUrl;
       const indexHtmlPath = path.resolve(clientRoot, "index.html");
@@ -440,7 +440,7 @@ if (!isProd) {
     express.static(uploadsRoot, {
       etag: true,
       lastModified: true,
-      setHeaders: (res, p) => {
+      setHeaders: (res: any, p: string) => {
         const rel = p.replace(/\\/g, "/");
         if (/(\/models\/).+\.(jpg|jpeg|png|webp|gif|avif|svg)$/i.test(rel)) {
           res.setHeader("Cache-Control", "public, max-age=86400"); // 1 day
@@ -456,7 +456,7 @@ if (!isProd) {
     express.static(clientDist, {
       etag: true,
       lastModified: true,
-      setHeaders: (res, p) => {
+      setHeaders: (res: any, p: string) => {
         const rel = p.replace(/\\/g, "/");
         if (rel.endsWith("/index.html") || rel.endsWith("index.html")) {
           res.setHeader("Cache-Control", "no-cache");
@@ -469,7 +469,7 @@ if (!isProd) {
     })
   );
 
-  app.get("*", (_req: Request, res: Response) => {
+  app.get("*", (_req: any, res: any) => {
     res.setHeader("Cache-Control", "no-cache");
     res.sendFile(path.join(clientDist, "index.html"));
   });
@@ -478,7 +478,7 @@ if (!isProd) {
 // Start server with retry if port is in use to avoid "stuck"/crash scenarios in dev
 const basePort = parseInt(process.env.PORT || "5000", 10);
 // Explicit host binding to avoid IPv6-only binding issues on Windows
-const baseHost = process.env.HOST || "127.0.0.1"; // set to "0.0.0.0" to listen on all interfaces
+const baseHost = process.env.HOST || (process.env.REPL_ID ? "0.0.0.0" : "127.0.0.1"); // Replit requires 0.0.0.0
 
 function listenWithRetry(port: number, attemptsLeft: number, host: string) {
   let started = false;
