@@ -287,7 +287,7 @@ jobs:
                 \"action\":\"USER_REGISTRATION\",
                 \"eventTime\": $(date +%s%3N),
                 \"userData\": {
-                  \"userId\":\"1258\",
+                  \"userId\":\"$SIRPLAY_USER_ID\",\
                   \"customerId\":\"572\",
                   \"status\":\"ACTIVE\",
                   \"profileType\":\"PLAYER\",
@@ -311,11 +311,11 @@ jobs:
             KASY_EXTERNAL_ID="$(node -e "const o=require('/tmp/reg.json'); if(!o?.userData?.externalId){process.exit(2)} process.stdout.write(o.userData.externalId)")"
             echo "Resolved KASY_EXTERNAL_ID=$KASY_EXTERNAL_ID"
 
-            echo "[Local Smoke] verify mapping via getUserInfo (by externalUserId)"
+            echo "[Local Smoke] verify mapping via getUserInfo (by Sirplay userId)"
             tmp="$(mktemp)"
             INFO_STATUS="$(curl -sS -o "$tmp" -w '%{http_code}' \
               -H "Authorization: Basic $BASIC" \
-              "$base_url/api/user/getUserInfo?externalUserId=$KASY_EXTERNAL_ID" || echo "000")"
+              "$base_url/api/user/getUserInfo?externalUserId=$SIRPLAY_USER_ID" || echo "000")"
             INFO_BODY="$(cat "$tmp" 2>/dev/null || true)"
             rm -f "$tmp"
             if [ "$INFO_STATUS" != "200" ]; then
