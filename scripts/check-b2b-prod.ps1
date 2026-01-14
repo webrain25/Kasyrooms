@@ -1,7 +1,8 @@
 param(
   [string]$BaseUrl = $env:BASE_URL,
   [string]$BasicUser = $env:BASIC_USER,
-  [string]$BasicPass = $env:BASIC_PASS
+  [string]$BasicPass = $env:BASIC_PASS,
+  [string]$CustomerId = $env:SIRPLAY_CUSTOMER_ID
 )
 
 if (-not $BaseUrl) { Write-Error "BASE_URL not set. Set with `$env:BASE_URL or pass -BaseUrl."; exit 1 }
@@ -36,27 +37,31 @@ function Minify-JsonString([hashtable]$obj) {
 Write-Host "BaseUrl:" $BaseUrl
 if ($BasicUser) { Write-Host "Basic user:" $BasicUser } else { Write-Host "Basic user: (none)" }
 
-# 1) REGISTER (Bearer)
+# 1) REGISTER (Basic)
 $registerUrl = "$BaseUrl/user-account/signup/b2b/registrations"
 $registerBody = Minify-JsonString(@{
   eventId = 'evt-001'
+  customerId = ($CustomerId ? $CustomerId : '572')
   operation = 'REGISTER'
   action = 'USER_REGISTRATION'
-  eventTime = 1703894400000
+  eventTime = [int][double]::Parse(([DateTimeOffset]::UtcNow.ToUnixTimeMilliseconds()).ToString())
   userData = @{
+    userId = 'SIRPLAY-USER-001'
     userName = 'john_doe'
-    externalId = 'SIRPLAY-USER-001'
-    password = 'StrongPassword123!'
     status = 'ACTIVE'
     email = 'john@example.com'
-    name = 'John'
-    surname = 'Doe'
-    birthDate = '1990-01-01'
   }
 })
-$regHeaders = @{ 'Authorization' = 'Bearer test-token'; 'Content-Type' = 'application/json'; 'Accept' = 'application/json' }
-$reg = Invoke-CurlJson -Method POST -Url $registerUrl -Headers $regHeaders -Body $registerBody
+$reg = Invoke-CurlJson -Method POST -Url $registerUrl -Body $registerBody -BasicAuth "$BasicUser`:$BasicPass"
 Write-Host "REGISTER ->" $reg.StatusCode $reg.Body
+
+# Parse local externalId from response (Kasyrooms local user id)
+$localId = $null
+try {
+  $regJson = $reg.Body | ConvertFrom-Json -ErrorAction Stop
+  $localId = $regJson.userData.externalId
+} catch {}
+if (-not $localId) { Write-Warning "Could not parse local externalId from REGISTER response." }
 
 # 2) UPDATE (Basic)
 $updateUrl = "$BaseUrl/user-account/signup/b2b/registrations"
@@ -66,7 +71,7 @@ $updateBody = Minify-JsonString(@{
   action = 'USER_UPDATE'
   eventTime = 1703894500000
   userData = @{
-    externalId = 'SIRPLAY-USER-001'
+    externalId = ($localId ? $localId : 'LOCAL-NOT-SET')
     lastUpdated = '2025-12-30T10:00:00Z'
     email = 'newmail@example.com'
     status = 'ACTIVE'
@@ -77,20 +82,20 @@ Write-Host "UPDATE ->" $upd.StatusCode $upd.Body
 
 # 3) LOGIN TOKENS (Basic)
 $tokensUrl = "$BaseUrl/api/b2b/login-tokens"
-$tokensBody = Minify-JsonString(@{ userId = 'SIRPLAY-USER-001' })
+$tokensBody = Minify-JsonString(@{ externalId = ($localId ? $localId : 'LOCAL-NOT-SET') })
 $tok = Invoke-CurlJson -Method POST -Url $tokensUrl -Body $tokensBody -BasicAuth "$BasicUser`:$BasicPass"
 Write-Host "LOGIN TOKENS ->" $tok.StatusCode $tok.Body
 
-# 4.1) REGISTER without Bearer
+# 4.1) REGISTER without Basic (negative)
 $badReg = Invoke-CurlJson -Method POST -Url $registerUrl -Body '{}'
-Write-Host "REGISTER (no bearer) ->" $badReg.StatusCode $badReg.Body
+Write-Host "REGISTER (no basic) ->" $badReg.StatusCode $badReg.Body
 
 # 4.2) UPDATE with wrong Basic
 $wrongUpd = Invoke-CurlJson -Method PUT -Url $updateUrl -Body '{}' -BasicAuth 'wrong:wrong'
 Write-Host "UPDATE (wrong basic) ->" $wrongUpd.StatusCode $wrongUpd.Body
 
-# 4.3) LOGIN TOKENS for missing user
-$missingBody = Minify-JsonString(@{ userId = 'SIRPLAY-USER-DOES-NOT-EXIST' })
+# 4.3) LOGIN TOKENS for missing user (negative)
+$missingBody = Minify-JsonString(@{ externalId = ('missing-' + [guid]::NewGuid().ToString()) })
 $missingTok = Invoke-CurlJson -Method POST -Url $tokensUrl -Body $missingBody -BasicAuth "$BasicUser`:$BasicPass"
 Write-Host "LOGIN TOKENS (missing user) ->" $missingTok.StatusCode $missingTok.Body
 

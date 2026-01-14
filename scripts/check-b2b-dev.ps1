@@ -31,7 +31,7 @@ $B2B_USER = $env:B2B_BASIC_AUTH_USER
 if (-not $B2B_USER) { $B2B_USER = $env:SIRPLAY_B2B_USER }
 if (-not $B2B_USER) { $B2B_USER = 'sirplay' }
 $B2B_PASS = $env:B2B_BASIC_AUTH_PASS
-if (-not $B2B_PASS) { $B2B_PASS = $env:SIRPLAY_B2B_PASS }
+if (-not $B2B_PASS) { $B2B_PASS = $env:SIRPLAY_B2B_PASSWORD }
 if (-not $B2B_PASS) { $B2B_PASS = 's3cr3t' }
 $basicAuth = 'Basic ' + [Convert]::ToBase64String([Text.Encoding]::UTF8.GetBytes("${B2B_USER}:${B2B_PASS}"))
 
@@ -41,21 +41,23 @@ $seed = Invoke-Json -Method 'POST' -Uri "$BaseUrl/api/sirplay/login" -Body $seed
 if (-not $seed.token) { Write-Error "Handshake/seed FAILED: no token returned"; exit 1 }
 Write-Host "Seed OK: user=$($seed.user.username) id=$($seed.user.id)" -ForegroundColor Green
 
+$localId = $seed.user.id
+
 Write-Host "Requesting B2B login-tokens (positive)..." -ForegroundColor Yellow
 $headers = @{ Authorization = $basicAuth }
 $lt = $null
 try {
-  $lt = Invoke-Json -Method 'POST' -Uri "$BaseUrl/api/b2b/login-tokens" -Headers $headers -Body @{ userId = $ExternalUserId }
+  $lt = Invoke-Json -Method 'POST' -Uri "$BaseUrl/api/b2b/login-tokens" -Headers $headers -Body @{ externalId = $localId }
 } catch {
   Write-Error "B2B login-tokens FAILED: $($_.Exception.Message)"; exit 1
 }
-if (-not $lt.jwt -or -not $lt.ssoToken) { Write-Error "B2B login-tokens FAILED: missing jwt/ssoToken"; exit 1 }
-Write-Host "B2B login-tokens OK: expiresIn=$($lt.expiresIn)" -ForegroundColor Green
+if (-not $lt.status -or -not $lt.loginToken -or -not $lt.accessLink) { Write-Error "B2B login-tokens FAILED: missing status/loginToken/accessLink"; exit 1 }
+Write-Host "B2B login-tokens OK: status=$($lt.status)" -ForegroundColor Green
 
 Write-Host "Requesting B2B login-tokens without auth (negative)..." -ForegroundColor Yellow
 $ltNoAuthStatus = 0
 try {
-  $resp = Invoke-WebRequest -Method POST -Uri "$BaseUrl/api/b2b/login-tokens" -ContentType 'application/json' -Body (@{ userId = $ExternalUserId } | ConvertTo-Json -Compress) -ErrorAction Stop
+  $resp = Invoke-WebRequest -Method POST -Uri "$BaseUrl/api/b2b/login-tokens" -ContentType 'application/json' -Body (@{ externalId = $localId } | ConvertTo-Json -Compress) -ErrorAction Stop
   $ltNoAuthStatus = [int]$resp.StatusCode
 } catch {
   # Invoke-WebRequest throws on non-2xx; parse status code if available
