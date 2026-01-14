@@ -48,9 +48,6 @@ jobs:
             # B2B basic auth (Sirplay -> Kasyrooms)
             B2B_BASIC_AUTH_USER
             B2B_BASIC_AUTH_PASS
-            # legacy aliases (not required if B2B_BASIC_* are set)
-            # SIRPLAY_B2B_USER
-            # SIRPLAY_B2B_PASSWORD
 
             # Sirplay outbound (Kasyrooms -> Sirplay)
             SIRPLAY_API_URL
@@ -206,7 +203,7 @@ jobs:
             tmp="$(mktemp)"
             status="$(curl -sS -o "$tmp" -w '%{http_code}' -X POST "$base_url/api/b2b/login-tokens" \
               -H 'Content-Type: application/json' \
-              -d '{"userId":"SMOKE-DEV-001"}' || echo "000")"
+              -d '{"externalId":"SMOKE-NOAUTH-001"}' || echo "000")"
             body="$(cat "$tmp" 2>/dev/null || true)"
             rm -f "$tmp"
 
@@ -261,41 +258,44 @@ jobs:
             fi
             echo "B2B invalid-json OK (400)"
 
-            echo "[Local Smoke] seeding test user via Sirplay handshake"
-            EXTERNAL_USER_ID="SIRPLAY-SMOKE-001"
-
-            HANDSHAKE_JSON="$(curl -sS -X POST "$base_url/api/sirplay/login" \
-              -H "Content-Type: application/json" \
-              -d "{\"externalUserId\":\"$EXTERNAL_USER_ID\",\"email\":\"smoke-$EXTERNAL_USER_ID@sirplay.com\",\"username\":\"smokeuser\"}")"
-
-            HANDSHAKE_TOKEN="$(node -e "const o=JSON.parse(process.argv[1]); if(!o.token) process.exit(2); process.stdout.write(o.token);" "$HANDSHAKE_JSON")"
-            echo "Seed OK (token captured)"
-
-            echo "[Local Smoke] register inbound to persist mapping (Basic Auth)"
             # Build Basic header from .env credentials (required by registrations endpoint)
             u="$(grep -E '^(B2B_BASIC_AUTH_USER|SIRPLAY_B2B_USER)=' .env | tail -n1 | cut -d= -f2-)"
             p="$(grep -E '^(B2B_BASIC_AUTH_PASS|SIRPLAY_B2B_PASSWORD)=' .env | tail -n1 | cut -d= -f2-)"
             BASIC="$(printf '%s' "$u:$p" | base64 | tr -d '\n')"
 
+            echo "[Local Smoke] seeding test user via Sirplay handshake"
+            # This is the Sirplay-side id (their user identifier) used only to seed your DB via /api/sirplay/login
+            SIRPLAY_USER_ID="SIRPLAY-SMOKE-001"
+
+            HANDSHAKE_JSON="$(curl -sS -X POST "$base_url/api/sirplay/login" \
+              -H "Content-Type: application/json" \
+              -d "{\"externalUserId\":\"$SIRPLAY_USER_ID\",\"email\":\"smoke-$SIRPLAY_USER_ID@sirplay.com\",\"username\":\"smokeuser\"}")"
+
+            HANDSHAKE_TOKEN="$(node -e "const o=JSON.parse(process.argv[1]); if(!o.token) process.exit(2); process.stdout.write(o.token);" "$HANDSHAKE_JSON")"
+            echo "Seed OK (token captured)"
+
+            echo "[Local Smoke] register inbound to persist mapping (Basic Auth)"
+            # Sirplay -> Kasyrooms registration event (request contains Sirplay userId; response returns Kasyrooms externalId)
             REG_STATUS="$(curl -sS -o /tmp/reg.json -w "%{http_code}" \
               -X POST "$base_url/user-account/signup/b2b/registrations" \
               -H "Content-Type: application/json" \
               -H "Authorization: Basic $BASIC" \
               -d "{
                 \"eventId\":\"smoke-001\",
-                \"customerId\":\"572\",\
+                \"customerId\":\"572\",
                 \"operation\":\"REGISTER\",
                 \"action\":\"USER_REGISTRATION\",
                 \"eventTime\": $(date +%s%3N),
                 \"userData\": {
-                  \"userId\":\"1258\",\
-                  \"userName\":\"smokeuser\",\
+                  \"userId\":\"1258\",
+                  \"customerId\":\"572\",
+                  \"status\":\"ACTIVE\",
+                  \"profileType\":\"PLAYER\",
+                  \"userName\":\"smokeuser\",
                   \"password\":\"Secret123!\",
                   \"name\":\"Smoke\",
                   \"surname\":\"Test\",
-                  \"email\":\"smoke-$EXTERNAL_USER_ID@sirplay.com\",
-                  \"status\":\"ACTIVE\",\
-                  \"profileType\":\"PLAYER\"
+                  \"email\":\"smoke-$SIRPLAY_USER_ID@sirplay.com\"
                 }
               }")"
 
@@ -307,13 +307,15 @@ jobs:
             fi
             echo "Register OK ($REG_STATUS)"
 
-            echo "[Local Smoke] optional auth-positive if credentials present"
+            # Extract Kasyrooms externalId from registration response
+            KASY_EXTERNAL_ID="$(node -e "const o=require('/tmp/reg.json'); if(!o?.userData?.externalId){process.exit(2)} process.stdout.write(o.userData.externalId)")"
+            echo "Resolved KASY_EXTERNAL_ID=$KASY_EXTERNAL_ID"
 
-            echo "[Local Smoke] verify mapping via getUserInfo"
+            echo "[Local Smoke] verify mapping via getUserInfo (by externalUserId)"
             tmp="$(mktemp)"
             INFO_STATUS="$(curl -sS -o "$tmp" -w '%{http_code}' \
               -H "Authorization: Basic $BASIC" \
-              "$base_url/api/user/getUserInfo?externalUserId=$EXTERNAL_USER_ID" || echo "000")"
+              "$base_url/api/user/getUserInfo?externalUserId=$KASY_EXTERNAL_ID" || echo "000")"
             INFO_BODY="$(cat "$tmp" 2>/dev/null || true)"
             rm -f "$tmp"
             if [ "$INFO_STATUS" != "200" ]; then
@@ -323,10 +325,7 @@ jobs:
             fi
             echo "getUserInfo OK (200)"
 
-            # Extract Kasyrooms externalId from registration response
-            KASY_EXTERNAL_ID="$(node -e "const o=require('/tmp/reg.json'); process.stdout.write(o.userData.externalId)")"
-            echo "Resolved KASY_EXTERNAL_ID=$KASY_EXTERNAL_ID"
-
+            echo "[Local Smoke] b2b login-tokens (auth-positive) using Kasyrooms externalId"
             TOK_STATUS="$(curl -sS -o /tmp/tok.json -w "%{http_code}" \
               -X POST "$base_url/api/b2b/login-tokens" \
               -H "Content-Type: application/json" \
