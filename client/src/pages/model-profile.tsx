@@ -25,6 +25,8 @@ export default function ModelProfile() {
   const [blockBusy, setBlockBusy] = useState(false);
   const [tipAmount, setTipAmount] = useState<string>("");
   const [tipping, setTipping] = useState(false);
+  const [chatMessage, setChatMessage] = useState("");
+  const [chatSending, setChatSending] = useState(false);
 
   const { data: model, isLoading, error } = useQuery<Model>({
     queryKey: [`/api/models/${modelId}`],
@@ -86,13 +88,28 @@ export default function ModelProfile() {
 
   const handleStartPrivateShow = () => {
     if (isBlocked) return alert('You are blocked by this model.');
+    if (!model.isOnline) return alert('This model is offline.');
+    if (model.isBusy) return alert('This model is currently busy.');
     setIsVideoChatOpen(true);
   };
 
-  const handleSendMessage = () => {
+  const handleSendMessage = async () => {
     if (isBlocked) return alert('You are blocked by this model.');
-    console.log(`Opening chat with ${model.name}`);
-    // TODO: Implement chat functionality
+    if (!isAuthenticated) return (window.location.href = '/login');
+    const text = chatMessage.trim();
+    if (!text) return alert('Please type a message');
+    setChatSending(true);
+    try {
+      const displayName = user?.username || 'user';
+      const body = { user: displayName, text, userId_B: user?.id, modelId };
+      const r = await fetch('/api/chat/public', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+      if (!r.ok) {
+        const j = await r.json().catch(()=>({}));
+        return alert(j?.error ? `Message failed: ${j.error}` : 'Message failed');
+      }
+      setChatMessage("");
+      alert('Message sent');
+    } finally { setChatSending(false); }
   };
 
   const handleReport = async () => {
@@ -230,22 +247,24 @@ export default function ModelProfile() {
             <div className="space-y-3">
               <Button 
                 onClick={handleStartPrivateShow}
-                className="w-full btn-gold text-background"
+                className="w-full btn-gold text-background disabled:opacity-50 disabled:cursor-not-allowed"
                 size="lg"
+                disabled={!model.isOnline || model.isBusy || isBlocked}
+                title={!model.isOnline ? 'Offline' : (model.isBusy ? 'Busy' : (isBlocked ? 'Blocked' : ''))}
               >
                 <i className="fas fa-video mr-2"></i>
-                {model.isOnline ? "Start Private Show" : "Start Private Show"}
+                {(!model.isOnline) ? "Unavailable" : (model.isBusy ? "Busy" : "Start Private Show")}
               </Button>
               
-              <Button 
-                onClick={handleSendMessage}
-                variant="outline"
-                className="w-full"
-                size="lg"
-              >
-                <i className="fas fa-comment mr-2"></i>
-                Send Message
-              </Button>
+              {/* Chat UI */}
+              <div className="p-3 border border-border rounded-lg space-y-2">
+                <div className="text-sm font-semibold">Send a Message</div>
+                <div className="flex gap-2">
+                  <Input value={chatMessage} onChange={e=>setChatMessage(e.target.value)} placeholder="Type your message" />
+                  <Button onClick={handleSendMessage} disabled={chatSending || isBlocked} variant="outline">{chatSending ? 'Sending…' : 'Send'}</Button>
+                </div>
+                {isBlocked && (<div className="text-xs text-destructive">You are blocked by this model.</div>)}
+              </div>
 
               {/* Tip UI */}
               <div className="p-3 border border-border rounded-lg space-y-2">

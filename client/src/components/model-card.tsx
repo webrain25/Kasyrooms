@@ -24,6 +24,7 @@ export default function ModelCard({ model, showRank = false, rank, minimal = fal
   const [, setLocation] = useLocation();
   const [hoverStars, setHoverStars] = useState<number | null>(null);
   const isOffline = !model.isOnline;
+  const unavailable = !model.isOnline || model.isBusy;
   const statusColor = model.isOnline ? (model.isBusy ? 'bg-red-500 status-busy' : 'bg-online status-online') : 'bg-yellow-400 status-offline';
   
   const formatRating = (rating: number) => {
@@ -33,6 +34,7 @@ export default function ModelCard({ model, showRank = false, rank, minimal = fal
   const handleStartChat = (e: React.MouseEvent) => {
     e.stopPropagation();
     e.preventDefault();
+    if (unavailable) return; // do nothing when unavailable
     // Record a view once per session for this model
     try {
       const key = `viewed:${model.id}`;
@@ -178,7 +180,9 @@ export default function ModelCard({ model, showRank = false, rank, minimal = fal
           </div>
           <button
             onClick={handleStartChat}
-            className="w-full py-3 btn-gold text-black rounded-lg font-semibold text-sm shadow-[0_6px_18px_rgba(212,175,55,0.35)] ring-1 ring-black/10 hover:shadow-[0_10px_24px_rgba(212,175,55,0.5)]"
+            disabled={unavailable}
+            title={unavailable ? (isOffline ? 'Offline' : 'Busy') : ''}
+            className={`w-full py-3 btn-gold text-black rounded-lg font-semibold text-sm shadow-[0_6px_18px_rgba(212,175,55,0.35)] ring-1 ring-black/10 hover:shadow-[0_10px_24px_rgba(212,175,55,0.5)] disabled:opacity-50 disabled:cursor-not-allowed`}
             data-testid={`button-start-chat-${model.id}`}
           >
             <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="w-4 h-4 mr-2"><polygon points="23 7 16 12 23 17 23 7"/><rect x="1" y="5" width="15" height="14" rx="2" ry="2"/></svg>
