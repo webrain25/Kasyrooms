@@ -2,6 +2,9 @@ import express from 'express';
 import { registerRoutes } from '../server/routes';
 
 async function main() {
+  // Configure B2B Basic Auth for tests
+  process.env.B2B_BASIC_AUTH_USER = process.env.B2B_BASIC_AUTH_USER || 'sirplay';
+  process.env.B2B_BASIC_AUTH_PASS = process.env.B2B_BASIC_AUTH_PASS || 's3cr3t';
   const app = express();
   app.use(express.json({ verify: (req: any, _res, buf) => { (req as any).rawBody = buf; } }));
   await registerRoutes(app as any, { version: 'b2b-smoke' });
@@ -51,22 +54,22 @@ async function main() {
   const extId = `sirplayB2B_${Date.now()}`;
   const email = `${extId}@example.local`;
 
-  // Ensure mapping via B2B register
-  const reg = await req('POST', '/api/user/register', { externalUserId: extId, email, name: 'B2B Test' });
-  if (!reg.ok || !reg.json?.userId) {
-    console.error('register FAILED:', reg.status, reg.text);
+  // Ensure mapping via Sirplay handshake (creates local user mapping)
+  const seed = await req('POST', '/api/sirplay/login', { externalUserId: extId, email, username: 'b2b-test' }, {});
+  if (!seed.ok || !seed.json?.token) {
+    console.error('seed handshake FAILED:', seed.status, seed.text);
     process.exit(1);
   }
 
-  const lt = await req('POST', '/api/b2b/login-tokens', { userId: extId });
-  if (!lt.ok || !lt.json?.jwt || !lt.json?.ssoToken) {
+  const lt = await req('POST', '/api/b2b/login-tokens', { externalId: extId });
+  if (!lt.ok || lt.json?.status !== 'success' || !lt.json?.loginToken || !lt.json?.accessLink) {
     console.error('login-tokens FAILED:', lt.status, lt.text);
     process.exit(1);
   }
-  console.log('b2b login-tokens OK');
+  console.log('b2b login-tokens OK (new contract)');
 
   // Negative test: well-formed JSON without Authorization must not return 500; expect 401
-  const ltNoAuth = await reqNoAuth('POST', '/api/b2b/login-tokens', { userId: extId });
+  const ltNoAuth = await reqNoAuth('POST', '/api/b2b/login-tokens', { externalId: extId });
   if (ltNoAuth.status === 500) {
     console.error('login-tokens REGRESSION: got 500 without Authorization');
     process.exit(1);

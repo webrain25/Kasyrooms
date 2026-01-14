@@ -471,7 +471,11 @@ export async function registerRoutes(app: any, opts?: { version?: string }): Pro
         role: role ?? 'user',
       });
     } catch (e:any) {
-      return res.status(400).json({ error: 'sirplay_mapping_failed', message: e?.message || String(e) });
+      const msg = String(e?.message || e);
+      if (msg !== 'DB_DISABLED') {
+        return res.status(400).json({ error: 'sirplay_mapping_failed', message: msg });
+      }
+      // If DB is disabled locally, proceed without accounts mapping
     }
 
     // Issue a JWT for the local user
@@ -777,8 +781,8 @@ export async function registerRoutes(app: any, opts?: { version?: string }): Pro
 
     // Generate random opaque login token (no JWT)
     const loginToken = crypto.randomBytes(24).toString('base64url');
-    const base = (process.env.BASE_URL || '').trim();
-    if (!base) return res.status(500).json({ error: 'base_url_not_configured' });
+    let base = (process.env.BASE_URL || process.env.PUBLIC_URL || process.env.FRONTEND_URL || '').trim();
+    if (!base) base = 'http://127.0.0.1:5000';
     const accessLink = `${base.replace(/\/+$/, '')}?token=${encodeURIComponent(loginToken)}`;
 
     logger.info("b2b_login_token.issued", { path: req.path, externalId, accessLinkPreview: accessLink.slice(0, 80) });

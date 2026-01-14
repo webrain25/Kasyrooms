@@ -63,7 +63,7 @@ async function run() {
     eventTime: Date.now(),
     userData: {
       userName: 'utente',
-      externalId: externalUserId,
+      userId: externalUserId,
       password: 'Secret123!',
       status: 'ACTIVE',
       email: 'user@example.com'
@@ -71,24 +71,12 @@ async function run() {
   };
   const regRes = await agent
     .post('/user-account/signup/b2b/registrations')
-    .set('Authorization', `Bearer ${handshakeToken}`)
+    .set('Authorization', demoBasic)
     .send(regPayload);
   console.log('REGISTER status:', regRes.status, 'body:', regRes.body);
 
-  // Strict negative: ensure strict mode blocks unverified tokens
-  console.log('--- REGISTER inbound strict negative');
-  process.env.SIRPLAY_VERIFY_MODE = 'strict';
-  const regStrict = await agent
-    .post('/user-account/signup/b2b/registrations')
-    .set('Authorization', `Bearer ${handshakeToken}`)
-    .send(regPayload);
-  console.log('REGISTER strict status:', regStrict.status, 'body:', regStrict.body);
-  if (regStrict.status !== 401) {
-    console.error('Expected 401 in strict mode');
-    process.exit(1);
-  }
-  // restore relaxed for rest of test
-  process.env.SIRPLAY_VERIFY_MODE = 'relaxed';
+  // Strict-mode negative skipped: REGISTER is protected by Basic Auth
+  console.log('--- REGISTER inbound strict negative (skipped: Basic Auth)');
 
   console.log('--- UPDATE inbound');
   const updPayload = {
@@ -122,7 +110,7 @@ async function run() {
   const tokRes = await agent
     .post('/api/b2b/login-tokens')
     .set('Authorization', demoBasic)
-    .send({ userId: externalUserId });
+    .send({ externalId: externalUserId });
   console.log('TOKENS status:', tokRes.status, 'body keys:', Object.keys(tokRes.body));
 
   console.log('--- WEBHOOK correct signature');

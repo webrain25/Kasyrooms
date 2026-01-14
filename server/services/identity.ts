@@ -31,6 +31,8 @@ export async function ensureLocalUserForSirplay(params: {
       ? params.username!.trim()
       : `sirplay_${externalUserId}`;
     u = await storage.createUser({ username: uname, email, externalUserId, role });
+    // Mirror sirplayUserId in in-memory storage for lookups
+    try { await storage.updateUserById(u.id, { sirplayUserId: externalUserId }); } catch {}
     // Persist best-effort to DB
     try {
       if (db) {
@@ -81,6 +83,8 @@ export async function ensureLocalUserForSirplay(params: {
         `);
       }
     } catch {}
+    // Ensure in-memory mirror also updated
+    try { await storage.updateUserById(u.id, { sirplayUserId: externalUserId }); } catch {}
   }
 
   return u;
