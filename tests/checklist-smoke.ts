@@ -57,16 +57,17 @@ async function run() {
 
   console.log('--- REGISTER inbound');
   const regPayload = {
-    eventId: 'evt-001',
+    eventId: 'smoke-test',
+    customerId: process.env.SIRPLAY_CUSTOMER_ID || '572',
     operation: 'REGISTER',
     action: 'USER_REGISTRATION',
     eventTime: Date.now(),
     userData: {
-      userName: 'utente',
       userId: externalUserId,
-      password: 'Secret123!',
+      userName: 'utente',
+      email: 'user@example.com',
       status: 'ACTIVE',
-      email: 'user@example.com'
+      password: 'Secret123!'
     }
   };
   const regRes = await agent
