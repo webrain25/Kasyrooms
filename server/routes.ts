@@ -325,17 +325,15 @@ export async function registerRoutes(app: any, opts?: { version?: string }): Pro
     const createdInput = pickStr(payload.created);
     const sirplayUserId = pickStr(payload.userId);
     const customerId = pickStr((raw && raw.customerId) ?? (payload && (payload as any).customerId));
-    // Normalize externalId if missing: prefer provided externalId, else _id, else `${customerId}-${userId}`
-    const providedExternalId = pickStr(payload.externalId);
-    const localIdCandidate = pickStr((payload as any)._id);
-    let externalId = providedExternalId ?? localIdCandidate ?? (customerId && sirplayUserId ? `${customerId}-${sirplayUserId}` : undefined);
+    // externalId must be equal to userData.userId (Sirplay ID)
+    const externalId = sirplayUserId;
 
     // Validate mandatory fields after normalization
-    if (!userName || !email || !status) {
-      return res.status(400).json({ error: 'invalid_payload', details: { userName: !!userName, email: !!email, status: !!status } });
+    if (!sirplayUserId || !userName || !email || !status) {
+      return res.status(400).json({ error: 'invalid_payload', details: { userId: !!sirplayUserId, userName: !!userName, email: !!email, status: !!status } });
     }
     // ExternalId must exist and be valid
-    const isValidExternalId = (id?: string) => !!id && /^[A-Za-z0-9._-]{3,128}$/.test(id);
+    const isValidExternalId = (id?: string) => !!id && String(id).trim().length > 0;
     if (!isValidExternalId(externalId)) {
       return res.status(400).json({ error: 'invalid_externalId', details: { externalId } });
     }
@@ -767,14 +765,14 @@ export async function registerRoutes(app: any, opts?: { version?: string }): Pro
     const body = req.body ?? {};
     const pickStr = (v: any) => (typeof v === 'string' ? v : undefined);
     const externalId = pickStr(body.externalId);
-    const sirplayUserId = pickStr(body.sirplayUserId) ?? pickStr(body.userId);
-
-    let user = externalId ? await storage.getUserByExternal(externalId) : undefined;
-    if (!user && sirplayUserId) {
-      user = await storage.getUserBySirplayUserId(sirplayUserId);
+    if (!externalId) {
+      return res.status(400).json({ error: 'invalid_payload', details: { externalId: false } });
     }
+
+    // Lookup strictly by Sirplay user id (externalId == sirplayUserId)
+    const user = await storage.getUserBySirplayUserId(externalId);
     if (!user) {
-      return res.status(404).json({ error: 'user_not_found', externalId, sirplayUserId });
+      return res.status(404).json({ error: 'user_not_found', externalId });
     }
 
     // Generate random opaque login token (no JWT)
@@ -783,7 +781,7 @@ export async function registerRoutes(app: any, opts?: { version?: string }): Pro
     if (!base) return res.status(500).json({ error: 'base_url_not_configured' });
     const accessLink = `${base.replace(/\/+$/, '')}?token=${encodeURIComponent(loginToken)}`;
 
-    logger.info("b2b_login_token.issued", { path: req.path, externalId: user.externalUserId, sirplayUserId: (user as any).sirplayUserId, accessLinkPreview: accessLink.slice(0, 80) });
+    logger.info("b2b_login_token.issued", { path: req.path, externalId, accessLinkPreview: accessLink.slice(0, 80) });
     return res.json({ status: 'success', loginToken, accessLink });
   }
 

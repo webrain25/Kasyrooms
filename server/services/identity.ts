@@ -42,6 +42,7 @@ export async function ensureLocalUserForSirplay(params: {
           role: role,
           externalProvider: 'sirplay',
           externalUserId,
+          sirplayUserId: externalUserId,
           firstName: params.firstName ?? undefined,
           lastName: params.lastName ?? undefined,
           dob: params.birthDate ? new Date(params.birthDate) as any : undefined,
@@ -70,6 +71,7 @@ export async function ensureLocalUserForSirplay(params: {
           dob: params.birthDate ? new Date(params.birthDate) as any : (u as any).dob,
           externalProvider: 'sirplay',
           externalUserId: externalUserId,
+          sirplayUserId: externalUserId,
         }).where(eq(schema.users.id, u.id));
         // Ensure wallet row exists (idempotent)
         await db.execute(sql`
