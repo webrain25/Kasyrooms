@@ -323,11 +323,15 @@ jobs:
             fi
             echo "getUserInfo OK (200)"
 
+            # Extract Kasyrooms externalId from registration response
+            KASY_EXTERNAL_ID="$(node -e "const o=require('/tmp/reg.json'); process.stdout.write(o.userData.externalId)")"
+            echo "Resolved KASY_EXTERNAL_ID=$KASY_EXTERNAL_ID"
+
             TOK_STATUS="$(curl -sS -o /tmp/tok.json -w "%{http_code}" \
               -X POST "$base_url/api/b2b/login-tokens" \
               -H "Content-Type: application/json" \
               -H "Authorization: Basic $BASIC" \
-              -d "{\"externalId\":\"$EXTERNAL_USER_ID\"}")"
+              -d "{\"externalId\":\"$KASY_EXTERNAL_ID\"}")"
 
             cat /tmp/tok.json || true
 
