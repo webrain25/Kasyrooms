@@ -98,6 +98,13 @@ const translations: Record<Lang, Record<string, string>> = {
     // Common (grid/messages)
     "common.errors.loadModels": "Unable to load models",
     "common.errors.tryLater": "Please try again later",
+      // Home section subtitles
+      "home.online.subtitle": "Models currently live and available",
+      "home.top.subtitle": "The best performers on our platform",
+      "home.new.subtitle": "Fresh faces joining our community",
+      "home.trending.subtitle": "Most popular models right now",
+      "home.favorites.subtitle": "Your bookmarked models",
+      "home.all.subtitle": "Browse all available models",
     "common.noModels.title": "No models found",
     "common.noModels.subtitle": "Try adjusting your filters",
 
@@ -340,6 +347,13 @@ const translations: Record<Lang, Record<string, string>> = {
     "filters.favorites": "Preferiti",
     // Filters
     "filter.online": "Online Ora",
+      // Home section subtitles
+      "home.online.subtitle": "Modelle attualmente online e disponibili",
+      "home.top.subtitle": "Le migliori performer sulla nostra piattaforma",
+      "home.new.subtitle": "Nuovi volti che si uniscono alla community",
+      "home.trending.subtitle": "Modelle più popolari in questo momento",
+      "home.favorites.subtitle": "Le tue modelle salvate",
+      "home.all.subtitle": "Sfoglia tutte le modelle disponibili",
     "filter.top": "Top Valutate",
   // "filter.vip": "Modelle VIP",
     "filter.new": "Nuove Modelle",
@@ -639,6 +653,13 @@ const translations: Record<Lang, Record<string, string>> = {
   "ageCompliance.title": "Conformità 18+ e 2257",
   },
   fr: {
+      // Home section subtitles
+      "home.online.subtitle": "Modèles actuellement en direct et disponibles",
+      "home.top.subtitle": "Les meilleures performances de notre plateforme",
+      "home.new.subtitle": "Nouveaux visages rejoignant la communauté",
+      "home.trending.subtitle": "Modèles les plus populaires en ce moment",
+      "home.favorites.subtitle": "Vos modèles enregistrés",
+      "home.all.subtitle": "Parcourir tous les modèles disponibles",
     favorites: "Favoris", login: "Connexion", signup: "Inscription", becomeVip: "Membres VIP", becomeModel: "Devenir Modèle", logout: "Déconnexion", welcome: "Bienvenue", searchPlaceholder: "Rechercher des modèles...", browseModels: "Parcourir les Modèles", startPrivateShow: "Démarrer le show privé", startChat: "Commencer Chat", viewAll: "Voir tout", allModels: "Tous les Modèles", noModelsFound: "Aucun modèle trouvé", clearFilters: "Effacer les filtres", helpCenter: "Centre d'aide", contactUs: "Nous contacter", termsOfService: "Conditions d'utilisation", privacyPolicy: "Politique de confidentialité", cookiePolicy: "Politique des cookies", vipMembership: "Adhésion VIP", becomeAModel: "Devenir Modèle", yourFavorites: "Vos Favoris", noFavoritesYet: "Pas encore de favoris", tapHeartToAdd: "Appuyez sur le cœur d'un modèle pour l'ajouter aux favoris", welcomeBack: "Bon retour", signInToAccount: "Connectez-vous à votre compte pour accéder au contenu premium", username: "Nom d'utilisateur", password: "Mot de passe", enterUsername: "Entrez votre nom d'utilisateur", enterPassword: "Entrez votre mot de passe", signingIn: "Connexion...", signIn: "Se connecter", dontHaveAccount: "Vous n'avez pas de compte ?", signUpHere: "Inscrivez-vous ici", loginSuccessful: "Connexion réussie", loginFailed: "Échec de la connexion", invalidCredentials: "Utilisez le nom d'utilisateur 'testuser' avec n'importe quel mot de passe", yearsOld: "ans", watching: "regardent", languages: "Langues", specialties: "Spécialités", online: "En ligne", offline: "Hors ligne", securePayments: "Paiements sécurisés", acceptPaymentMethods: "Nous acceptons tous les principaux modes de paiement", search: "Rechercher", sortBy: "Trier par", status: "Statut", all: "Tous", name: "Nom", rating: "Évaluation", viewers: "Spectateurs", age: "Âge", showing: "Affichage", of: "de", models: "modèles"
     ,"filters.online": "En ligne", "filters.top": "Les mieux notés", "filters.vip": "Modèles VIP", "filters.new": "Nouveaux modèles", "filters.trending": "Tendance", "filters.favorites": "Favoris"
     ,"filter.online": "En ligne maintenant", "filter.top": "Les mieux notés", "filter.vip": "Modèles VIP", "filter.new": "Nouveaux modèles", "filter.trending": "Tendance", "filter.favorites": "Favoris"
@@ -907,6 +928,13 @@ const translations: Record<Lang, Record<string, string>> = {
   ,"ageCompliance.title": "Vérification d'âge (18+) & 2257"
   },
   de: {
+      // Home section subtitles
+      "home.online.subtitle": "Modelle, die gerade live und verfügbar sind",
+      "home.top.subtitle": "Die besten Performer auf unserer Plattform",
+      "home.new.subtitle": "Neue Gesichter in unserer Community",
+      "home.trending.subtitle": "Zurzeit beliebteste Modelle",
+      "home.favorites.subtitle": "Ihre gespeicherten Modelle",
+      "home.all.subtitle": "Alle verfügbaren Modelle durchsuchen",
     favorites: "Favoriten", login: "Anmelden", signup: "Registrieren", becomeVip: "VIP-Mitglieder", becomeModel: "Model werden", logout: "Abmelden", welcome: "Willkommen", searchPlaceholder: "Modelle suchen...", browseModels: "Modelle ansehen", startPrivateShow: "Privatshow starten", startChat: "Chat starten", viewAll: "Alle anzeigen", allModels: "Alle Modelle", noModelsFound: "Keine Modelle gefunden", clearFilters: "Filter löschen", helpCenter: "Hilfezentrum", contactUs: "Kontakt", termsOfService: "Nutzungsbedingungen", privacyPolicy: "Datenschutzrichtlinie", cookiePolicy: "Cookie-Richtlinie", vipMembership: "VIP-Mitgliedschaft", becomeAModel: "Model werden", yourFavorites: "Ihre Favoriten", noFavoritesYet: "Noch keine Favoriten", tapHeartToAdd: "Tippen Sie auf das Herz eines Models, um es zu den Favoriten hinzuzufügen", welcomeBack: "Willkommen zurück", signInToAccount: "Melden Sie sich in Ihrem Konto an, um auf Premium-Inhalte zuzugreifen", username: "Benutzername", password: "Passwort", enterUsername: "Geben Sie Ihren Benutzernamen ein", enterPassword: "Geben Sie Ihr Passwort ein", signingIn: "Anmeldung...", signIn: "Anmelden", dontHaveAccount: "Haben Sie kein Konto?", signUpHere: "Hier registrieren", loginSuccessful: "Anmeldung erfolgreich", loginFailed: "Anmeldung fehlgeschlagen", invalidCredentials: "Verwenden Sie den Benutzernamen 'testuser' mit einem beliebigen Passwort", yearsOld: "Jahre alt", watching: "schauen zu", languages: "Sprachen", specialties: "Spezialitäten", online: "Online", offline: "Offline", securePayments: "Sichere Zahlungen", acceptPaymentMethods: "Wir akzeptieren alle gängigen Zahlungsmethoden", search: "Suchen", sortBy: "Sortieren nach", status: "Status", all: "Alle", name: "Name", rating: "Bewertung", viewers: "Zuschauer", age: "Alter", showing: "Zeige", of: "von", models: "Modelle"
     ,"filters.online": "Online", "filters.top": "Top bewertet", "filters.vip": "VIP-Modelle", "filters.new": "Neue Modelle", "filters.trending": "Im Trend", "filters.favorites": "Favoriten"
     ,"filter.online": "Jetzt online", "filter.top": "Top bewertet", "filter.vip": "VIP-Modelle", "filter.new": "Neue Modelle", "filter.trending": "Im Trend", "filter.favorites": "Favoriten"
@@ -1175,6 +1203,13 @@ const translations: Record<Lang, Record<string, string>> = {
   ,"ageCompliance.title": "Altersnachweis (18+) & 2257"
   },
   es: {
+      // Home section subtitles
+      "home.online.subtitle": "Modelos actualmente en directo y disponibles",
+      "home.top.subtitle": "Los mejores artistas de nuestra plataforma",
+      "home.new.subtitle": "Nuevas caras que se unen a la comunidad",
+      "home.trending.subtitle": "Modelos más populares ahora mismo",
+      "home.favorites.subtitle": "Tus modelos guardados",
+      "home.all.subtitle": "Explora todos los modelos disponibles",
     favorites: "Favoritos", login: "Iniciar sesión", signup: "Registrarse", becomeVip: "Miembros VIP", becomeModel: "Hazte Modelo", logout: "Cerrar sesión", welcome: "Bienvenido", searchPlaceholder: "Buscar modelos...", browseModels: "Ver Modelos", startPrivateShow: "Iniciar show privado", startChat: "Iniciar Chat", viewAll: "Ver todo", allModels: "Todos los Modelos", noModelsFound: "No se encontraron modelos", clearFilters: "Limpiar filtros", helpCenter: "Centro de ayuda", contactUs: "Contáctanos", termsOfService: "Términos de servicio", privacyPolicy: "Política de privacidad", cookiePolicy: "Política de cookies", vipMembership: "Membresía VIP", becomeAModel: "Hazte Modelo", yourFavorites: "Tus Favoritos", noFavoritesYet: "Aún no tienes favoritos", tapHeartToAdd: "Toca el corazón en un modelo para agregarlo a favoritos", welcomeBack: "Bienvenido de vuelta", signInToAccount: "Inicia sesión en tu cuenta para acceder al contenido premium", username: "Nombre de usuario", password: "Contraseña", enterUsername: "Ingresa tu nombre de usuario", enterPassword: "Ingresa tu contraseña", signingIn: "Iniciando sesión...", signIn: "Iniciar sesión", dontHaveAccount: "¿No tienes una cuenta?", signUpHere: "Regístrate aquí", loginSuccessful: "Inicio de sesión exitoso", loginFailed: "Error en el inicio de sesión", invalidCredentials: "Usa el nombre de usuario 'testuser' con cualquier contraseña", yearsOld: "años", watching: "viendo", languages: "Idiomas", specialties: "Especialidades", online: "En línea", offline: "Desconectado", securePayments: "Pagos seguros", acceptPaymentMethods: "Aceptamos todos los métodos de pago principales", search: "Buscar", sortBy: "Ordenar por", status: "Estado", all: "Todos", name: "Nombre", rating: "Calificación", viewers: "Espectadores", age: "Edad", showing: "Mostrando", of: "de", models: "modelos"
     ,"filters.online": "En línea", "filters.top": "Mejor valorados", "filters.vip": "Modelos VIP", "filters.new": "Nuevos modelos", "filters.trending": "Tendencia", "filters.favorites": "Favoritos"
     ,"filter.online": "En línea ahora", "filter.top": "Mejor valorados", "filter.vip": "Modelos VIP", "filter.new": "Nuevos modelos", "filter.trending": "Tendencia", "filter.favorites": "Favoritos"

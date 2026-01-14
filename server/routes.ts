@@ -281,6 +281,45 @@ export async function registerRoutes(app: any, opts?: { version?: string }): Pro
     res.json(await storage.postPublicMessage(parsed.data.modelId, parsed.data.user, messageText, parsed.data.userId_B));
   });
 
+  // ===== Models listing API (used by Home and Models pages) =====
+  app.get('/api/models', async (req: any, res: any) => {
+    try {
+      const isOnline = String(req.query.online || '').toLowerCase() === 'true';
+      const isNew = String(req.query.new || '').toLowerCase() === 'true';
+      const sortByRaw = String(req.query.sortBy || '').toLowerCase();
+      const sortBy = (sortByRaw === 'rating' || sortByRaw === 'viewers') ? sortByRaw : undefined;
+      const search = typeof req.query.search === 'string' ? String(req.query.search) : undefined;
+      const country = typeof req.query.country === 'string' ? String(req.query.country) : undefined;
+      const language = typeof req.query.language === 'string' ? String(req.query.language) : undefined;
+      const specialty = typeof req.query.specialty === 'string' ? String(req.query.specialty) : undefined;
+
+      const list = await storage.listModels({
+        isOnline: req.query.online ? isOnline : undefined,
+        isNew: req.query.new ? isNew : undefined,
+        sortBy: sortBy as any,
+        search,
+        country,
+        language,
+        specialty,
+      });
+      const mapped = Array.isArray(list) ? list.map(proxifyModel) : [];
+      return res.json(mapped);
+    } catch (e:any) {
+      return res.status(500).json({ error: 'models_list_failed', message: e?.message || String(e) });
+    }
+  });
+
+  // Lightweight stat used by filters bar
+  app.get('/api/stats/online-count', async (_req: any, res: any) => {
+    try {
+      const list = await storage.listModels({});
+      const count = Array.isArray(list) ? list.filter(m => !!m.isOnline && !m.isBusy).length : 0;
+      return res.json({ count });
+    } catch {
+      return res.json({ count: 0 });
+    }
+  });
+
   // Favorites API (optional, complements client local favorites)
   app.get('/api/favorites', requireRole(['user','model','admin']), async (req: any, res: any) => {
     const u = (req as any).user as ReqUser;

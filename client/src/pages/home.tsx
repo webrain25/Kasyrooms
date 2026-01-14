@@ -10,6 +10,7 @@ import { useAuth } from "@/lib/authContext";
 import { Button } from "@/components/ui/button";
 import { useQuery } from "@tanstack/react-query";
 import { useFavorites } from "@/lib/favoritesContext";
+import { useI18n } from "@/lib/i18n";
 
 export default function Home() {
   const [activeFilter, setActiveFilter] = useState("online");
@@ -17,6 +18,7 @@ export default function Home() {
   const [, setLocation] = useLocation();
   const { isAuthenticated, user } = useAuth();
   const { favorites } = useFavorites();
+  const { t } = useI18n();
 
   // If user logs out while 'favorites' is active, reset to 'online'
   useEffect(() => {
@@ -32,10 +34,10 @@ export default function Home() {
   const getFilterConfig = () => {
     if (isSearchActive) {
       return {
-        title: `Search Results`,
+        title: t('search'),
         icon: "fas fa-search",
         iconClass: "text-gold-primary",
-        subtitle: `Results for "${searchTerm}"`,
+        subtitle: searchTerm ? `"${searchTerm}"` : '',
         filter: {},
         showRank: false,
         testId: "section-search-results"
@@ -45,20 +47,20 @@ export default function Home() {
     switch (activeFilter) {
       case "online":
         return {
-          title: "Online Now",
+          title: t('filter.online'),
           icon: "fas fa-circle",
           iconClass: "text-online text-xs status-online",
-          subtitle: "Models currently live and available",
+          subtitle: t('home.online.subtitle'),
           filter: { isOnline: true },
           showRank: false,
           testId: "section-online-models"
         };
       case "top":
         return {
-          title: "Top Rated Models",
+          title: t('filter.top'),
           icon: "fas fa-star",
           iconClass: "text-gold-primary",
-          subtitle: "The best performers on our platform",
+          subtitle: t('home.top.subtitle'),
           filter: { sortBy: 'rating' as const },
           showRank: true,
           testId: "section-top-models"
@@ -66,40 +68,40 @@ export default function Home() {
       
       case "new":
         return {
-          title: "New Models",
+          title: t('filter.new'),
           icon: "fas fa-sparkles",
           iconClass: "text-gold-primary",
-          subtitle: "Fresh faces joining our community",
+          subtitle: t('home.new.subtitle'),
           filter: { isNew: true },
           showRank: false,
           testId: "section-new-models"
         };
       case "trending":
         return {
-          title: "Trending Now",
+          title: t('filter.trending'),
           icon: "fas fa-fire",
           iconClass: "text-destructive",
-          subtitle: "Most popular models right now",
+          subtitle: t('home.trending.subtitle'),
           filter: { isOnline: true },
           showRank: false,
           testId: "section-trending-models"
         };
       case "favorites":
         return {
-          title: "Your Favorites",
+          title: t('favorites.title'),
           icon: "fas fa-heart",
           iconClass: "text-destructive",
-          subtitle: "Your bookmarked models",
+          subtitle: t('home.favorites.subtitle'),
           filter: { isOnline: true },
           showRank: false,
           testId: "section-favorites-models"
         };
       default:
         return {
-          title: "All Models",
+          title: t('allModels'),
           icon: "fas fa-users",
           iconClass: "",
-          subtitle: "Browse all available models",
+          subtitle: t('home.all.subtitle'),
           filter: {},
           showRank: false,
           testId: "section-all-models"
