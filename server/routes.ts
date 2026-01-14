@@ -309,6 +309,80 @@ export async function registerRoutes(app: any, opts?: { version?: string }): Pro
     }
   });
 
+  // Single model by id
+  app.get('/api/models/:id', async (req: any, res: any) => {
+    try {
+      const id = String(req.params.id || '').trim();
+      if (!id) return res.status(400).json({ error: 'missing_id' });
+      const m = await storage.getModel(id);
+      if (!m) return res.status(404).json({ error: 'not_found' });
+      return res.json(proxifyModel(m));
+    } catch (e:any) {
+      return res.status(500).json({ error: 'model_fetch_failed', message: e?.message || String(e) });
+    }
+  });
+
+  // Record a model view (lightweight counter)
+  app.post('/api/models/:id/view', async (req: any, res: any) => {
+    try {
+      const id = String(req.params.id || '').trim();
+      const m = await storage.getModel(id);
+      if (!m) return res.status(404).json({ error: 'not_found' });
+      m.viewerCount = Number(m.viewerCount || 0) + 1;
+      // persist back into storage map
+      // @ts-ignore direct access to in-memory map for demo state
+      storage.models.set(id, m);
+      return res.json({ ok: true, viewerCount: m.viewerCount });
+    } catch (e:any) {
+      return res.status(500).json({ error: 'view_record_failed', message: e?.message || String(e) });
+    }
+  });
+
+  // Rate a model (1..5 stars)
+  app.post('/api/models/:id/rate', async (req: any, res: any) => {
+    try {
+      const id = String(req.params.id || '').trim();
+      const stars = Number((req.body?.stars ?? req.query?.stars) || 0);
+      if (!Number.isFinite(stars) || stars < 1 || stars > 5) return res.status(400).json({ error: 'invalid_stars' });
+      const m = await storage.getModel(id);
+      if (!m) return res.status(404).json({ error: 'not_found' });
+      // simplistic smoothing update: move 20% towards new stars*10
+      const target = Math.round(stars * 10);
+      const current = Number(m.rating || 0);
+      const next = Math.round(current * 0.8 + target * 0.2);
+      m.rating = Math.max(0, Math.min(50, next));
+      // @ts-ignore in-memory persistence
+      storage.models.set(id, m);
+      return res.json({ ok: true, rating: m.rating });
+    } catch (e:any) {
+      return res.status(500).json({ error: 'rate_failed', message: e?.message || String(e) });
+    }
+  });
+
+  // Tip a model using local wallet (demo)
+  app.post('/api/models/:id/tip', async (req: any, res: any) => {
+    try {
+      const id = String(req.params.id || '').trim();
+      const amount = Number(req.body?.amount ?? req.query?.amount ?? 0);
+      if (!Number.isFinite(amount) || amount <= 0) return res.status(400).json({ error: 'invalid_amount' });
+      const u = getReqUser(req);
+      if (!u) return res.status(401).json({ error: 'unauthorized' });
+      const m = await storage.getModel(id);
+      if (!m) return res.status(404).json({ error: 'not_found' });
+      try {
+        await storage.localWithdraw(u.id, amount);
+      } catch (e:any) {
+        const msg = String(e?.message || e);
+        if (msg === 'INSUFFICIENT_FUNDS') return res.status(400).json({ error: 'INSUFFICIENT_FUNDS' });
+        throw e;
+      }
+      try { await storage.addTransaction({ userId_B: u.id, type: 'CHARGE', amount, source: 'TIP', externalRef: `tip:${id}` }); } catch {}
+      return res.json({ ok: true, balance: await storage.getLocalBalance(u.id) });
+    } catch (e:any) {
+      return res.status(500).json({ error: 'tip_failed', message: e?.message || String(e) });
+    }
+  });
+
   // Lightweight stat used by filters bar
   app.get('/api/stats/online-count', async (_req: any, res: any) => {
     try {
@@ -317,6 +391,41 @@ export async function registerRoutes(app: any, opts?: { version?: string }): Pro
       return res.json({ count });
     } catch {
       return res.json({ count: 0 });
+    }
+  });
+
+  // ===== Moderation (blocks, reports) used by profile page =====
+  app.get('/api/moderation/blocks', async (req: any, res: any) => {
+    try {
+      const modelId = String(req.query?.modelId || '').trim();
+      if (!modelId) return res.status(400).json({ error: 'missing_modelId' });
+      const blocks = await storage.listBlocks(modelId);
+      return res.json({ blocks });
+    } catch (e:any) {
+      return res.status(500).json({ error: 'blocks_list_failed', message: e?.message || String(e) });
+    }
+  });
+  app.post('/api/moderation/block', async (req: any, res: any) => {
+    try {
+      const modelId = String(req.body?.modelId || '').trim();
+      const userId = String(req.body?.userId || '').trim();
+      if (!modelId || !userId) return res.status(400).json({ error: 'invalid_payload' });
+      await storage.blockUser(modelId, userId);
+      return res.json({ ok: true });
+    } catch (e:any) {
+      return res.status(500).json({ error: 'block_failed', message: e?.message || String(e) });
+    }
+  });
+  app.post('/api/moderation/report', async (req: any, res: any) => {
+    try {
+      const modelId = String(req.body?.modelId || '').trim();
+      const userId = String(req.body?.userId || '').trim();
+      const reason = String(req.body?.reason || '').trim();
+      if (!modelId || !userId || !reason) return res.status(400).json({ error: 'invalid_payload' });
+      const r = await storage.addReport(modelId, userId, reason, String(req.body?.details || ''));
+      return res.json({ ok: true, report: r });
+    } catch (e:any) {
+      return res.status(500).json({ error: 'report_failed', message: e?.message || String(e) });
     }
   });
 
