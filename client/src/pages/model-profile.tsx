@@ -249,7 +249,7 @@ export default function ModelProfile() {
                 onClick={handleStartPrivateShow}
                 className="w-full btn-gold text-background disabled:opacity-50 disabled:cursor-not-allowed"
                 size="lg"
-                disabled={!model.isOnline || model.isBusy || isBlocked}
+                disabled={!model.isOnline || !!model.isBusy || isBlocked}
                 title={!model.isOnline ? 'Offline' : (model.isBusy ? 'Busy' : (isBlocked ? 'Blocked' : ''))}
               >
                 <i className="fas fa-video mr-2"></i>

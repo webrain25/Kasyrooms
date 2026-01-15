@@ -24,7 +24,7 @@ export default function ModelCard({ model, showRank = false, rank, minimal = fal
   const [, setLocation] = useLocation();
   const [hoverStars, setHoverStars] = useState<number | null>(null);
   const isOffline = !model.isOnline;
-  const unavailable = !model.isOnline || model.isBusy;
+  const unavailable = !model.isOnline || !!model.isBusy;
   const statusColor = model.isOnline ? (model.isBusy ? 'bg-red-500 status-busy' : 'bg-online status-online') : 'bg-yellow-400 status-offline';
   
   const formatRating = (rating: number) => {
