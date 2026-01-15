@@ -539,13 +539,32 @@ export async function registerRoutes(app: any, opts?: { version?: string }): Pro
 
   // 2) UPDATE (Sirplay → Kasyrooms) — Basic Auth per doc
   app.put("/user-account/signup/b2b/registrations", requireB2BBasicAuth(), async (req: any, res: any) => {
+    // Diagnostics (dev-only): helps confirm Sirplay PUT body parsing/shape.
+    try {
+      const isProd = process.env.NODE_ENV === 'production';
+      const debug = process.env.SIRPLAY_DEBUG_PUT === '1';
+      if (!isProd && debug) {
+        const b = req.body ?? {};
+        logger.info('sirplay_registration.update.debug', {
+          path: req.path,
+          contentType: req.headers['content-type'],
+          bodyType: typeof b,
+          bodyKeys: b && typeof b === 'object' ? Object.keys(b) : undefined,
+          userDataKeys: b?.userData && typeof b.userData === 'object' ? Object.keys(b.userData) : undefined,
+        });
+      }
+    } catch {}
+
     const parsed = z.object({
       eventId: z.string().min(1),
       operation: z.literal("UPDATE"),
       action: z.string().min(1), // USER_UPDATE / USER_CHANGE_MAIL / ...
       eventTime: z.union([z.number(), z.string()]),
+      customerId: z.string().optional(),
       userData: z.object({
-        externalId: z.string().min(1),
+        // Sirplay semantic: userId is Sirplay user identifier.
+        userId: z.string().min(1),
+        userName: z.string().optional(),
         email: z.string().email().optional(),
         status: z.string().optional(),
         birthDate: z.string().optional(),
@@ -553,33 +572,74 @@ export async function registerRoutes(app: any, opts?: { version?: string }): Pro
         surname: z.string().optional(),
         mobilePhone: z.string().optional(),
         lastUpdated: z.string().optional(),
-      }),
-    }).safeParse(req.body ?? {});
+      }).passthrough(),
+    }).passthrough().safeParse(req.body ?? {});
 
-    if (!parsed.success) return res.status(400).json({ error: "invalid_payload", details: parsed.error.flatten() });
+    if (!parsed.success) {
+      logger.warn('sirplay_registration.update.invalid_payload', { path: req.path, details: parsed.error.flatten() });
+      return res.status(400).json({ error: "invalid_payload", details: parsed.error.flatten() });
+    }
 
-    const { externalId } = parsed.data.userData;
+    const sirplayUserId = String(parsed.data.userData.userId);
+    const customerId = parsed.data.customerId ?? undefined;
 
-    // Upsert by externalId: ensure local user exists and update profile best-effort
-    const ensured = await ensureLocalUserForSirplay({
-      externalUserId: externalId,
-      email: parsed.data.userData.email ?? null,
-      firstName: parsed.data.userData.name ?? null,
-      lastName: parsed.data.userData.surname ?? null,
-      birthDate: parsed.data.userData.birthDate ?? null,
-      phoneNumber: parsed.data.userData.mobilePhone ?? null,
-      role: 'user',
-    });
+    // Resolve the local user mapped to the Sirplay userId.
+    // Fallback to externalUserId mapping for backwards compatibility.
+    let u = await storage.getUserBySirplayUserId(sirplayUserId);
+    if (!u) u = await storage.getUserByExternal(sirplayUserId);
 
-    // Update in-memory record for immediate consistency
+    // Upsert (idempotent): ensure local user exists and update profile best-effort.
+    const ensured = u
+      ? u
+      : await ensureLocalUserForSirplay({
+          externalUserId: sirplayUserId,
+          email: parsed.data.userData.email ?? null,
+          username: parsed.data.userData.userName ?? null,
+          role: 'user',
+          firstName: parsed.data.userData.name ?? null,
+          lastName: parsed.data.userData.surname ?? null,
+          birthDate: parsed.data.userData.birthDate ?? null,
+          phoneNumber: parsed.data.userData.mobilePhone ?? null,
+        });
+
+    // Update in-memory record for immediate consistency.
     await storage.updateUserById(ensured.id, {
       email: parsed.data.userData.email ?? ensured.email,
+      externalUserId: sirplayUserId,
+      sirplayUserId,
+      sirplayCustomerId: customerId,
     });
 
-    // TODO(refactor): align accounts mapping (schema.accounts) here to avoid divergence
-    // between users vs accounts when introducing dual-wallet setups.
+    // Persist best-effort to DB: align external mapping and update profile/status.
+    try {
+      if (db) {
+        const patch: any = {
+          externalProvider: 'sirplay',
+          externalUserId: sirplayUserId,
+          sirplayUserId,
+          sirplayCustomerId: customerId,
+        };
+        if (parsed.data.userData.email !== undefined) patch.email = parsed.data.userData.email;
+        if (parsed.data.userData.name !== undefined) patch.firstName = parsed.data.userData.name;
+        if (parsed.data.userData.surname !== undefined) patch.lastName = parsed.data.userData.surname;
+        if (parsed.data.userData.mobilePhone !== undefined) patch.phoneNumber = parsed.data.userData.mobilePhone;
+        if (parsed.data.userData.birthDate !== undefined) patch.dob = new Date(parsed.data.userData.birthDate) as any;
+        if (parsed.data.userData.status !== undefined) patch.status = parsed.data.userData.status;
+        await db.update(schema.users).set(patch).where(eq(schema.users.id, ensured.id));
+      }
+    } catch {}
 
-    return res.json({ status: "UPDATED", externalUserId: externalId });
+    logger.info('sirplay_registration.update.success', {
+      path: req.path,
+      eventId: parsed.data.eventId,
+      action: parsed.data.action,
+      sirplayUserId,
+      externalId: ensured.id,
+      customerId,
+    });
+
+    // Keep response stable but include the local id for traceability.
+    return res.json({ status: "UPDATED", externalUserId: sirplayUserId, externalId: ensured.id });
   });
 
   // Sirplay handshake: receive/resolve external_user_id, ensure local mapping and accounts entry
@@ -770,11 +830,13 @@ export async function registerRoutes(app: any, opts?: { version?: string }): Pro
       const cfg = getSirplayConfigFromEnv();
       const { token } = await sirplayLogin(cfg);
 
+      const defaultCurrency = (process.env.SIRPLAY_WALLET_CURRENCY || '').trim() || 'USD';
+
       const passport = getSirplayPassportFromEnv();
       const body = {
         idTransaction: parsed.data.idTransaction,
         amount: parsed.data.amount,
-        currency: parsed.data.currency || "EUR",
+        currency: parsed.data.currency || defaultCurrency,
         type: "EXTERNAL_DEPOSIT" as const,
         partnerId: cfg.partnerId || (process.env.SIRPLAY_PARTNER_ID || "").trim(),
         description: parsed.data.description,
@@ -817,11 +879,13 @@ export async function registerRoutes(app: any, opts?: { version?: string }): Pro
       const cfg = getSirplayConfigFromEnv();
       const { token } = await sirplayLogin(cfg);
 
+      const defaultCurrency = (process.env.SIRPLAY_WALLET_CURRENCY || '').trim() || 'USD';
+
       const passport = getSirplayPassportFromEnv();
       const body = {
         idTransaction: parsed.data.idTransaction,
         amount: parsed.data.amount,
-        currency: parsed.data.currency || "EUR",
+        currency: parsed.data.currency || defaultCurrency,
         type: "EXTERNAL_WITHDRAWAL" as const,
         partnerId: cfg.partnerId || (process.env.SIRPLAY_PARTNER_ID || "").trim(),
         description: parsed.data.description,

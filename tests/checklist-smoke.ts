@@ -85,8 +85,9 @@ async function run() {
     operation: 'UPDATE',
     action: 'USER_CHANGE_MAIL',
     eventTime: Date.now(),
+    customerId: process.env.SIRPLAY_CUSTOMER_ID || '572',
     userData: {
-      externalId: externalUserId,
+      userId: externalUserId,
       email: 'user.updated@example.com',
       status: 'ACTIVE'
     }
@@ -179,21 +180,21 @@ async function run() {
   const dep1 = await agent
     .post('/api/sirplay/out/wallet/deposit')
     .set('x-user-id', 'a-001').set('x-role', 'admin')
-    .send({ sirplayUserId: externalUserId, idTransaction: 'dup-001', amount: 5.00, currency: 'EUR' });
+    .send({ sirplayUserId: externalUserId, idTransaction: 'dup-001', amount: 5.00, currency: 'USD' });
   const dep2 = await agent
     .post('/api/sirplay/out/wallet/deposit')
     .set('x-user-id', 'a-001').set('x-role', 'admin')
-    .send({ sirplayUserId: externalUserId, idTransaction: 'dup-001', amount: 5.00, currency: 'EUR' });
+    .send({ sirplayUserId: externalUserId, idTransaction: 'dup-001', amount: 5.00, currency: 'USD' });
   console.log('DEPOSIT statuses:', dep1.status, dep1.body, dep2.status, dep2.body);
 
   const w1 = await agent
     .post('/api/sirplay/out/wallet/withdrawal')
     .set('x-user-id', 'a-001').set('x-role', 'admin')
-    .send({ sirplayUserId: externalUserId, idTransaction: 'dup-002', amount: 3.00, currency: 'EUR' });
+    .send({ sirplayUserId: externalUserId, idTransaction: 'dup-002', amount: 3.00, currency: 'USD' });
   const w2 = await agent
     .post('/api/sirplay/out/wallet/withdrawal')
     .set('x-user-id', 'a-001').set('x-role', 'admin')
-    .send({ sirplayUserId: externalUserId, idTransaction: 'dup-002', amount: 3.00, currency: 'EUR' });
+    .send({ sirplayUserId: externalUserId, idTransaction: 'dup-002', amount: 3.00, currency: 'USD' });
   console.log('WITHDRAWAL statuses:', w1.status, w1.body, w2.status, w2.body);
 
   // Restore fetch
