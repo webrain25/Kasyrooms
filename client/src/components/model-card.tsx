@@ -224,6 +224,7 @@ export default function ModelCard({ model, showRank = false, rank, minimal = fal
       onClose={() => setIsVideoChatOpen(false)}
       modelName={model.name}
       isModelOnline={!!model.isOnline}
+      isModelBusy={!!model.isBusy}
       modelId={model.id}
     />
   </>

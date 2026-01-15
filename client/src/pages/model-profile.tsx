@@ -328,6 +328,7 @@ export default function ModelProfile() {
         onClose={() => setIsVideoChatOpen(false)}
         modelName={model.name}
         isModelOnline={model.isOnline || false}
+        isModelBusy={!!model.isBusy}
         modelId={model.id}
         isBlocked={isBlocked}
       />

@@ -12,11 +12,12 @@ interface VideoChatModalProps {
   onClose: () => void;
   modelName: string;
   isModelOnline: boolean;
+  isModelBusy?: boolean;
   modelId: string;
   isBlocked?: boolean;
 }
 
-export default function VideoChatModal({ isOpen, onClose, modelName, isModelOnline, modelId, isBlocked }: VideoChatModalProps) {
+export default function VideoChatModal({ isOpen, onClose, modelName, isModelOnline, isModelBusy, modelId, isBlocked }: VideoChatModalProps) {
   const { isAuthenticated, user } = useAuth();
   const [phase, setPhase] = useState<'preview' | 'locked' | 'private'>('preview');
   const [isConnecting, setIsConnecting] = useState(false);
@@ -70,8 +71,8 @@ export default function VideoChatModal({ isOpen, onClose, modelName, isModelOnli
         } catch {}
       })();
     }
-    // Auto-connect preview if model online
-    if (isModelOnline) {
+    // Auto-connect preview only if model online and not busy
+    if (isModelOnline && !isModelBusy) {
       setIsConnecting(true);
       try { rtc.join(); } catch {}
       // consider connected for UI purposes; remote stream may arrive later
@@ -80,7 +81,7 @@ export default function VideoChatModal({ isOpen, onClose, modelName, isModelOnli
         setIsConnected(true);
       }, 500);
     }
-  }, [isOpen, isModelOnline, user?.id]);
+  }, [isOpen, isModelOnline, isModelBusy, user?.id]);
 
   // Preview timer
   useEffect(() => {
@@ -115,6 +116,7 @@ export default function VideoChatModal({ isOpen, onClose, modelName, isModelOnli
       return;
     }
     if (!isModelOnline) return;
+    if (isModelBusy) return;
     setIsConnecting(true);
     setTimeout(async () => {
       setIsConnecting(false);
@@ -266,8 +268,6 @@ export default function VideoChatModal({ isOpen, onClose, modelName, isModelOnli
     }
   };
 
-  if (!isOpen) return null;
-
   // Poll public chat for this model while modal is open and NOT in private
   useEffect(() => {
     if (!isOpen) return;
@@ -335,6 +335,9 @@ export default function VideoChatModal({ isOpen, onClose, modelName, isModelOnli
     };
   }, [isPrivate, user?.id, isOpen]);
 
+  // IMPORTANT: keep hooks unconditional. Only decide to render after hooks.
+  if (!isOpen) return null;
+
   return (
     <Dialog open={isOpen} onOpenChange={onClose}>
       <DialogContent className="max-w-4xl h-[80vh]">
@@ -344,7 +347,17 @@ export default function VideoChatModal({ isOpen, onClose, modelName, isModelOnli
             {previewActive && 'Live Preview'}{isLocked && 'Preview Ended'}{isPrivate && 'Private Show'} with {modelName}
           </DialogTitle>
           <DialogDescription>
-            {isBlocked ? 'You are blocked by this model.' : (isModelOnline ? (previewActive ? `You have ${timeFmt} left` : (isLocked ? 'Preview ended. Start a private show to continue.' : 'Ready to start private show')) : "Model is currently offline")}
+            {isBlocked
+              ? 'You are blocked by this model.'
+              : (!isModelOnline
+                ? 'Model is currently offline.'
+                : (isModelBusy
+                  ? 'Model is currently busy.'
+                  : (previewActive
+                    ? `You have ${timeFmt} left`
+                    : (isLocked
+                      ? 'Preview ended. Start a private show to continue.'
+                      : 'Ready to start private show'))))}
           </DialogDescription>
         </DialogHeader>
 
@@ -358,8 +371,16 @@ export default function VideoChatModal({ isOpen, onClose, modelName, isModelOnli
               ) : (
                 <div className="text-center text-white">
                   <i className="fas fa-video text-6xl mb-4 opacity-50"></i>
-                  <p className="text-lg">{previewActive ? 'Live Preview' : isPrivate ? 'Private Show' : isLocked ? 'Preview Ended' : 'Waiting...'}</p>
-                  <p className="text-sm opacity-75">Waiting for live stream…</p>
+                  <p className="text-lg">
+                    {(!isModelOnline) ? 'Offline'
+                      : (isModelBusy ? 'Busy'
+                        : (previewActive ? 'Live Preview' : isPrivate ? 'Private Show' : isLocked ? 'Preview Ended' : 'Waiting...'))}
+                  </p>
+                  <p className="text-sm opacity-75">
+                    {(!isModelOnline) ? 'This model is offline. Private show is not available.'
+                      : (isModelBusy ? 'This model is currently busy. Please try again later.'
+                        : 'Waiting for live stream…')}
+                  </p>
                 </div>
               )}
 
@@ -385,7 +406,7 @@ export default function VideoChatModal({ isOpen, onClose, modelName, isModelOnli
             {previewActive && (
               <div className="flex items-center justify-between text-sm text-muted">
                 <span>Time left: <span className="font-semibold text-gold-primary">{timeFmt}</span> of free preview</span>
-                <Button onClick={handleEnterPrivate} className="btn-gold text-background" disabled={!!isBlocked}>
+                <Button onClick={handleEnterPrivate} className="btn-gold text-background" disabled={!!isBlocked || !isModelOnline || !!isModelBusy}>
                   <i className="fas fa-lock-open mr-2"></i>
                   Go Private Now
                 </Button>
@@ -398,7 +419,7 @@ export default function VideoChatModal({ isOpen, onClose, modelName, isModelOnli
                   <p className="text-sm text-muted">Start a private show to continue watching. Rate: <span className="text-gold-primary font-semibold">5.99 credits/min</span></p>
                 </div>
                 <div className="space-x-2">
-                  <Button onClick={handleEnterPrivate} disabled={!!isBlocked || !isModelOnline || isConnecting} className="btn-gold text-background">
+                  <Button onClick={handleEnterPrivate} disabled={!!isBlocked || !isModelOnline || !!isModelBusy || isConnecting} className="btn-gold text-background">
                     {isConnecting ? (<><i className="fas fa-spinner fa-spin mr-2"></i>Connecting...</>) : (<><i className="fas fa-video mr-2"></i>Start Private Show</>)}
                   </Button>
                   {!isAuthenticated && (
