@@ -182,11 +182,11 @@ export default function ModelCard({ model, showRank = false, rank, minimal = fal
             onClick={handleStartChat}
             disabled={unavailable}
             title={unavailable ? (isOffline ? 'Offline' : 'Busy') : ''}
-            className={`w-full py-3 btn-gold text-black rounded-lg font-semibold text-sm shadow-[0_6px_18px_rgba(212,175,55,0.35)] ring-1 ring-black/10 hover:shadow-[0_10px_24px_rgba(212,175,55,0.5)] disabled:opacity-50 disabled:cursor-not-allowed`}
+            className={`w-full min-w-0 px-4 py-3 btn-gold text-black rounded-lg font-semibold text-sm shadow-[0_6px_18px_rgba(212,175,55,0.35)] ring-1 ring-black/10 hover:shadow-[0_10px_24px_rgba(212,175,55,0.5)] disabled:opacity-50 disabled:cursor-not-allowed inline-flex items-center justify-center gap-2 text-center`}
             data-testid={`button-start-chat-${model.id}`}
           >
-            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="w-4 h-4 mr-2"><polygon points="23 7 16 12 23 17 23 7"/><rect x="1" y="5" width="15" height="14" rx="2" ry="2"/></svg>
-            {t('modelCard.startChat')}
+            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="w-4 h-4 shrink-0"><polygon points="23 7 16 12 23 17 23 7"/><rect x="1" y="5" width="15" height="14" rx="2" ry="2"/></svg>
+            <span className="truncate">{t('modelCard.startChat')}</span>
           </button>
         </div>
         )}
