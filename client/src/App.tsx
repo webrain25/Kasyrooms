@@ -1,5 +1,5 @@
 import { Switch, Route } from "wouter";
-import { Suspense, lazy } from "react";
+import { Suspense, lazy, useEffect } from "react";
 import { queryClient } from "./lib/queryClient";
 import { QueryClientProvider } from "@tanstack/react-query";
 import { Toaster } from "@/components/ui/toaster";
@@ -84,6 +84,7 @@ function App() {
           <TooltipProvider>
             <Toaster />
             <AgeGateGuard>
+              <TokenConsumer />
               <Router />
             </AgeGateGuard>
           </TooltipProvider>
@@ -93,6 +94,46 @@ function App() {
       </AuthProvider>
     </QueryClientProvider>
   );
+}
+
+function TokenConsumer() {
+  useEffect(() => {
+    const url = new URL(window.location.href);
+    const token = url.searchParams.get('token');
+    if (!token) return;
+    // Consume token and then clean URL
+    (async () => {
+      try {
+        const r = await fetch('/api/auth/login-token', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          credentials: 'include',
+          body: JSON.stringify({ token })
+        });
+        if (!r.ok) {
+          // On failure, redirect to login
+          window.location.replace('/login');
+          return;
+        }
+        const j = await r.json();
+        if (j?.user && j?.token) {
+          try {
+            localStorage.setItem('user', JSON.stringify(j.user));
+            localStorage.setItem('token', j.token);
+          } catch {}
+        }
+        // Clean URL without token param
+        url.searchParams.delete('token');
+        const clean = url.pathname + (url.searchParams.toString() ? ('?' + url.searchParams.toString()) : '') + url.hash;
+        window.history.replaceState({}, '', clean);
+        // Optionally reload to reinitialize AuthProvider from localStorage
+        window.location.reload();
+      } catch {
+        window.location.replace('/login');
+      }
+    })();
+  }, []);
+  return null;
 }
 
 export default App;

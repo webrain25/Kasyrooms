@@ -921,8 +921,8 @@ export async function registerRoutes(app: any, opts?: { version?: string }): Pro
       return res.status(404).json({ error: 'user_not_found', externalId });
     }
 
-    // Generate random opaque login token (no JWT)
-    const loginToken = crypto.randomBytes(24).toString('base64url');
+    // Generate and store an opaque login token with TTL
+    const loginToken = await storage.createLoginToken(user.id, 600);
     let base = (process.env.BASE_URL || process.env.PUBLIC_URL || process.env.FRONTEND_URL || '').trim();
     if (!base) base = 'http://127.0.0.1:5000';
     const accessLink = `${base.replace(/\/+$/, '')}?token=${encodeURIComponent(loginToken)}`;
@@ -935,6 +935,40 @@ export async function registerRoutes(app: any, opts?: { version?: string }): Pro
 
   // Doc alias: POST /b2b/login-tokens with body { externalId: "..." }
   app.post("/b2b/login-tokens", requireB2BBasicAuth(), issueLoginTokenHandler);
+
+  // Consume login token and establish session
+  app.post('/api/auth/login-token', async (req: any, res: any) => {
+    try {
+      const token = String(req.body?.token || '').trim();
+      if (!token) return res.status(400).json({ error: 'invalid_payload', details: { token: false } });
+      const result = await storage.consumeLoginToken(token);
+      if (!result.ok) {
+        logger.info('login_token.consume.fail', { tokenPreview: token.slice(0,8), reason: result.error });
+        return res.status(401).json({ error: 'invalid_token', reason: result.error });
+      }
+      const user = await storage.getUser(result.userId!);
+      if (!user) {
+        logger.info('login_token.consume.fail', { tokenPreview: token.slice(0,8), reason: 'user_not_found' });
+        return res.status(404).json({ error: 'user_not_found' });
+      }
+      // Issue a JWT to represent session and set HttpOnly cookie
+      const jwtToken = jwt.sign({ uid: user.id, role: user.role || 'user', username: user.username }, getJWTSecret(), { expiresIn: '1d' });
+      const secure = process.env.NODE_ENV === 'production';
+      const cookie = [
+        `kr_session=${jwtToken}`,
+        'Path=/',
+        'HttpOnly',
+        secure ? 'Secure' : '',
+        'SameSite=Lax',
+        `Max-Age=${60*60*24}`
+      ].filter(Boolean).join('; ');
+      res.setHeader('Set-Cookie', cookie);
+      logger.info('login_token.consume.ok', { userId: user.id });
+      return res.json({ status: 'ok', token: jwtToken, user: { id: user.id, username: user.username, email: user.email, role: user.role || 'user' } });
+    } catch (e:any) {
+      return res.status(500).json({ error: 'token_consume_failed', message: e?.message || String(e) });
+    }
+  });
 
   // util per validare token (B)
   app.get("/api/sso/validate", requireB2BBasicAuth(), async (req: any, res: any) => {

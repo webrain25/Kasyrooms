@@ -82,6 +82,8 @@ export class MemStorage {
   favoritesByUser = new Map<string, Set<string>>();
   // Idempotency keys for webhooks (in-memory)
   processedRefs = new Set<string>();
+  // Login tokens: opaque one-time tokens mapped to local user id with TTL
+  loginTokens = new Map<string, { userId: string; expiresAt: number; consumed?: boolean }>();
 
   constructor() {
     this.seed();
@@ -335,6 +337,27 @@ export class MemStorage {
     } catch {}
   }
   async listAudit(limit = 200) { return this.audit.slice(0, limit); }
+
+  // Login token helpers
+  async createLoginToken(userId: string, ttlSeconds = 600) {
+    const token = randomUUID().replace(/-/g, '') + Math.random().toString(36).slice(2, 10);
+    const expiresAt = Date.now() + Math.max(60, ttlSeconds) * 1000;
+    this.loginTokens.set(token, { userId, expiresAt, consumed: false });
+    return token;
+  }
+  async getLoginToken(token: string) {
+    const info = this.loginTokens.get(token);
+    return info;
+  }
+  async consumeLoginToken(token: string) {
+    const info = this.loginTokens.get(token);
+    if (!info) return { ok: false, error: 'not_found' as const };
+    if (info.consumed) return { ok: false, error: 'already_consumed' as const };
+    if (Date.now() > info.expiresAt) { this.loginTokens.delete(token); return { ok: false, error: 'expired' as const }; }
+    info.consumed = true;
+    this.loginTokens.set(token, info);
+    return { ok: true, userId: info.userId };
+  }
 
   // public chat (simple in-memory, global)
   // public chat (per-model)
