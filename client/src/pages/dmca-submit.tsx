@@ -6,9 +6,11 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { useState } from "react";
 import { useToast } from "@/hooks/use-toast";
+import { useI18n } from "@/lib/i18n";
 
 export default function DmcaSubmitPage() {
   const { toast } = useToast();
+  const { t } = useI18n();
   const [reporterName, setReporterName] = useState("");
   const [reporterEmail, setReporterEmail] = useState("");
   const [originalContentUrl, setOriginalContentUrl] = useState("");
@@ -24,7 +26,7 @@ export default function DmcaSubmitPage() {
       .map(s => s.trim())
       .filter(Boolean);
     if (infringingUrls.length === 0) {
-      toast({ title: "Validation", description: "Add at least one infringing URL.", variant: "destructive" });
+      toast({ title: t("dmcaSubmit.validation.title"), description: t("dmcaSubmit.validation.noUrls"), variant: "destructive" });
       return;
     }
     setSubmitting(true);
@@ -35,10 +37,10 @@ export default function DmcaSubmitPage() {
         body: JSON.stringify({ reporterName, reporterEmail, originalContentUrl, infringingUrls, signature, notes })
       });
       if (!res.ok) throw new Error(`Request failed: ${res.status}`);
-      toast({ title: "Submitted", description: "DMCA notice submitted. We'll review shortly." });
+      toast({ title: t("dmcaSubmit.submitted.title"), description: t("dmcaSubmit.submitted.desc") });
       setReporterName(""); setReporterEmail(""); setOriginalContentUrl(""); setInfringingUrlsText(""); setSignature(""); setNotes("");
     } catch (e: any) {
-      toast({ title: "Submission failed", description: e?.message || String(e), variant: "destructive" });
+      toast({ title: t("dmcaSubmit.failed.title"), description: e?.message || String(e), variant: "destructive" });
     } finally {
       setSubmitting(false);
     }
@@ -50,36 +52,36 @@ export default function DmcaSubmitPage() {
       <main className="container mx-auto flex-1 px-4 py-8 md:py-10 max-w-3xl">
         <Card>
           <CardHeader>
-            <CardTitle>Submit a DMCA Takedown Notice</CardTitle>
+            <CardTitle>{t("dmcaSubmit.title")}</CardTitle>
           </CardHeader>
           <CardContent>
             <form onSubmit={handleSubmit} className="space-y-4">
               <div>
-                <label className="text-sm text-muted-foreground block mb-1">Your Name</label>
-                <Input value={reporterName} onChange={e=>setReporterName(e.target.value)} required placeholder="Jane Doe" />
+                <label className="text-sm text-muted-foreground block mb-1">{t("dmcaSubmit.form.name")}</label>
+                <Input value={reporterName} onChange={e=>setReporterName(e.target.value)} required placeholder={t("dmcaSubmit.placeholder.name")} />
               </div>
               <div>
-                <label className="text-sm text-muted-foreground block mb-1">Your Email</label>
-                <Input type="email" value={reporterEmail} onChange={e=>setReporterEmail(e.target.value)} required placeholder="you@example.com" />
+                <label className="text-sm text-muted-foreground block mb-1">{t("dmcaSubmit.form.email")}</label>
+                <Input type="email" value={reporterEmail} onChange={e=>setReporterEmail(e.target.value)} required placeholder={t("dmcaSubmit.placeholder.email")} />
               </div>
               <div>
-                <label className="text-sm text-muted-foreground block mb-1">Original Content URL</label>
-                <Input type="url" value={originalContentUrl} onChange={e=>setOriginalContentUrl(e.target.value)} required placeholder="https://your-site.com/original" />
+                <label className="text-sm text-muted-foreground block mb-1">{t("dmcaSubmit.form.originalUrl")}</label>
+                <Input type="url" value={originalContentUrl} onChange={e=>setOriginalContentUrl(e.target.value)} required placeholder={t("dmcaSubmit.placeholder.originalUrl")} />
               </div>
               <div>
-                <label className="text-sm text-muted-foreground block mb-1">Infringing URLs (one per line or comma-separated)</label>
-                <Textarea value={infringingUrlsText} onChange={e=>setInfringingUrlsText(e.target.value)} rows={4} required placeholder="https://example.com/infringing-1\nhttps://example.com/infringing-2" />
+                <label className="text-sm text-muted-foreground block mb-1">{t("dmcaSubmit.form.infringingUrls")}</label>
+                <Textarea value={infringingUrlsText} onChange={e=>setInfringingUrlsText(e.target.value)} rows={4} required placeholder={t("dmcaSubmit.placeholder.infringingUrls")} />
               </div>
               <div>
-                <label className="text-sm text-muted-foreground block mb-1">Signature (type your full name)</label>
-                <Input value={signature} onChange={e=>setSignature(e.target.value)} required placeholder="Jane Doe" />
+                <label className="text-sm text-muted-foreground block mb-1">{t("dmcaSubmit.form.signature")}</label>
+                <Input value={signature} onChange={e=>setSignature(e.target.value)} required placeholder={t("dmcaSubmit.placeholder.signature")} />
               </div>
               <div>
-                <label className="text-sm text-muted-foreground block mb-1">Additional Notes (optional)</label>
-                <Textarea value={notes} onChange={e=>setNotes(e.target.value)} rows={3} placeholder="Context or clarification" />
+                <label className="text-sm text-muted-foreground block mb-1">{t("dmcaSubmit.form.notes")}</label>
+                <Textarea value={notes} onChange={e=>setNotes(e.target.value)} rows={3} placeholder={t("dmcaSubmit.placeholder.notes")} />
               </div>
               <div className="pt-2">
-                <Button type="submit" disabled={submitting}>{submitting ? 'Submitting…' : 'Submit Notice'}</Button>
+                <Button type="submit" disabled={submitting}>{submitting ? t("dmcaSubmit.form.submitting") : t("dmcaSubmit.form.submit")}</Button>
               </div>
             </form>
           </CardContent>

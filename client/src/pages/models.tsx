@@ -9,8 +9,10 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Model } from "@shared/schema";
+import { useI18n } from "@/lib/i18n";
 
 export default function AllModels() {
+  const { t } = useI18n();
   const [searchTerm, setSearchTerm] = useState("");
   const [sortBy, setSortBy] = useState("name");
   const [filterOnline, setFilterOnline] = useState("all");
@@ -20,7 +22,7 @@ export default function AllModels() {
     queryFn: async (): Promise<Model[]> => {
       const response = await fetch("/api/models");
       if (!response.ok) {
-        throw new Error("Failed to fetch models");
+        throw new Error(t('common.errors.loadModels'));
       }
       return response.json();
     },
@@ -84,8 +86,8 @@ export default function AllModels() {
       <div className="container mx-auto px-4 py-8">
         {/* Page Header */}
         <div className="text-center mb-8">
-          <h1 className="text-3xl font-bold text-foreground mb-4">All Models</h1>
-          <p className="text-muted">Discover all our amazing models</p>
+          <h1 className="text-3xl font-bold text-foreground mb-4">{t('allModels')}</h1>
+          <p className="text-muted">{t('models.subtitle')}</p>
         </div>
 
         {/* Filters and Search (non-sticky) */}
@@ -94,39 +96,39 @@ export default function AllModels() {
             <CardContent className="p-6">
             <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
               <div>
-                <label className="text-sm font-medium text-foreground mb-2 block">Search</label>
+                <label className="text-sm font-medium text-foreground mb-2 block">{t('search')}</label>
                 <Input
-                  placeholder="Search models..."
+                  placeholder={t('searchPlaceholder')}
                   value={searchTerm}
                   onChange={(e) => setSearchTerm(e.target.value)}
                 />
               </div>
               
               <div>
-                <label className="text-sm font-medium text-foreground mb-2 block">Sort By</label>
+                <label className="text-sm font-medium text-foreground mb-2 block">{t('sortBy')}</label>
                 <Select value={sortBy} onValueChange={setSortBy}>
                   <SelectTrigger>
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="name">Name</SelectItem>
-                    <SelectItem value="rating">Rating</SelectItem>
-                    <SelectItem value="viewers">Viewers</SelectItem>
-                    <SelectItem value="age">Age</SelectItem>
+                    <SelectItem value="name">{t('name')}</SelectItem>
+                    <SelectItem value="rating">{t('rating')}</SelectItem>
+                    <SelectItem value="viewers">{t('viewers')}</SelectItem>
+                    <SelectItem value="age">{t('age')}</SelectItem>
                   </SelectContent>
                 </Select>
               </div>
               
               <div>
-                <label className="text-sm font-medium text-foreground mb-2 block">Status</label>
+                <label className="text-sm font-medium text-foreground mb-2 block">{t('status')}</label>
                 <Select value={filterOnline} onValueChange={setFilterOnline}>
                   <SelectTrigger>
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="all">All</SelectItem>
-                    <SelectItem value="online">Online</SelectItem>
-                    <SelectItem value="offline">Offline</SelectItem>
+                    <SelectItem value="all">{t('all')}</SelectItem>
+                    <SelectItem value="online">{t('online')}</SelectItem>
+                    <SelectItem value="offline">{t('offline')}</SelectItem>
                   </SelectContent>
                 </Select>
               </div>
@@ -141,7 +143,7 @@ export default function AllModels() {
                   variant="outline"
                   className="w-full"
                 >
-                  Clear Filters
+                  {t('clearFilters')}
                 </Button>
               </div>
             </div>
@@ -152,7 +154,7 @@ export default function AllModels() {
         {/* Results Count */}
         <div className="mb-6">
           <p className="text-muted">
-            Showing {filteredModels.length} of {models.length} models
+            {t('showing')} {filteredModels.length} {t('of')} {models.length} {t('models')}
           </p>
         </div>
 
@@ -167,8 +169,8 @@ export default function AllModels() {
           <Card className="text-center py-12">
             <CardContent>
               <div className="text-6xl mb-4">🔍</div>
-              <h3 className="text-xl font-semibold text-foreground mb-2">No models found</h3>
-              <p className="text-muted mb-4">Try adjusting your search or filters</p>
+              <h3 className="text-xl font-semibold text-foreground mb-2">{t('noModelsFound')}</h3>
+              <p className="text-muted mb-4">{t('common.noModels.subtitle')}</p>
               <Button 
                 onClick={() => {
                   setSearchTerm("");
@@ -176,7 +178,7 @@ export default function AllModels() {
                   setFilterOnline("all");
                 }}
               >
-                Clear All Filters
+                {t('clearFilters')}
               </Button>
             </CardContent>
           </Card>

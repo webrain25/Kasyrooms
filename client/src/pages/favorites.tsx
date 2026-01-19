@@ -37,7 +37,7 @@ export default function Favorites() {
   if (isLoading) return (
     <div className="min-h-screen flex flex-col items-center justify-center bg-background">
       <Loader2 className="animate-spin w-12 h-12 text-primary mb-4" />
-      <span className="text-muted">Caricamento autenticazione...</span>
+      <span className="text-muted">{t('common.loading.auth')}</span>
     </div>
   );
   if (!isAuthenticated) return null;

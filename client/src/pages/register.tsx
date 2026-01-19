@@ -8,11 +8,13 @@ import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/lib/authContext";
+import { useI18n } from "@/lib/i18n";
 
 export default function Register() {
   const [, setLocation] = useLocation();
   const { toast } = useToast();
   const { register } = useAuth();
+  const { t } = useI18n();
   const [isLoading, setIsLoading] = useState(false);
   const [formData, setFormData] = useState({
     username: "",
@@ -29,8 +31,8 @@ export default function Register() {
     
     if (formData.password !== formData.confirmPassword) {
       toast({
-        title: "Password mismatch",
-        description: "Passwords do not match",
+        title: t("register.toast.passwordMismatch.title"),
+        description: t("register.toast.passwordMismatch.desc"),
         variant: "destructive",
       });
       return;
@@ -49,15 +51,15 @@ export default function Register() {
       });
       
       toast({
-        title: "Account created",
-        description: "Welcome to Kasyrooms!",
+        title: t("register.toast.accountCreated.title"),
+        description: t("register.toast.accountCreated.desc"),
       });
       
       setLocation("/");
     } catch (error) {
       toast({
-        title: "Registration failed",
-        description: "Please try again later",
+        title: t("register.toast.failed.title"),
+        description: t("register.toast.failed.desc"),
         variant: "destructive",
       });
     } finally {
@@ -79,34 +81,34 @@ export default function Register() {
       <div className="container mx-auto px-4 py-8 flex items-center justify-center min-h-[calc(100vh-200px)]">
         <Card className="w-full max-w-md">
           <CardHeader className="text-center">
-            <CardTitle className="text-2xl">Join Kasyrooms</CardTitle>
+            <CardTitle className="text-2xl">{t("register.title")}</CardTitle>
             <CardDescription>
-              Create your account to access exclusive content
+              {t("register.subtitle")}
             </CardDescription>
           </CardHeader>
           <CardContent>
             <form onSubmit={handleSubmit} className="space-y-4">
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                     <div className="space-y-2">
-                      <Label htmlFor="firstName">First name</Label>
-                      <Input id="firstName" name="firstName" type="text" placeholder="Mario" value={formData.firstName} onChange={handleChange} />
+                      <Label htmlFor="firstName">{t("register.firstName")}</Label>
+                      <Input id="firstName" name="firstName" type="text" placeholder={t("register.firstName.placeholder")} value={formData.firstName} onChange={handleChange} />
                     </div>
                     <div className="space-y-2">
-                      <Label htmlFor="lastName">Last name</Label>
-                      <Input id="lastName" name="lastName" type="text" placeholder="Rossi" value={formData.lastName} onChange={handleChange} />
+                      <Label htmlFor="lastName">{t("register.lastName")}</Label>
+                      <Input id="lastName" name="lastName" type="text" placeholder={t("register.lastName.placeholder")} value={formData.lastName} onChange={handleChange} />
                     </div>
                   </div>
                   <div className="space-y-2">
-                    <Label htmlFor="dateOfBirth">Date of birth</Label>
+                    <Label htmlFor="dateOfBirth">{t("register.dob")}</Label>
                     <Input id="dateOfBirth" name="dateOfBirth" type="date" value={formData.dateOfBirth} onChange={handleChange} />
                   </div>
               <div className="space-y-2">
-                <Label htmlFor="username">Username</Label>
+                <Label htmlFor="username">{t("username")}</Label>
                 <Input
                   id="username"
                   name="username"
                   type="text"
-                  placeholder="Choose a username"
+                  placeholder={t("register.username.placeholder")}
                   value={formData.username}
                   onChange={handleChange}
                   required
@@ -115,12 +117,12 @@ export default function Register() {
               {/* Payment card section removed as requested */}
               
               <div className="space-y-2">
-                <Label htmlFor="email">Email</Label>
+                <Label htmlFor="email">{t("email")}</Label>
                 <Input
                   id="email"
                   name="email"
                   type="email"
-                  placeholder="Enter your email"
+                  placeholder={t("register.email.placeholder")}
                   value={formData.email}
                   onChange={handleChange}
                   required
@@ -128,12 +130,12 @@ export default function Register() {
               </div>
               
               <div className="space-y-2">
-                <Label htmlFor="password">Password</Label>
+                <Label htmlFor="password">{t("password")}</Label>
                 <Input
                   id="password"
                   name="password"
                   type="password"
-                  placeholder="Create a password"
+                  placeholder={t("register.password.placeholder")}
                   value={formData.password}
                   onChange={handleChange}
                   required
@@ -141,12 +143,12 @@ export default function Register() {
               </div>
               
               <div className="space-y-2">
-                <Label htmlFor="confirmPassword">Confirm Password</Label>
+                <Label htmlFor="confirmPassword">{t("register.confirmPassword")}</Label>
                 <Input
                   id="confirmPassword"
                   name="confirmPassword"
                   type="password"
-                  placeholder="Confirm your password"
+                  placeholder={t("register.confirmPassword.placeholder")}
                   value={formData.confirmPassword}
                   onChange={handleChange}
                   required
@@ -161,20 +163,20 @@ export default function Register() {
                 {isLoading ? (
                   <>
                     <i className="fas fa-spinner fa-spin mr-2"></i>
-                    Creating account...
+                    {t("register.creating")}
                   </>
                 ) : (
                   <>
                     <i className="fas fa-user-plus mr-2"></i>
-                    Create Account
+                    {t("register.create")}
                   </>
                 )}
               </Button>
               
               <div className="text-center text-sm text-muted">
-                Already have an account?{" "}
+                {t("register.haveAccount")} {" "}
                 <a href="/login" className="text-gold-primary hover:text-gold-accent font-semibold">
-                  Sign in here
+                  {t("register.signInHere")}
                 </a>
               </div>
             </form>

@@ -12,6 +12,7 @@ import { Input } from "@/components/ui/input";
 import { useFavorites } from "@/lib/favoritesContext";
 import { useAuth } from "@/lib/authContext";
 import { buildImageUrl } from "@/lib/utils";
+import { useI18n } from "@/lib/i18n";
 
 export default function ModelProfile() {
   const [, params] = useRoute("/model/:id");
@@ -19,6 +20,7 @@ export default function ModelProfile() {
   const [isVideoChatOpen, setIsVideoChatOpen] = useState(false);
   const { isFavorite, toggleFavorite } = useFavorites();
   const { user, isAuthenticated } = useAuth();
+  const { t } = useI18n();
   const [isBlocked, setIsBlocked] = useState(false);
   const [reporting, setReporting] = useState(false);
   const [reportReason, setReportReason] = useState("");
@@ -72,9 +74,9 @@ export default function ModelProfile() {
         <div className="container mx-auto px-4 py-8">
           <div className="text-center py-12">
             <i className="fas fa-user-slash text-muted text-6xl mb-4"></i>
-            <h1 className="text-2xl font-bold mb-2">Model Not Found</h1>
-            <p className="text-muted mb-4">The model you're looking for doesn't exist.</p>
-            <Button onClick={() => window.history.back()}>Go Back</Button>
+            <h1 className="text-2xl font-bold mb-2">{t("modelProfile.notFound.title")}</h1>
+            <p className="text-muted mb-4">{t("modelProfile.notFound.subtitle")}</p>
+            <Button onClick={() => window.history.back()}>{t("modelProfile.goBack")}</Button>
           </div>
         </div>
         <Footer />
@@ -87,17 +89,17 @@ export default function ModelProfile() {
   };
 
   const handleStartPrivateShow = () => {
-    if (isBlocked) return alert('You are blocked by this model.');
-    if (!model.isOnline) return alert('This model is offline.');
-    if (model.isBusy) return alert('This model is currently busy.');
+    if (isBlocked) return alert(t("modelProfile.alert.blocked"));
+    if (!model.isOnline) return alert(t("modelProfile.alert.offline"));
+    if (model.isBusy) return alert(t("modelProfile.alert.busy"));
     setIsVideoChatOpen(true);
   };
 
   const handleSendMessage = async () => {
-    if (isBlocked) return alert('You are blocked by this model.');
+    if (isBlocked) return alert(t("modelProfile.alert.blocked"));
     if (!isAuthenticated) return (window.location.href = '/login');
     const text = chatMessage.trim();
-    if (!text) return alert('Please type a message');
+    if (!text) return alert(t("modelProfile.alert.typeMessage"));
     setChatSending(true);
     try {
       const displayName = user?.username || 'user';
@@ -105,20 +107,20 @@ export default function ModelProfile() {
       const r = await fetch('/api/chat/public', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
       if (!r.ok) {
         const j = await r.json().catch(()=>({}));
-        return alert(j?.error ? `Message failed: ${j.error}` : 'Message failed');
+        return alert(j?.error ? `${t("modelProfile.alert.messageFailed")}: ${j.error}` : t("modelProfile.alert.messageFailed"));
       }
       setChatMessage("");
-      alert('Message sent');
+      alert(t("modelProfile.alert.messageSent"));
     } finally { setChatSending(false); }
   };
 
   const handleReport = async () => {
     if (!isAuthenticated) return (window.location.href = '/login');
-    if (!reportReason.trim()) return alert('Please enter a reason');
+    if (!reportReason.trim()) return alert(t("modelProfile.alert.enterReason"));
     setReporting(true);
     try {
       await fetch('/api/moderation/report', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ modelId, userId: user?.id, reason: reportReason }) });
-      alert('Report sent');
+      alert(t("modelProfile.alert.reportSent"));
       setReportReason("");
     } finally {
       setReporting(false);
@@ -127,16 +129,16 @@ export default function ModelProfile() {
   const handleTip = async () => {
     if (!isAuthenticated) return (window.location.href = '/login');
     const amount = Number(tipAmount);
-    if (!Number.isFinite(amount) || amount <= 0) return alert('Enter a valid amount');
+    if (!Number.isFinite(amount) || amount <= 0) return alert(t("modelProfile.alert.tipInvalid"));
     setTipping(true);
     try {
       const r = await fetch(`/api/models/${modelId}/tip`, { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ amount }) });
       if (!r.ok) {
         const j = await r.json().catch(()=>({}));
-        if (j?.error === 'INSUFFICIENT_FUNDS') return alert('Insufficient funds');
-        return alert('Tip failed');
+        if (j?.error === 'INSUFFICIENT_FUNDS') return alert(t("modelProfile.alert.insufficientFunds"));
+        return alert(t("modelProfile.alert.tipFailed"));
       }
-  alert('Thanks for tipping!');
+  alert(t("modelProfile.alert.thanksTip"));
   // Notify wallet listeners to refresh balance
   try { window.dispatchEvent(new CustomEvent('wallet:changed')); } catch {}
       setTipAmount('');
@@ -149,7 +151,7 @@ export default function ModelProfile() {
     try {
       await fetch('/api/moderation/block', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ modelId, userId: user?.id }) });
       setIsBlocked(true);
-      alert('Blocked');
+      alert(t("modelProfile.alert.blockedDone"));
     } finally { setBlockBusy(false); }
   };
 
@@ -180,7 +182,7 @@ export default function ModelProfile() {
             <div className="absolute top-4 left-4 flex gap-2">
               <Badge variant={model.isOnline ? "default" : "secondary"} className={model.isOnline ? "bg-online" : ""}>
                 <i className="fas fa-circle mr-1 text-xs"></i>
-                {model.isOnline ? "Online" : "Offline"}
+                {model.isOnline ? t("online") : t("offline")}
               </Badge>
               {/* VIP removed */}
             </div>
@@ -189,7 +191,7 @@ export default function ModelProfile() {
             {model.isNew && (
               <div className="absolute top-4 right-4">
                 <Badge variant="destructive">
-                  NEW
+                  {t("modelCard.new")}
                 </Badge>
               </div>
             )}
@@ -198,7 +200,7 @@ export default function ModelProfile() {
             <div className="absolute bottom-4 right-4">
               <Badge variant="outline" className="bg-background/90">
                 <i className="fas fa-star text-gold-primary mr-1"></i>
-                {model.rating ? formatRating(model.rating) : 'New'}
+                {model.rating ? formatRating(model.rating) : t("modelCard.new")}
               </Badge>
             </div>
           </div>
@@ -217,15 +219,15 @@ export default function ModelProfile() {
                 </button>
               </div>
               <div className="flex items-center space-x-4 text-muted">
-                <span><i className="fas fa-user mr-1"></i>{model.age} years old</span>
+                <span><i className="fas fa-user mr-1"></i>{model.age} {t("yearsOld")}</span>
                 <span><i className="fas fa-map-marker-alt mr-1"></i>{model.country}</span>
-                <span><i className="fas fa-eye mr-1"></i>{model.viewerCount} watching</span>
+                <span><i className="fas fa-eye mr-1"></i>{model.viewerCount} {t("watching")}</span>
               </div>
             </div>
 
             {/* Languages */}
             <div>
-              <h3 className="font-semibold mb-2">Languages</h3>
+              <h3 className="font-semibold mb-2">{t("languages")}</h3>
               <div className="flex gap-2">
                 {model.languages.map(language => (
                   <Badge key={language} variant="outline">{language}</Badge>
@@ -235,7 +237,7 @@ export default function ModelProfile() {
 
             {/* Specialties */}
             <div>
-              <h3 className="font-semibold mb-2">Specialties</h3>
+              <h3 className="font-semibold mb-2">{t("specialties")}</h3>
               <div className="flex flex-wrap gap-2">
                 {model.specialties.map(specialty => (
                   <Badge key={specialty} variant="secondary">{specialty}</Badge>
@@ -250,43 +252,43 @@ export default function ModelProfile() {
                 className="w-full btn-gold text-background disabled:opacity-50 disabled:cursor-not-allowed"
                 size="lg"
                 disabled={!model.isOnline || !!model.isBusy || isBlocked}
-                title={!model.isOnline ? 'Offline' : (model.isBusy ? 'Busy' : (isBlocked ? 'Blocked' : ''))}
+                title={!model.isOnline ? t('offline') : (model.isBusy ? t('modelProfile.busy') : (isBlocked ? t('modelProfile.blocked') : ''))}
               >
                 <i className="fas fa-video mr-2"></i>
-                {(!model.isOnline) ? "Unavailable" : (model.isBusy ? "Busy" : "Start Private Show")}
+                {(!model.isOnline) ? t('modelProfile.unavailable') : (model.isBusy ? t('modelProfile.busy') : t('startPrivateShow'))}
               </Button>
               
               {/* Chat UI */}
               <div className="p-3 border border-border rounded-lg space-y-2">
-                <div className="text-sm font-semibold">Send a Message</div>
+                <div className="text-sm font-semibold">{t('modelProfile.sendMessage.title')}</div>
                 <div className="flex gap-2">
-                  <Input value={chatMessage} onChange={e=>setChatMessage(e.target.value)} placeholder="Type your message" />
-                  <Button onClick={handleSendMessage} disabled={chatSending || isBlocked} variant="outline">{chatSending ? 'Sending…' : 'Send'}</Button>
+                  <Input value={chatMessage} onChange={e=>setChatMessage(e.target.value)} placeholder={t('modelProfile.sendMessage.placeholder')} />
+                  <Button onClick={handleSendMessage} disabled={chatSending || isBlocked} variant="outline">{chatSending ? t('modelProfile.sendMessage.sending') : t('modelProfile.sendMessage.send')}</Button>
                 </div>
-                {isBlocked && (<div className="text-xs text-destructive">You are blocked by this model.</div>)}
+                {isBlocked && (<div className="text-xs text-destructive">{t('modelProfile.blockedNotice')}</div>)}
               </div>
 
               {/* Tip UI */}
               <div className="p-3 border border-border rounded-lg space-y-2">
-                <div className="text-sm font-semibold">Send a Tip</div>
+                <div className="text-sm font-semibold">{t('modelProfile.tip.title')}</div>
                 <div className="flex gap-2">
-                  <Input type="number" step="0.5" min="1" value={tipAmount} onChange={e=>setTipAmount(e.target.value)} placeholder="Amount (EUR)" />
-                  <Button onClick={handleTip} disabled={tipping}>{tipping ? 'Sending…' : 'Tip'}</Button>
+                  <Input type="number" step="0.5" min="1" value={tipAmount} onChange={e=>setTipAmount(e.target.value)} placeholder={t('modelProfile.tip.placeholder')} />
+                  <Button onClick={handleTip} disabled={tipping}>{tipping ? t('modelProfile.tip.sending') : t('modelProfile.tip.send')}</Button>
                 </div>
-                <div className="text-xs text-muted">Tips are charged from your wallet balance.</div>
+                <div className="text-xs text-muted">{t('modelProfile.tip.help')}</div>
               </div>
 
               {/* Moderation: report / block */}
               <div className="p-3 border border-border rounded-lg space-y-2">
-                <div className="text-sm font-semibold">Moderation</div>
+                <div className="text-sm font-semibold">{t('modelProfile.moderation.title')}</div>
                 <div className="flex gap-2">
-                  <input value={reportReason} onChange={e=>setReportReason(e.target.value)} placeholder="Reason to report" className="flex-1 px-3 py-2 rounded-md bg-card border border-border text-sm" />
+                  <input value={reportReason} onChange={e=>setReportReason(e.target.value)} placeholder={t('modelProfile.moderation.placeholder')} className="flex-1 px-3 py-2 rounded-md bg-card border border-border text-sm" />
                   <Button onClick={handleReport} disabled={reporting} variant="outline">
-                    {reporting ? 'Reporting…' : 'Report'}
+                    {reporting ? t('modelProfile.moderation.sending') : t('modelProfile.moderation.report')}
                   </Button>
                 </div>
                 <Button onClick={handleBlock} disabled={blockBusy || isBlocked} variant="destructive" className="w-full">
-                  {isBlocked ? 'Blocked' : (blockBusy ? 'Blocking…' : 'Block')}
+                  {isBlocked ? t('modelProfile.blocked') : (blockBusy ? t('modelProfile.moderation.sending') : t('modelProfile.block'))}
                 </Button>
               </div>
             </div>
@@ -295,19 +297,19 @@ export default function ModelProfile() {
             <div className="grid grid-cols-2 gap-4">
               <Card>
                 <CardHeader className="pb-2">
-                  <CardTitle className="text-sm font-medium">Rating</CardTitle>
+                  <CardTitle className="text-sm font-medium">{t('modelProfile.stats.rating')}</CardTitle>
                 </CardHeader>
                 <CardContent>
                   <div className="text-2xl font-bold flex items-center">
                     <i className="fas fa-star text-gold-primary mr-1"></i>
-                    {model.rating ? formatRating(model.rating) : 'New'}
+                    {model.rating ? formatRating(model.rating) : t('modelCard.new')}
                   </div>
                 </CardContent>
               </Card>
               
               <Card>
                 <CardHeader className="pb-2">
-                  <CardTitle className="text-sm font-medium">Viewers</CardTitle>
+                  <CardTitle className="text-sm font-medium">{t('modelProfile.stats.viewers')}</CardTitle>
                 </CardHeader>
                 <CardContent>
                   <div className="text-2xl font-bold flex items-center">
