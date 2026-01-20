@@ -1148,27 +1148,61 @@ export async function registerRoutes(app: any, opts?: { version?: string }): Pro
 
   // Demo login endpoint issuing JWT for seeded users
   app.post('/api/auth/login', async (req: any, res: any) => {
-    const parsed = z.object({ username: z.string().min(1) }).safeParse(req.body ?? {});
+    const parsed = z.object({ username: z.string().min(1), password: z.string().optional() }).safeParse(req.body ?? {});
     if (!parsed.success) return res.status(400).json({ error: 'invalid_payload', details: parsed.error.flatten() });
-    const { username } = parsed.data;
-    const map: Record<string, { id: string; role: 'user'|'model'|'admin' }> = {
-      utente: { id: 'u-001', role: 'user' },
-      modella: { id: 'm-001', role: 'model' },
-      admin: { id: 'a-001', role: 'admin' },
-    };
-    const found = map[String(username).toLowerCase() as keyof typeof map];
-    if (!found) {
+    const { username, password } = parsed.data;
+    
+    // Check in MemStorage first
+    let user = await storage.getUserByUsername(username);
+    
+    // If not in MemStorage, check DB if available
+    if (!user && db) {
+      try {
+        const dbUsers = await db.select().from(schema.users).where(eq(schema.users.username, username));
+        if (dbUsers && dbUsers.length > 0) {
+          const dbUser = dbUsers[0];
+          // Simple password check (assuming plain text for demo or you might need hashing)
+          if (password && dbUser.password !== password) {
+            return res.status(401).json({ error: 'invalid credentials' });
+          }
+          // Seed into MemStorage for current session
+          user = await storage.createUser({
+            username: dbUser.username,
+            email: dbUser.email || undefined,
+            role: dbUser.role as any
+          });
+          await storage.updateUserById(user.id, { id: dbUser.id, externalUserId: dbUser.externalUserId || undefined });
+        }
+      } catch (e) {
+        logger.error('db_login_lookup_failed', { error: e });
+      }
+    }
+
+    if (!user) {
+      // Fallback for demo users defined in routes
+      const map: Record<string, { id: string; role: 'user'|'model'|'admin' }> = {
+        utente: { id: 'u-001', role: 'user' },
+        modella: { id: 'm-001', role: 'model' },
+        admin: { id: 'a-001', role: 'admin' },
+      };
+      const found = map[String(username).toLowerCase() as keyof typeof map];
+      if (found) {
+        user = { id: found.id, username, role: found.role, createdAt: new Date().toISOString() };
+      }
+    }
+
+    if (!user) {
       try { await storage.addAudit({ action: 'login_failed', meta: { username } }); } catch {}
       return res.status(401).json({ error: 'invalid credentials' });
     }
-    const token = jwt.sign({ uid: found.id, role: found.role, username }, getJWTSecret(), { expiresIn: '1d' });
-    try { await storage.addAudit({ actor: found.id, role: found.role, action: 'login_success', meta: { username } }); } catch {}
-    return res.json({ token, user: { id: found.id, username, role: found.role } });
+
+    const token = jwt.sign({ uid: user.id, role: user.role, username: user.username }, getJWTSecret(), { expiresIn: '1d' });
+    try { await storage.addAudit({ actor: user.id, role: user.role, action: 'login_success', meta: { username: user.username } }); } catch {}
+    return res.json({ token, user: { id: user.id, username: user.username, role: user.role } });
   });
 
   // Registration endpoint capturing personal data and initializing wallet in DB
   app.post('/api/auth/register', async (req: any, res: any) => {
-    if (!db) return res.status(500).json({ error: 'db_unavailable' });
     const parsed = z.object({
       username: z.string().min(3),
       email: z.string().email().optional(),
@@ -1181,53 +1215,70 @@ export async function registerRoutes(app: any, opts?: { version?: string }): Pro
     }).safeParse(req.body ?? {});
     if (!parsed.success) return res.status(400).json({ error: 'invalid_payload', details: parsed.error.flatten() });
     const { username, email, password, firstName, lastName, dateOfBirth, country, phoneNumber } = parsed.data;
-    // basic username uniqueness check
+    
+    // Check if user already exists in storage
+    const existing = await storage.getUserByUsername(username);
+    if (existing) {
+      return res.status(409).json({ error: 'username_taken' });
+    }
+
     try {
-      const existing = await db.select().from(schema.users).where(eq(schema.users.username, username));
-      if (existing && existing.length > 0) {
-        return res.status(409).json({ error: 'username_taken' });
-      }
-    } catch {}
-    try {
-      const id = crypto.randomUUID();
-      // Create user
-      await db.insert(schema.users).values({
-        id,
+      // Create user in storage (MemStorage)
+      const user = await storage.createUser({
         username,
-        password,
         email,
-        role: 'user',
-        firstName,
-        lastName,
-        dob: dateOfBirth ? new Date(dateOfBirth) as any : undefined,
-        country,
-        phoneNumber,
-        status: 'active',
-        lastLogin: new Date() as any,
+        role: 'user'
       });
-      // Profile
-      await db.insert(schema.userProfiles).values({ userId: id, firstName, lastName, birthDate: dateOfBirth ? new Date(dateOfBirth) as any : undefined });
-      // Wallet (0 balance)
-      await db.insert(schema.wallets).values({ userId: id, balanceCents: 0, currency: 'EUR' });
+      
+      const id = user.id;
+
+      // Update with additional fields if storage supports them, or just use what we have
+      await storage.updateUserById(id, { 
+        email, 
+        role: 'user'
+      });
+
+      // === Optional DB sync if available ===
+      if (db) {
+        try {
+          // Create user in DB
+          await db.insert(schema.users).values({
+            id,
+            username,
+            password,
+            email,
+            role: 'user',
+            firstName,
+            lastName,
+            dob: dateOfBirth ? new Date(dateOfBirth) as any : undefined,
+            country,
+            phoneNumber,
+            status: 'active',
+            lastLogin: new Date() as any,
+          });
+          // Profile
+          await db.insert(schema.userProfiles).values({ userId: id, firstName, lastName, birthDate: dateOfBirth ? new Date(dateOfBirth) as any : undefined });
+          // Wallet (0 balance)
+          await db.insert(schema.wallets).values({ userId: id, balanceCents: 0, currency: 'EUR' });
+        } catch (dbError) {
+          logger.error('db_sync_failed', { error: dbError });
+          // Continue even if DB fails, as we have MemStorage
+        }
+      }
 
       // === BEST-EFFORT: sync verso Sirplay (Kasyrooms -> Sirplay) ===
-      // Non blocca la registrazione locale se Sirplay non è configurato o fallisce.
       let sirplaySync: any = { attempted: false };
-
       try {
         if (typeof getSirplayConfigFromEnv === "function" && typeof sirplayRegisterUser === "function") {
           const cfg = getSirplayConfigFromEnv();
-          // Se config mancante, getSirplayConfigFromEnv dovrebbe lanciare o restituire valori vuoti:
-          // in tal caso non tentiamo.
           if (cfg?.baseUrl && cfg?.partnerId && cfg?.accessUser && cfg?.accessPass) {
             sirplaySync.attempted = true;
-
             const nowIso = new Date().toISOString();
             const { token } = await sirplayLogin(cfg);
             const resp = await sirplayRegisterUser(cfg, token, {
               userName: username,
-              externalId: id,              // id utente Kasyrooms (operatore)
-              password,                    // oppure una password diversa se Sirplay richiede regole specifiche
+              externalId: id,
+              password,
               status: "ACTIVE",
               created: nowIso,
               birthDate: dateOfBirth,
@@ -1239,8 +1290,12 @@ export async function registerRoutes(app: any, opts?: { version?: string }): Pro
 
             const sirplayUserId = String(resp?.userData?.userId || "").trim();
             if (sirplayUserId) {
-              // salva mapping: externalUserId = sirplay userId
-              await db.update(schema.users).set({ externalUserId: sirplayUserId }).where(eq(schema.users.id, id));
+              await storage.updateUserById(id, { externalUserId: sirplayUserId });
+              if (db) {
+                try {
+                  await db.update(schema.users).set({ externalUserId: sirplayUserId }).where(eq(schema.users.id, id));
+                } catch {}
+              }
               sirplaySync = { attempted: true, ok: true, sirplayUserId };
             } else {
               sirplaySync = { attempted: true, ok: false, error: "sirplay_register_missing_userId", sirplayResponse: resp };
@@ -1254,6 +1309,7 @@ export async function registerRoutes(app: any, opts?: { version?: string }): Pro
       const token = jwt.sign({ uid: id, role: 'user', username }, getJWTSecret(), { expiresIn: '1d' });
       return res.json({ token, user: { id, username, role: 'user', email }, sirplaySync });
     } catch (e:any) {
+      logger.error('registration_failed', { error: e });
       return res.status(500).json({ error: 'registration_failed', message: e?.message });
     }
   });
