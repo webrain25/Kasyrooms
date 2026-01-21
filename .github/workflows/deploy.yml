@@ -126,6 +126,15 @@ jobs:
             set -e
             cd "${{ env.VPS_APP_DIR }}"
 
+            # Export DATABASE_URL for non-app commands (drizzle-kit, etc.).
+            # Avoid `source .env` because DATABASE_URL may contain shell-special chars (e.g. &).
+            DATABASE_URL="$(grep -E '^DATABASE_URL=' .env | head -n1 | cut -d= -f2-)"
+            # trim CRLF + optional surrounding quotes
+            DATABASE_URL="${DATABASE_URL%$'\r'}"
+            DATABASE_URL="${DATABASE_URL#\"}"
+            DATABASE_URL="${DATABASE_URL%\"}"
+            export DATABASE_URL
+
             # Node 20 via nvm (if present)
             if [ -s "$HOME/.nvm/nvm.sh" ]; then . "$HOME/.nvm/nvm.sh"; fi
             if command -v nvm >/dev/null 2>&1; then
@@ -136,6 +145,11 @@ jobs:
 
             # deps + build + prune (runtime only)
             npm ci --include=dev --no-audit --no-fund
+
+            # Apply DB schema before starting app + smoke tests
+            # (Avoids failing /api/sirplay/login with DB_SYNC_FAILED due to missing tables)
+            npm run db:push
+
             npm run build
             npm prune --omit=dev --no-audit --no-fund
 
@@ -267,9 +281,18 @@ jobs:
             # This is the Sirplay-side id (their user identifier) used only to seed your DB via /api/sirplay/login
             SIRPLAY_USER_ID="SIRPLAY-SMOKE-001"
 
-            HANDSHAKE_JSON="$(curl -sS -X POST "$base_url/api/sirplay/login" \
+            tmp="$(mktemp)"
+            HANDSHAKE_STATUS="$(curl -sS -o "$tmp" -w '%{http_code}' -X POST "$base_url/api/sirplay/login" \
               -H "Content-Type: application/json" \
-              -d "{\"externalUserId\":\"$SIRPLAY_USER_ID\",\"email\":\"smoke-$SIRPLAY_USER_ID@sirplay.com\",\"username\":\"smokeuser\"}")"
+              -d "{\"externalUserId\":\"$SIRPLAY_USER_ID\",\"email\":\"smoke-$SIRPLAY_USER_ID@sirplay.com\",\"username\":\"smokeuser\"}" || echo "000")"
+            HANDSHAKE_JSON="$(cat "$tmp" 2>/dev/null || true)"
+            rm -f "$tmp"
+
+            if [ "$HANDSHAKE_STATUS" != "200" ]; then
+              echo "Handshake FAILED: expected 200 got $HANDSHAKE_STATUS" >&2
+              echo "-- response (truncated) --"; printf '%s' "$HANDSHAKE_JSON" | head -c 2048; echo
+              exit 1
+            fi
 
             HANDSHAKE_TOKEN="$(node -e "const o=JSON.parse(process.argv[1]); if(!o.token) process.exit(2); process.stdout.write(o.token);" "$HANDSHAKE_JSON")"
             echo "Seed OK (token captured)"
