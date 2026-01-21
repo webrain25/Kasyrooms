@@ -146,9 +146,9 @@ jobs:
             # deps + build + prune (runtime only)
             npm ci --include=dev --no-audit --no-fund
 
-            # Apply DB schema before starting app + smoke tests
-            # (Avoids failing /api/sirplay/login with DB_SYNC_FAILED due to missing tables)
-            npm run db:push
+            # Production: do NOT run drizzle-kit push (it would also try to create legacy local-auth tables).
+            # Instead, ensure only the Sirplay production tables exist.
+            npm run db:ensure:sirplay
 
             npm run build
             npm prune --omit=dev --no-audit --no-fund

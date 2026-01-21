@@ -32,6 +32,7 @@
     "check:clean": "tsc -b --clean",
     "check:b2b:prod": "powershell -NoLogo -NoProfile -ExecutionPolicy Bypass -File scripts/check-b2b-prod.ps1",
     "db:check-schema": "tsx server/scripts/check-neon-schema.ts",
+    "db:ensure:sirplay": "tsx server/scripts/ensure-sirplay-schema.ts",
     "db:push": "drizzle-kit push",
     "postinstall": "npx --yes update-browserslist-db@latest || true"
   },

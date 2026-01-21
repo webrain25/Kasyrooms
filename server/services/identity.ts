@@ -1,8 +1,8 @@
 import { storage } from "../storage.js";
-import { db, schema } from "../db.js";
+import { db } from "../db.js";
 import { logger } from "../logger.js";
 import { toDbErrorMeta } from "../dbError.js";
-import { eq, sql } from "drizzle-orm";
+import { getOrCreateAccountBySirplayUserId, upsertWalletSnapshot } from "./sirplayAdapter.js";
 
 type Role = 'user'|'model'|'admin';
 
@@ -49,32 +49,20 @@ export async function ensureLocalUserForSirplay(params: {
     // Persist best-effort to DB
     try {
       if (db) {
-        await db.insert(schema.users).values({
-          id: u.id,
-          username: u.username,
-          password: '-',
-          email: u.email,
-          role: role,
-          externalProvider: 'sirplay',
+        // Canonical persistence for Sirplay identities is `accounts` (+ wallet snapshots),
+        // not the legacy local `users`/`wallets` tables.
+        if (!email) throw new Error("EMAIL_REQUIRED");
+        const acc = await getOrCreateAccountBySirplayUserId({
           externalUserId,
-          sirplayUserId: externalUserId,
-          firstName: params.firstName ?? undefined,
-          lastName: params.lastName ?? undefined,
-          dob: params.birthDate ? new Date(params.birthDate) as any : undefined,
-          phoneNumber: params.phoneNumber ?? undefined,
-          status: 'active',
-          lastLogin: new Date() as any,
+          email,
+          displayName: params.username ?? u.username,
+          role,
         });
-        // Ensure wallet row exists (idempotent)
-        await db.execute(sql`
-          insert into public.wallets (user_id, balance_cents, currency)
-          values (${u.id}, ${0}, ${'EUR'})
-          on conflict (user_id) do nothing
-        `);
+        await upsertWalletSnapshot({ accountId: acc.id as number, balanceCents: 0, currency: "EUR" });
       }
     } catch (e: any) {
       logger.error("db_sync_failed", {
-        op: "ensureLocalUserForSirplay.insert_user_and_wallet",
+        op: "ensureLocalUserForSirplay.upsert_accounts_and_wallet_snapshot",
         userId: u.id,
         sirplayUserId: externalUserId,
         ...toDbErrorMeta(e),
@@ -87,27 +75,18 @@ export async function ensureLocalUserForSirplay(params: {
     // Touch lastLogin and update minimal profile when possible
     try {
       if (db) {
-        await db.update(schema.users).set({
-          lastLogin: new Date() as any,
-          email: email ?? u.email,
-          firstName: params.firstName ?? (u as any).firstName,
-          lastName: params.lastName ?? (u as any).lastName,
-          phoneNumber: params.phoneNumber ?? (u as any).phoneNumber,
-          dob: params.birthDate ? new Date(params.birthDate) as any : (u as any).dob,
-          externalProvider: 'sirplay',
-          externalUserId: externalUserId,
-          sirplayUserId: externalUserId,
-        }).where(eq(schema.users.id, u.id));
-        // Ensure wallet row exists (idempotent)
-        await db.execute(sql`
-          insert into public.wallets (user_id, balance_cents, currency)
-          values (${u.id}, ${0}, ${'EUR'})
-          on conflict (user_id) do nothing
-        `);
+        if (!email) throw new Error("EMAIL_REQUIRED");
+        const acc = await getOrCreateAccountBySirplayUserId({
+          externalUserId,
+          email,
+          displayName: params.username ?? u.username,
+          role,
+        });
+        await upsertWalletSnapshot({ accountId: acc.id as number, balanceCents: 0, currency: "EUR" });
       }
     } catch (e: any) {
       logger.error("db_sync_failed", {
-        op: "ensureLocalUserForSirplay.update_user_and_wallet",
+        op: "ensureLocalUserForSirplay.upsert_accounts_and_wallet_snapshot",
         userId: u.id,
         sirplayUserId: externalUserId,
         ...toDbErrorMeta(e),
