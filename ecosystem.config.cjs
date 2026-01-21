@@ -3,9 +3,9 @@ module.exports = {
     {
       name: 'kasyrooms',
       script: 'dist/index.js',
-      // Zero-downtime ready: use cluster with 2 instances and pm2 reload in CI
-      instances: 2,
-      exec_mode: 'cluster',
+      // Single instance: avoids in-memory state divergence across workers
+      instances: 1,
+      exec_mode: 'fork',
       watch: false,
       
       // Load all env from file written by the workflow
