@@ -1,5 +1,7 @@
 import { storage } from "../storage.js";
 import { db, schema } from "../db.js";
+import { logger } from "../logger.js";
+import { toDbErrorMeta } from "../dbError.js";
 import { eq, sql } from "drizzle-orm";
 
 type Role = 'user'|'model'|'admin';
@@ -19,10 +21,12 @@ export async function ensureLocalUserForSirplay(params: {
   lastName?: string | null;
   birthDate?: string | null; // ISO string
   phoneNumber?: string | null;
+  strictDb?: boolean;
 }) {
   const externalUserId = String(params.externalUserId);
   const role: Role = params.role ?? 'user';
   const email = params.email ?? undefined;
+  const strictDb = params.strictDb === true;
 
   // Try resolve existing local user mapped to this external id
   let u = await storage.getUserByExternal(externalUserId);
@@ -32,7 +36,16 @@ export async function ensureLocalUserForSirplay(params: {
       : `sirplay_${externalUserId}`;
     u = await storage.createUser({ username: uname, email, externalUserId, role });
     // Mirror sirplayUserId in in-memory storage for lookups
-    try { await storage.updateUserById(u.id, { sirplayUserId: externalUserId }); } catch {}
+    try {
+      await storage.updateUserById(u.id, { sirplayUserId: externalUserId });
+    } catch (e: any) {
+      logger.warn("identity.storage_mirror_failed", {
+        op: "ensureLocalUserForSirplay.storage_mirror_insert",
+        userId: u.id,
+        sirplayUserId: externalUserId,
+        message: e?.message || String(e),
+      });
+    }
     // Persist best-effort to DB
     try {
       if (db) {
@@ -59,7 +72,17 @@ export async function ensureLocalUserForSirplay(params: {
           on conflict (user_id) do nothing
         `);
       }
-    } catch {}
+    } catch (e: any) {
+      logger.error("db_sync_failed", {
+        op: "ensureLocalUserForSirplay.insert_user_and_wallet",
+        userId: u.id,
+        sirplayUserId: externalUserId,
+        ...toDbErrorMeta(e),
+      });
+      if (strictDb && db) {
+        throw new Error("DB_SYNC_FAILED");
+      }
+    }
   } else {
     // Touch lastLogin and update minimal profile when possible
     try {
@@ -82,9 +105,28 @@ export async function ensureLocalUserForSirplay(params: {
           on conflict (user_id) do nothing
         `);
       }
-    } catch {}
+    } catch (e: any) {
+      logger.error("db_sync_failed", {
+        op: "ensureLocalUserForSirplay.update_user_and_wallet",
+        userId: u.id,
+        sirplayUserId: externalUserId,
+        ...toDbErrorMeta(e),
+      });
+      if (strictDb && db) {
+        throw new Error("DB_SYNC_FAILED");
+      }
+    }
     // Ensure in-memory mirror also updated
-    try { await storage.updateUserById(u.id, { sirplayUserId: externalUserId }); } catch {}
+    try {
+      await storage.updateUserById(u.id, { sirplayUserId: externalUserId });
+    } catch (e: any) {
+      logger.warn("identity.storage_mirror_failed", {
+        op: "ensureLocalUserForSirplay.storage_mirror_update",
+        userId: u.id,
+        sirplayUserId: externalUserId,
+        message: e?.message || String(e),
+      });
+    }
   }
 
   return u;

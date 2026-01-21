@@ -12,6 +12,7 @@ import fs from "fs";
 import { and, eq } from "drizzle-orm";
 import { getOrCreateAccountBySirplayUserId, upsertWalletSnapshot, recordWalletTransactionIdempotent } from "./services/sirplayAdapter.js";
 import { ensureLocalUserForSirplay } from "./services/identity.js";
+import { toDbErrorMeta } from "./dbError.js";
 // @ts-ignore - bundler resolves this TS module; suppress TS2306 in check
 import {
   getSirplayConfigFromEnv,
@@ -655,13 +656,25 @@ export async function registerRoutes(app: any, opts?: { version?: string }): Pro
     if (!parsed.success) return res.status(400).json({ error: 'invalid_payload', details: parsed.error.flatten() });
     const { externalUserId, email, username, displayName, avatarUrl, role } = parsed.data;
 
-    // Ensure local user via centralized helper
-    const u = await ensureLocalUserForSirplay({
-      externalUserId,
-      email,
-      username: username ?? null,
-      role: 'user',
-    });
+    // Ensure local user via centralized helper.
+    // If DB is enabled and persistence fails, return 5xx (do not mask DB errors).
+    let u: any;
+    try {
+      u = await ensureLocalUserForSirplay({
+        externalUserId,
+        email,
+        username: username ?? null,
+        role: 'user',
+        strictDb: true,
+      });
+    } catch (e: any) {
+      logger.error("auth.login.db_lookup_failed", {
+        op: "sirplay_handshake.ensure_local_user",
+        externalUserId,
+        ...toDbErrorMeta(e),
+      });
+      return res.status(500).json({ status: "error", code: "DB_SYNC_FAILED" });
+    }
 
     // Ensure Accounts mapping exists (provider/user id) for Sirplay
     try {
@@ -1187,7 +1200,14 @@ export async function registerRoutes(app: any, opts?: { version?: string }): Pro
       if (existing && existing.length > 0) {
         return res.status(409).json({ error: 'username_taken' });
       }
-    } catch {}
+    } catch (e: any) {
+      logger.error("auth.register.db_check_failed", {
+        op: "auth_register_username_check",
+        username,
+        ...toDbErrorMeta(e),
+      });
+      return res.status(500).json({ status: "error", code: "DB_SYNC_FAILED" });
+    }
     try {
       const id = crypto.randomUUID();
       // Create user
@@ -1254,7 +1274,12 @@ export async function registerRoutes(app: any, opts?: { version?: string }): Pro
       const token = jwt.sign({ uid: id, role: 'user', username }, getJWTSecret(), { expiresIn: '1d' });
       return res.json({ token, user: { id, username, role: 'user', email }, sirplaySync });
     } catch (e:any) {
-      return res.status(500).json({ error: 'registration_failed', message: e?.message });
+      logger.error("auth.register.db_write_failed", {
+        op: "auth_register_db_write",
+        username,
+        ...toDbErrorMeta(e),
+      });
+      return res.status(500).json({ status: "error", code: "DB_SYNC_FAILED" });
     }
   });
 
