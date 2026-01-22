@@ -3,6 +3,7 @@ import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } f
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { useAuth } from "@/lib/authContext";
+import { useToast } from "@/hooks/use-toast";
 import { useRTC } from "./rtc/useRTC";
 import { RemoteGrid } from "./rtc/RemoteGrid";
 import { LocalPreview } from "./rtc/LocalPreview";
@@ -19,6 +20,7 @@ interface VideoChatModalProps {
 
 export default function VideoChatModal({ isOpen, onClose, modelName, isModelOnline, isModelBusy, modelId, isBlocked }: VideoChatModalProps) {
   const { isAuthenticated, user } = useAuth();
+  const { toast } = useToast();
   const [phase, setPhase] = useState<'preview' | 'locked' | 'private'>('preview');
   const [isConnecting, setIsConnecting] = useState(false);
   const [isConnected, setIsConnected] = useState(false);
@@ -103,20 +105,26 @@ export default function VideoChatModal({ isOpen, onClose, modelName, isModelOnli
 
   const handleEnterPrivate = async () => {
     if (isBlocked) {
-      alert('You are blocked by this model.');
+      toast({ title: 'Bloccato', description: 'Sei stato bloccato da questa modella.', variant: 'destructive' });
       return;
     }
     if (!isAuthenticated) {
-      window.location.href = "/login";
+      toast({ title: 'Accedi richiesto', description: 'Devi accedere per iniziare una privata.', variant: 'destructive' });
       return;
     }
     // Require at least 6 credits for first minute
     if (balance !== null && balance < 6) {
-      alert('Insufficient balance. Please deposit credits to start a private show.');
+      toast({ title: 'Credito insufficiente', description: 'Ricarica crediti per iniziare una privata.', variant: 'destructive' });
       return;
     }
-    if (!isModelOnline) return;
-    if (isModelBusy) return;
+    if (!isModelOnline) {
+      toast({ title: 'Modella offline', variant: 'destructive' });
+      return;
+    }
+    if (isModelBusy) {
+      toast({ title: 'Modella occupata', variant: 'destructive' });
+      return;
+    }
     setIsConnecting(true);
     setTimeout(async () => {
       setIsConnecting(false);
@@ -148,7 +156,10 @@ export default function VideoChatModal({ isOpen, onClose, modelName, isModelOnli
   };
 
   const deposit = async (amount: number) => {
-    if (!user) { window.location.href = '/login'; return; }
+    if (!user) {
+      toast({ title: 'Accedi richiesto', description: 'Devi accedere per ricaricare.', variant: 'destructive' });
+      return;
+    }
     setWalletBusy(true);
     try {
       // Try local first
@@ -165,7 +176,10 @@ export default function VideoChatModal({ isOpen, onClose, modelName, isModelOnli
   };
 
   const withdraw = async (amount: number) => {
-    if (!user) { window.location.href = '/login'; return false; }
+    if (!user) {
+      toast({ title: 'Accedi richiesto', description: 'Devi accedere per effettuare pagamenti.', variant: 'destructive' });
+      return false;
+    }
     try {
       // Try local first
       let resp = await fetch('/api/wallet/withdrawal', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ userId: user.id, amount, source: 'private_show' }) });
@@ -177,7 +191,7 @@ export default function VideoChatModal({ isOpen, onClose, modelName, isModelOnli
         try {
           const err = await resp.json();
           if (err?.error === 'INSUFFICIENT_FUNDS') {
-            alert('Saldo insufficiente. La chiamata privata verrà terminata.');
+            toast({ title: 'Saldo insufficiente', description: 'La chiamata privata verrà terminata.', variant: 'destructive' });
             handleEndCall();
             return false;
           }
@@ -189,7 +203,7 @@ export default function VideoChatModal({ isOpen, onClose, modelName, isModelOnli
         setBalance(data.newBalance);
         // In shared mode the backend may allow negative balances; end call if below zero
         if (data.newBalance < 0) {
-          alert('Credito esaurito. La chiamata privata è stata terminata.');
+          toast({ title: 'Credito esaurito', description: 'La chiamata privata è stata terminata.', variant: 'destructive' });
           handleEndCall();
           return false;
         }
@@ -245,14 +259,14 @@ export default function VideoChatModal({ isOpen, onClose, modelName, isModelOnli
 
   const sendChat = async () => {
     if (isBlocked) {
-      alert('You are blocked by this model.');
+      toast({ title: 'Bloccato', description: 'Sei stato bloccato da questa modella.', variant: 'destructive' });
       return;
     }
     if (!chatInput.trim()) return;
     const message = chatInput.trim();
     // Client-side bad-words filter
     if (bannedRx.current.some(rx => rx.test(message))) {
-      alert('Your message contains prohibited words.');
+      toast({ title: 'Messaggio non consentito', description: 'Contiene parole vietate.', variant: 'destructive' });
       return;
     }
     // Simple client-side rate limit: 1 message / 2s

@@ -57,9 +57,10 @@ export default function Register() {
       
       setLocation("/");
     } catch (error) {
+      const message = error instanceof Error ? error.message : '';
       toast({
         title: t("register.toast.failed.title"),
-        description: t("register.toast.failed.desc"),
+        description: message || t("register.toast.failed.desc"),
         variant: "destructive",
       });
     } finally {

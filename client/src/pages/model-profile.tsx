@@ -13,6 +13,7 @@ import { useFavorites } from "@/lib/favoritesContext";
 import { useAuth } from "@/lib/authContext";
 import { buildImageUrl } from "@/lib/utils";
 import { useI18n } from "@/lib/i18n";
+import { useToast } from "@/hooks/use-toast";
 
 export default function ModelProfile() {
   const [, params] = useRoute("/model/:id");
@@ -21,6 +22,7 @@ export default function ModelProfile() {
   const { isFavorite, toggleFavorite } = useFavorites();
   const { user, isAuthenticated } = useAuth();
   const { t } = useI18n();
+  const { toast } = useToast();
   const [isBlocked, setIsBlocked] = useState(false);
   const [reporting, setReporting] = useState(false);
   const [reportReason, setReportReason] = useState("");
@@ -89,17 +91,35 @@ export default function ModelProfile() {
   };
 
   const handleStartPrivateShow = () => {
-    if (isBlocked) return alert(t("modelProfile.alert.blocked"));
-    if (!model.isOnline) return alert(t("modelProfile.alert.offline"));
-    if (model.isBusy) return alert(t("modelProfile.alert.busy"));
+    if (isBlocked) {
+      toast({ title: t("modelProfile.alert.blocked"), variant: "destructive" });
+      return;
+    }
+    if (!model.isOnline) {
+      toast({ title: t("modelProfile.alert.offline"), variant: "destructive" });
+      return;
+    }
+    if (model.isBusy) {
+      toast({ title: t("modelProfile.alert.busy"), variant: "destructive" });
+      return;
+    }
     setIsVideoChatOpen(true);
   };
 
   const handleSendMessage = async () => {
-    if (isBlocked) return alert(t("modelProfile.alert.blocked"));
-    if (!isAuthenticated) return (window.location.href = '/login');
+    if (isBlocked) {
+      toast({ title: t("modelProfile.alert.blocked"), variant: "destructive" });
+      return;
+    }
+    if (!isAuthenticated) {
+      toast({ title: "Accedi richiesto", description: "Devi accedere per continuare", variant: "destructive" });
+      return;
+    }
     const text = chatMessage.trim();
-    if (!text) return alert(t("modelProfile.alert.typeMessage"));
+    if (!text) {
+      toast({ title: t("modelProfile.alert.typeMessage"), variant: "destructive" });
+      return;
+    }
     setChatSending(true);
     try {
       const displayName = user?.username || 'user';
@@ -107,51 +127,75 @@ export default function ModelProfile() {
       const r = await fetch('/api/chat/public', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
       if (!r.ok) {
         const j = await r.json().catch(()=>({}));
-        return alert(j?.error ? `${t("modelProfile.alert.messageFailed")}: ${j.error}` : t("modelProfile.alert.messageFailed"));
+        toast({
+          title: t("modelProfile.alert.messageFailed"),
+          description: j?.error ? String(j.error) : undefined,
+          variant: "destructive",
+        });
+        return;
       }
       setChatMessage("");
-      alert(t("modelProfile.alert.messageSent"));
+      toast({ title: t("modelProfile.alert.messageSent") });
     } finally { setChatSending(false); }
   };
 
   const handleReport = async () => {
-    if (!isAuthenticated) return (window.location.href = '/login');
-    if (!reportReason.trim()) return alert(t("modelProfile.alert.enterReason"));
+    if (!isAuthenticated) {
+      toast({ title: "Accedi richiesto", description: "Devi accedere per continuare", variant: "destructive" });
+      return;
+    }
+    if (!reportReason.trim()) {
+      toast({ title: t("modelProfile.alert.enterReason"), variant: "destructive" });
+      return;
+    }
     setReporting(true);
     try {
       await fetch('/api/moderation/report', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ modelId, userId: user?.id, reason: reportReason }) });
-      alert(t("modelProfile.alert.reportSent"));
+      toast({ title: t("modelProfile.alert.reportSent") });
       setReportReason("");
     } finally {
       setReporting(false);
     }
   };
   const handleTip = async () => {
-    if (!isAuthenticated) return (window.location.href = '/login');
+    if (!isAuthenticated) {
+      toast({ title: "Accedi richiesto", description: "Devi accedere per continuare", variant: "destructive" });
+      return;
+    }
     const amount = Number(tipAmount);
-    if (!Number.isFinite(amount) || amount <= 0) return alert(t("modelProfile.alert.tipInvalid"));
+    if (!Number.isFinite(amount) || amount <= 0) {
+      toast({ title: t("modelProfile.alert.tipInvalid"), variant: "destructive" });
+      return;
+    }
     setTipping(true);
     try {
       const r = await fetch(`/api/models/${modelId}/tip`, { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ amount }) });
       if (!r.ok) {
         const j = await r.json().catch(()=>({}));
-        if (j?.error === 'INSUFFICIENT_FUNDS') return alert(t("modelProfile.alert.insufficientFunds"));
-        return alert(t("modelProfile.alert.tipFailed"));
+        if (j?.error === 'INSUFFICIENT_FUNDS') {
+          toast({ title: t("modelProfile.alert.insufficientFunds"), variant: "destructive" });
+          return;
+        }
+        toast({ title: t("modelProfile.alert.tipFailed"), variant: "destructive" });
+        return;
       }
-  alert(t("modelProfile.alert.thanksTip"));
+  toast({ title: t("modelProfile.alert.thanksTip") });
   // Notify wallet listeners to refresh balance
   try { window.dispatchEvent(new CustomEvent('wallet:changed')); } catch {}
       setTipAmount('');
     } finally { setTipping(false); }
   }
   const handleBlock = async () => {
-    if (!isAuthenticated) return (window.location.href = '/login');
+    if (!isAuthenticated) {
+      toast({ title: "Accedi richiesto", description: "Devi accedere per continuare", variant: "destructive" });
+      return;
+    }
     if (!modelId) return;
     setBlockBusy(true);
     try {
       await fetch('/api/moderation/block', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ modelId, userId: user?.id }) });
       setIsBlocked(true);
-      alert(t("modelProfile.alert.blockedDone"));
+      toast({ title: t("modelProfile.alert.blockedDone") });
     } finally { setBlockBusy(false); }
   };
 

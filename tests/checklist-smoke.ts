@@ -44,10 +44,10 @@ async function run() {
 
   // Seed via Sirplay handshake to obtain a Bearer token (relaxed mode)
   console.log('--- HANDSHAKE seed');
-  const externalUserId = 'SIRPLAY-SMOKE-001';
+  const externalUserId = '1255';
   const seedRes = await agent
     .post('/api/sirplay/login')
-    .send({ externalUserId, email: 'user@example.com', username: 'utente' });
+    .send({ externalUserId, email: 'sirplay-smoke-1255@kasyrooms.dev', username: 'sirplay_smoke_user_1255' });
   console.log('HANDSHAKE status:', seedRes.status, 'body:', seedRes.body);
   if (!(seedRes.status === 200 || seedRes.status === 201) || !seedRes.body?.token) {
     console.error('Handshake FAILED:', seedRes.status, seedRes.body);
@@ -57,17 +57,25 @@ async function run() {
 
   console.log('--- REGISTER inbound');
   const regPayload = {
-    eventId: 'smoke-test',
+    eventId: 'smoke-001',
     customerId: process.env.SIRPLAY_CUSTOMER_ID || '572',
     operation: 'REGISTER',
     action: 'USER_REGISTRATION',
-    eventTime: Date.now(),
+    eventTime: 1769000000000,
     userData: {
-      userId: externalUserId,
-      userName: 'utente',
-      email: 'user@example.com',
+      userId: '1255',
+      userName: 'sirplay_smoke_user_1255',
+      externalId: '32554134235',
+      password: 'passW9!',
+      name: 'Test',
+      surname: 'Smoke',
+      email: 'sirplay-smoke-1255@kasyrooms.dev',
       status: 'ACTIVE',
-      password: 'Secret123!'
+      birthDate: '2000-01-01T00:00:00.000Z',
+      lastUpdated: null,
+      created: '2025-12-04T17:24:43.123Z',
+      mobilePhone: '3345456643232255',
+      profileType: 'PLAYER'
     }
   };
   const regRes = await agent
@@ -75,6 +83,22 @@ async function run() {
     .set('Authorization', demoBasic)
     .send(regPayload);
   console.log('REGISTER status:', regRes.status, 'body:', regRes.body);
+  if (regRes.status === 503 && regRes.body?.error === 'db_disabled') {
+    console.log('REGISTER skipped: db_disabled (set DATABASE_URL to validate full Sirplay flow).');
+    return;
+  }
+  if (!regRes.body?.userData) {
+    console.error('REGISTER missing userData');
+    process.exit(1);
+  }
+  if (regRes.body.userData.externalId !== regPayload.userData.externalId) {
+    console.error('REGISTER externalId mismatch', regRes.body.userData.externalId, regPayload.userData.externalId);
+    process.exit(1);
+  }
+  if (!/^\d+$/.test(String(regRes.body.userData.userId))) {
+    console.error('REGISTER userId expected numeric internal id', regRes.body.userData.userId);
+    process.exit(1);
+  }
 
   // Strict-mode negative skipped: REGISTER is protected by Basic Auth
   console.log('--- REGISTER inbound strict negative (skipped: Basic Auth)');

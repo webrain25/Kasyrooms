@@ -83,7 +83,20 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         body: JSON.stringify(payload)
       });
       if (!res.ok) {
-        const txt = await res.text();
+        const contentType = res.headers.get('content-type') || '';
+        if (contentType.includes('application/json')) {
+          const body = await res.json().catch(() => null);
+          const apiError = body?.error;
+          if (apiError === 'db_disabled') {
+            throw new Error('Database non configurato: imposta DATABASE_URL sul server');
+          }
+          if (apiError === 'username_taken') {
+            throw new Error('Username già in uso');
+          }
+          throw new Error(body?.message || body?.error || 'Registration failed');
+        }
+
+        const txt = await res.text().catch(() => 'Registration failed');
         throw new Error(txt || 'Registration failed');
       }
       const data = await res.json();

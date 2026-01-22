@@ -487,12 +487,20 @@ export async function registerRoutes(app: any, opts?: { version?: string }): Pro
     const birthDate = pickStr(payload.birthDate);
     const mobilePhone = pickStr(payload.mobilePhone);
     const createdInput = pickStr(payload.created);
+    // Sirplay canonical mapping:
+    // - inbound userData.userId = Sirplay user id  -> persisted as accounts.externalUserId (provider=sirplay)
+    // - inbound userData.externalId = Sirplay external id -> must be preserved in response
     const sirplayUserId = pickStr(payload.userId);
+    const sirplayExternalId = pickStr(payload.externalId);
+    const profileTypeIn = pickStr(payload.profileType);
     const customerId = pickStr((raw && raw.customerId) ?? (payload && (payload as any).customerId));
 
     // Validate mandatory fields after normalization
-    if (!sirplayUserId || !userName || !email || !status) {
-      return res.status(400).json({ error: 'invalid_payload', details: { userId: !!sirplayUserId, userName: !!userName, email: !!email, status: !!status } });
+    if (!sirplayUserId || !sirplayExternalId || !userName || !email || !status) {
+      return res.status(400).json({
+        error: 'invalid_payload',
+        details: { userId: !!sirplayUserId, externalId: !!sirplayExternalId, userName: !!userName, email: !!email, status: !!status },
+      });
     }
     // Sirplay identities are persisted canonically in `accounts` + wallet snapshots (not legacy users/wallets).
     if (!db) return res.status(503).json({ error: 'db_disabled' });
@@ -517,16 +525,16 @@ export async function registerRoutes(app: any, opts?: { version?: string }): Pro
     // Ensure wallet snapshot exists (0 balance on registration) - idempotent
     try { await upsertWalletSnapshot({ accountId: acc.id as number, balanceCents: 0, currency: 'EUR' }); } catch {}
 
-    const externalId = String(acc.id);
+    const internalUserId = String(acc.id);
     const createdOut = createdInput || new Date().toISOString();
     const lastUpdatedOut = null;
 
     const userData = {
       userName: userName,
-      // Sirplay contract: externalId is the Kasyrooms identifier Sirplay will later pass to /b2b/login-tokens.
-      externalId,
-      // If present, keep userId equal to externalId to avoid mismatches.
-      userId: externalId,
+      // Sirplay requirement: preserve the externalId received in the payload.
+      externalId: sirplayExternalId,
+      // Kasyrooms internal identifier (accounts.id)
+      userId: internalUserId,
       password: password ?? null,
       name: name ?? null,
       surname: surname ?? null,
@@ -536,12 +544,13 @@ export async function registerRoutes(app: any, opts?: { version?: string }): Pro
       lastUpdated: lastUpdatedOut,
       created: createdOut,
       mobilePhone: mobilePhone ?? null,
-      profileType: 'PLAYER',
+      profileType: (profileTypeIn ?? 'PLAYER'),
     } as const;
 
     // Always success response per Sirplay contract
-    const httpStatus = existed ? 200 : 201;
-    logger.info("sirplay_registration.success", { path: req.path, existed, httpStatus, externalId, sirplayUserId, customerId });
+    const force200 = process.env.SIRPLAY_REGISTRATION_FORCE_200 === '1';
+    const httpStatus = force200 ? 200 : (existed ? 200 : 201);
+    logger.info("sirplay_registration.success", { path: req.path, existed, httpStatus, sirplayUserId, sirplayExternalId, internalUserId, customerId });
     return res.status(httpStatus).json({ status: 'success', userData });
   });
 
@@ -990,14 +999,25 @@ export async function registerRoutes(app: any, opts?: { version?: string }): Pro
     }
 
     // AUTH_MODE=sirplay must never touch legacy users/wallets.
-    // In Sirplay mode, externalId is the `accounts.id` returned by /user-account/signup/b2b/registrations.
     const isNumericId = /^\d+$/.test(externalId);
     if (AUTH_MODE === 'sirplay') {
       if (!db) return res.status(503).json({ error: 'db_disabled' });
-      if (!isNumericId) return res.status(404).json({ error: 'account_not_found', externalId });
-      const accId = Number(externalId);
-      const accRows = await db.select().from(schema.accounts).where(eq(schema.accounts.id, accId)).limit(1);
-      if (!accRows[0]) return res.status(404).json({ error: 'account_not_found', externalId });
+      // Back-compat: allow numeric ids (accounts.id). Preferred: resolve by provider+externalUserId.
+      let accId: number | null = null;
+      if (isNumericId) {
+        const candidate = Number(externalId);
+        const accRows = await db.select().from(schema.accounts).where(eq(schema.accounts.id, candidate)).limit(1);
+        if (accRows[0]) accId = candidate;
+      }
+      if (accId === null) {
+        const accRows = await db
+          .select()
+          .from(schema.accounts)
+          .where(and(eq(schema.accounts.externalProvider, 'sirplay'), eq(schema.accounts.externalUserId, externalId)))
+          .limit(1);
+        if (accRows[0]) accId = Number((accRows[0] as any).id);
+      }
+      if (accId === null) return res.status(404).json({ error: 'account_not_found', externalId });
       const loginToken = await storage.createLoginToken(`acc:${accId}`, 600);
       let base = (process.env.BASE_URL || process.env.PUBLIC_URL || process.env.FRONTEND_URL || '').trim();
       if (!base) base = 'http://127.0.0.1:5000';
@@ -1007,15 +1027,34 @@ export async function registerRoutes(app: any, opts?: { version?: string }): Pro
     }
 
     // Hybrid/local: accept either account externalId (numeric) or legacy local user id.
-    if (db && isNumericId) {
-      const accId = Number(externalId);
-      const accRows = await db.select().from(schema.accounts).where(eq(schema.accounts.id, accId)).limit(1);
+    if (db) {
+      // Try numeric account id
+      if (isNumericId) {
+        const accId = Number(externalId);
+        const accRows = await db.select().from(schema.accounts).where(eq(schema.accounts.id, accId)).limit(1);
+        if (accRows[0]) {
+          const loginToken = await storage.createLoginToken(`acc:${accId}`, 600);
+          let base = (process.env.BASE_URL || process.env.PUBLIC_URL || process.env.FRONTEND_URL || '').trim();
+          if (!base) base = 'http://127.0.0.1:5000';
+          const accessLink = `${base.replace(/\/+$/, '')}?token=${encodeURIComponent(loginToken)}`;
+          logger.info("b2b_login_token.issued", { path: req.path, externalId, accessLinkPreview: accessLink.slice(0, 80), mode: 'sirplay_account_id' });
+          return res.json({ status: 'success', loginToken, accessLink });
+        }
+      }
+
+      // Try provider+externalUserId mapping
+      const accRows = await db
+        .select()
+        .from(schema.accounts)
+        .where(and(eq(schema.accounts.externalProvider, 'sirplay'), eq(schema.accounts.externalUserId, externalId)))
+        .limit(1);
       if (accRows[0]) {
+        const accId = Number((accRows[0] as any).id);
         const loginToken = await storage.createLoginToken(`acc:${accId}`, 600);
         let base = (process.env.BASE_URL || process.env.PUBLIC_URL || process.env.FRONTEND_URL || '').trim();
         if (!base) base = 'http://127.0.0.1:5000';
         const accessLink = `${base.replace(/\/+$/, '')}?token=${encodeURIComponent(loginToken)}`;
-        logger.info("b2b_login_token.issued", { path: req.path, externalId, accessLinkPreview: accessLink.slice(0, 80), mode: 'sirplay_account' });
+        logger.info("b2b_login_token.issued", { path: req.path, externalId, accessLinkPreview: accessLink.slice(0, 80), mode: 'sirplay_external_user_id' });
         return res.json({ status: 'success', loginToken, accessLink });
       }
     }
@@ -1283,6 +1322,7 @@ export async function registerRoutes(app: any, opts?: { version?: string }): Pro
   // Registration endpoint capturing personal data and initializing wallet in DB
   app.post('/api/auth/register', async (req: any, res: any) => {
     if (!localAuthEnabled) return res.status(404).json({ error: 'not_found' });
+    if (!db) return res.status(503).json({ error: 'db_disabled' });
     const parsed = z.object({
       username: z.string().min(3),
       email: z.string().email().optional(),
@@ -1301,7 +1341,9 @@ export async function registerRoutes(app: any, opts?: { version?: string }): Pro
       if (existing && existing.length > 0) {
         return res.status(409).json({ error: 'username_taken' });
       }
-    } catch {}
+    } catch (e: any) {
+      return res.status(500).json({ error: 'db_error', message: e?.message || String(e) });
+    }
     try {
       const id = crypto.randomUUID();
       // Create user
