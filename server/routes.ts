@@ -489,17 +489,17 @@ export async function registerRoutes(app: any, opts?: { version?: string }): Pro
     const createdInput = pickStr(payload.created);
     // Sirplay canonical mapping:
     // - inbound userData.userId = Sirplay user id  -> persisted as accounts.externalUserId (provider=sirplay)
-    // - inbound userData.externalId = Sirplay external id -> must be preserved in response
+    // - inbound userData.externalId = Sirplay external id -> optional, must be preserved in response when present
     const sirplayUserId = pickStr(payload.userId);
     const sirplayExternalId = pickStr(payload.externalId);
     const profileTypeIn = pickStr(payload.profileType);
     const customerId = pickStr((raw && raw.customerId) ?? (payload && (payload as any).customerId));
 
     // Validate mandatory fields after normalization
-    if (!sirplayUserId || !sirplayExternalId || !userName || !email || !status) {
+    if (!sirplayUserId || !userName || !email || !status) {
       return res.status(400).json({
         error: 'invalid_payload',
-        details: { userId: !!sirplayUserId, externalId: !!sirplayExternalId, userName: !!userName, email: !!email, status: !!status },
+        details: { userId: !!sirplayUserId, userName: !!userName, email: !!email, status: !!status },
       });
     }
     // Sirplay identities are persisted canonically in `accounts` + wallet snapshots (not legacy users/wallets).
@@ -525,6 +525,26 @@ export async function registerRoutes(app: any, opts?: { version?: string }): Pro
     // Ensure wallet snapshot exists (0 balance on registration) - idempotent
     try { await upsertWalletSnapshot({ accountId: acc.id as number, balanceCents: 0, currency: 'EUR' }); } catch {}
 
+    // Best-effort audit trail: persist the optional Sirplay externalId (and other inbound bits) without coupling it
+    // to our internal identifiers.
+    try {
+      await db.insert(schema.auditEvents).values({
+        id: crypto.randomUUID(),
+        actor: 'sirplay',
+        role: 'b2b',
+        action: 'sirplay_registration',
+        target: `acc:${String(acc.id)}`,
+        meta: JSON.stringify({
+          eventId: pickStr(raw.eventId) || null,
+          customerId: customerId || null,
+          sirplayUserId: sirplayUserId || null,
+          externalId: sirplayExternalId ?? null,
+          userName: userName || null,
+          email: email || null,
+        }),
+      });
+    } catch {}
+
     const internalUserId = String(acc.id);
     const createdOut = createdInput || new Date().toISOString();
     const lastUpdatedOut = null;
@@ -532,7 +552,7 @@ export async function registerRoutes(app: any, opts?: { version?: string }): Pro
     const userData = {
       userName: userName,
       // Sirplay requirement: preserve the externalId received in the payload.
-      externalId: sirplayExternalId,
+      externalId: sirplayExternalId ?? null,
       // Kasyrooms internal identifier (accounts.id)
       userId: internalUserId,
       password: password ?? null,

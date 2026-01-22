@@ -23,7 +23,20 @@ import { initSignaling } from "./rtc/signaling.js";
 
 // Prefer loading env from APP_ENV_FILE (inline content or file path). Fallback to local .env only if absent.
 (() => {
-  const inline = process.env.APP_ENV_FILE;
+  let inline = process.env.APP_ENV_FILE;
+
+  // Dev convenience: if APP_ENV_FILE isn't set, auto-load ops/dev.env when present.
+  // This prevents accidentally running with DB disabled (missing DATABASE_URL) during local development.
+  try {
+    const isProd = process.env.NODE_ENV === 'production';
+    if (!inline && !isProd) {
+      const candidate = path.resolve(process.cwd(), 'ops', 'dev.env');
+      if (fsSync.existsSync(candidate)) {
+        inline = candidate;
+        process.env.APP_ENV_FILE = candidate;
+      }
+    }
+  } catch {}
 
   const loadFromAppEnv = () => {
     if (!inline) return false;

@@ -111,8 +111,11 @@ function TokenConsumer() {
           body: JSON.stringify({ token })
         });
         if (!r.ok) {
-          // On failure, redirect to login
-          window.location.replace('/login');
+          // On failure, just clean the URL and keep the user on the current page.
+          // This avoids surprise redirects/popups when an old/invalid token is present.
+          url.searchParams.delete('token');
+          const clean = url.pathname + (url.searchParams.toString() ? ('?' + url.searchParams.toString()) : '') + url.hash;
+          window.history.replaceState({}, '', clean);
           return;
         }
         const j = await r.json();
@@ -129,7 +132,10 @@ function TokenConsumer() {
         // Optionally reload to reinitialize AuthProvider from localStorage
         window.location.reload();
       } catch {
-        window.location.replace('/login');
+        // Network/other errors: same behavior, clean URL and stay.
+        url.searchParams.delete('token');
+        const clean = url.pathname + (url.searchParams.toString() ? ('?' + url.searchParams.toString()) : '') + url.hash;
+        window.history.replaceState({}, '', clean);
       }
     })();
   }, []);
