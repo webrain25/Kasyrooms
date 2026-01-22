@@ -13,7 +13,7 @@ interface VideoChatModalProps {
   modelName: string;
   isModelOnline: boolean;
   isModelBusy?: boolean;
-  modelId: string;
+  modelId: string | number;
   isBlocked?: boolean;
 }
 
@@ -41,7 +41,7 @@ export default function VideoChatModal({ isOpen, onClose, modelName, isModelOnli
   const bannedRx = useRef<RegExp[]>([/(offensive|hate|slur)/i]);
 
   // RTC setup: start in public room; can switch to private session room
-  const [roomId, setRoomId] = useState<string>(`model:${modelId}`);
+  const [roomId, setRoomId] = useState<string>(`model:${String(modelId)}`);
   const rtc = useRTC(roomId, 'user');
 
   // Start/stop preview lifecycle
@@ -123,7 +123,7 @@ export default function VideoChatModal({ isOpen, onClose, modelName, isModelOnli
       setIsConnected(true);
       setPhase('private');
       try {
-        await fetch(`/api/models/${modelId}/busy`, {
+        await fetch(`/api/models/${String(modelId)}/busy`, {
           method: 'PATCH',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ isBusy: true })
@@ -224,14 +224,14 @@ export default function VideoChatModal({ isOpen, onClose, modelName, isModelOnli
     chargedTotalRef.current = 0;
     // reset busy state on end
     try {
-      fetch(`/api/models/${modelId}/busy`, {
+      fetch(`/api/models/${String(modelId)}/busy`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ isBusy: false })
       });
     } catch {}
     // switch back to public room
-    const pub = `model:${modelId}`;
+    const pub = `model:${String(modelId)}`;
     setRoomId(pub);
     try { rtc.switchRoom(pub); } catch {}
     onClose();
@@ -264,7 +264,7 @@ export default function VideoChatModal({ isOpen, onClose, modelName, isModelOnli
     setChat(prev => [{ id: String(Date.now()), user: isPrivate ? 'You (private)' : 'You', text: message, when: new Date().toLocaleTimeString() }, ...prev]);
     setChatInput("");
     if (!isPrivate) {
-      try { await fetch('/api/chat/public', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ user: 'Guest', text: message, modelId }) }); } catch {}
+      try { await fetch('/api/chat/public', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ user: 'Guest', text: message, modelId: String(modelId) }) }); } catch {}
     }
   };
 
@@ -276,7 +276,7 @@ export default function VideoChatModal({ isOpen, onClose, modelName, isModelOnli
 
     const tick = async () => {
       try {
-        const r = await fetch(`/api/chat/public?modelId=${encodeURIComponent(modelId)}&limit=200`);
+        const r = await fetch(`/api/chat/public?modelId=${encodeURIComponent(String(modelId))}&limit=200`);
         if (!r.ok) return;
         const j = await r.json();
         if (!stopped && Array.isArray(j)) {

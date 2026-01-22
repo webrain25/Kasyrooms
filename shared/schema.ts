@@ -41,7 +41,7 @@ export const users = pgTable("users", {
 });
 
 export const models = pgTable("models", {
-  id: varchar("id").primaryKey(),
+  id: bigint("id", { mode: "number" }).primaryKey().generatedAlwaysAsIdentity(),
   name: text("name").notNull(),
   age: integer("age").notNull(),
   country: text("country").notNull(),
@@ -92,7 +92,7 @@ export const cards = pgTable("cards", {
 export const modelRatings = pgTable(
   "model_ratings",
   {
-    modelId: varchar("model_id").notNull().references(() => models.id),
+    modelId: bigint("model_id", { mode: "number" }).notNull().references(() => models.id),
     userId: varchar("user_id").notNull().references(() => users.id),
     stars: integer("stars").notNull(),
     createdAt: timestamp("created_at").default(sql`now()`),
@@ -120,7 +120,7 @@ export const transactions = pgTable("transactions", {
 export const sessions = pgTable("sessions", {
   id: varchar("id").primaryKey(),
   userId_B: varchar("user_id_b").notNull().references(() => users.id),
-  modelId: varchar("model_id").notNull().references(() => models.id),
+  modelId: bigint("model_id", { mode: "number" }).notNull().references(() => models.id),
   startedAt: timestamp("started_at").default(sql`now()`),
   endedAt: timestamp("ended_at"),
   durationSec: integer("duration_sec").default(0),
@@ -221,7 +221,6 @@ export const insertUserSchema = createInsertSchema(users).pick({
 });
 
 export const insertModelSchema = createInsertSchema(models).omit({
-  id: true,
   createdAt: true,
 });
 

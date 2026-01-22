@@ -33,6 +33,8 @@
     "check:b2b:prod": "powershell -NoLogo -NoProfile -ExecutionPolicy Bypass -File scripts/check-b2b-prod.ps1",
     "db:check-schema": "tsx server/scripts/check-neon-schema.ts",
     "db:ensure:sirplay": "tsx server/scripts/ensure-sirplay-schema.ts",
+    "db:ensure:local": "tsx server/scripts/ensure-local-schema.ts",
+    "db:patch:dev:legacy-missing": "tsx server/scripts/patch-dev-legacy-missing.ts",
     "db:push": "drizzle-kit push",
     "postinstall": "npx --yes update-browserslist-db@latest || true"
   },

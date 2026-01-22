@@ -14,7 +14,7 @@ export type User = {
 };
 
 export type Model = {
-  id: string;
+  id: number;
   name: string;
   age: number;
   country: string;
@@ -33,7 +33,7 @@ export type Model = {
   visible?: boolean;
 };
 
-export type Report = { id: string; modelId: string; userId: string; reason: string; details?: string; createdAt: string };
+export type Report = { id: string; modelId: number; userId: string; reason: string; details?: string; createdAt: string };
 
 // DMCA and KYC types
 export type DmcaNotice = {
@@ -65,18 +65,19 @@ export type KycApplication = {
 
 export class MemStorage {
   users = new Map<string, User>();
-  models = new Map<string, Model>();
+  models = new Map<number, Model>();
+  modelAliases = new Map<string, number>(); // e.g. userId 'm-001' -> numeric modelId
   balances = new Map<string, number>(); // key: userId_A
   localBalances = new Map<string, number>(); // key: local user id
   // Transaction log and private sessions tracking
   transactions: Array<{ id: string; userId_A?: string; userId_B?: string; type: 'DEPOSIT'|'WITHDRAWAL'|'CHARGE'; amount: number; source?: string; createdAt: string; externalRef?: string }>=[];
-  sessions: Array<{ id: string; userId_B: string; modelId: string; startAt: string; endAt?: string; durationSec?: number; totalCharged?: number; lastChargeAt?: string; billedMinutes?: number }>=[];
-  blocksByModel = new Map<string, Set<string>>(); // modelId -> set of blocked userIds
+  sessions: Array<{ id: string; userId_B: string; modelId: number; startAt: string; endAt?: string; durationSec?: number; totalCharged?: number; lastChargeAt?: string; billedMinutes?: number }> =[];
+  blocksByModel = new Map<number, Set<string>>(); // modelId -> set of blocked userIds
   reports: Report[] = [];
   dmcaNotices: DmcaNotice[] = [];
   kycApplications: KycApplication[] = [];
   audit: Array<{ id: string; when: string; actor?: string; role?: string; action: string; target?: string; meta?: any }> = [];
-  // Public chat per model (modelId -> messages)
+  // Public chat per model (modelKey -> messages). We normalize modelId to numeric when possible.
   publicChatByModel = new Map<string, Array<{ id: string; user: string; text: string; when: string; userId_B?: string }>>();
   // Favorites per user (userId -> set of modelIds)
   favoritesByUser = new Map<string, Set<string>>();
@@ -100,6 +101,31 @@ export class MemStorage {
     this.users.set('a-001', { id:'a-001', username:'admin', email:'admin@example.com', role:'admin', createdAt:new Date().toISOString() });
   }
 
+  private parsePositiveInt(v: string): number | undefined {
+    if (!/^\d+$/.test(v)) return undefined;
+    const n = Number(v);
+    if (!Number.isSafeInteger(n) || n <= 0) return undefined;
+    return n;
+  }
+
+  resolveModelId(input: string | number): number | undefined {
+    if (typeof input === 'number') {
+      if (!Number.isSafeInteger(input) || input <= 0) return undefined;
+      return input;
+    }
+    const raw = String(input || '').trim();
+    if (!raw) return undefined;
+    const alias = this.modelAliases.get(raw);
+    if (typeof alias === 'number') return alias;
+    return this.parsePositiveInt(raw);
+  }
+
+  private modelKey(input?: string | number): string {
+    if (input === undefined || input === null) return 'global';
+    const resolved = this.resolveModelId(input as any);
+    return typeof resolved === 'number' ? String(resolved) : String(input);
+  }
+
   private seed() {
     const sample: Omit<Model, "id"|"createdAt">[] = [
       { name:"Sophia", age:24, country:"Italy", languages:["EN","IT"], specialties:["Private shows","role play","lingerie"], isOnline:true, isBusy:false, isNew:false, rating:49, viewerCount:1234, profileImage: "https://images.unsplash.com/photo-1544005313-94ddf0286df2?w=400&h=600&fit=crop&crop=face", privateShows: 102, hoursOnline: 340 },
@@ -111,23 +137,23 @@ export class MemStorage {
       { name:"Isabella", age:28, country:"Mexico", languages:["EN","ES"], specialties:["Cooking","lifestyle"], isOnline:true, isBusy:false, isNew:false, rating:43, viewerCount:345, profileImage: "https://images.unsplash.com/photo-1529626455594-4ff0802cfb7e?w=400&h=600&fit=crop&crop=face", privateShows: 31, hoursOnline: 120 },
       { name:"Chloe", age:21, country:"UK", languages:["EN"], specialties:["Gaming","tech"], isOnline:true, isBusy:false, isNew:true, rating:42, viewerCount:456, profileImage: "https://images.unsplash.com/photo-1488426862026-3ee34a7d66df?w=400&h=600&fit=crop&crop=face", privateShows: 4, hoursOnline: 20 }
     ];
+    let nextId = 1;
     for (const m of sample) {
-      const id = randomUUID();
+      const id = nextId++;
       this.models.set(id, { ...m, id, visible: true, createdAt: new Date().toISOString() });
     }
 
-    // Ensure a demo model bound to the demo 'modella' user exists with a stable id 'm-001'.
-    // This allows the demo model account (id 'm-001') to update its own profile/photos via guards.
-    if (!this.models.has('m-001')) {
-      const base = sample[0];
-      this.models.set('m-001', {
-        ...base,
-        id: 'm-001',
-        name: 'Modella Demo',
-        visible: true,
-        createdAt: new Date().toISOString()
-      });
-    }
+    // Demo model account has user id 'm-001'. Keep client compatibility by aliasing that user id to a numeric model id.
+    const demoModelId = nextId++;
+    const base = sample[0];
+    this.models.set(demoModelId, {
+      ...base,
+      id: demoModelId,
+      name: 'Modella Demo',
+      visible: true,
+      createdAt: new Date().toISOString()
+    });
+    this.modelAliases.set('m-001', demoModelId);
   }
 
   async createUser(u: {username:string; email?:string; externalUserId?:string; role?: User['role'];}): Promise<User> {
@@ -183,61 +209,85 @@ export class MemStorage {
     });
     return arr;
   }
-  async getModel(id: string) { return this.models.get(id); }
-  async setModelOnline(id:string, online:boolean) {
-    const m=this.models.get(id); if(!m) return undefined;
-    m.isOnline=online; if(!online) m.isBusy = false; this.models.set(id,m); return m;
+  async getModel(id: string | number) {
+    const resolved = this.resolveModelId(id);
+    if (typeof resolved !== 'number') return undefined;
+    return this.models.get(resolved);
   }
-  async setModelBusy(id:string, busy:boolean) {
-    const m=this.models.get(id); if(!m) return undefined;
+  async setModelOnline(id: string | number, online: boolean) {
+    const resolved = this.resolveModelId(id);
+    if (typeof resolved !== 'number') return undefined;
+    const m = this.models.get(resolved); if(!m) return undefined;
+    m.isOnline=online; if(!online) m.isBusy = false; this.models.set(resolved, m); return m;
+  }
+  async setModelBusy(id: string | number, busy: boolean) {
+    const resolved = this.resolveModelId(id);
+    if (typeof resolved !== 'number') return undefined;
+    const m = this.models.get(resolved); if(!m) return undefined;
     // Only allow busy when online
     m.isBusy = busy && m.isOnline;
-    this.models.set(id,m);
+    this.models.set(resolved, m);
     return m;
   }
 
-  async updateModelProfile(id: string, patch: Partial<Pick<Model, 'name'|'age'|'country'|'languages'|'specialties'|'profileImage'>>) {
-    const m = this.models.get(id); if (!m) return undefined;
+  async updateModelProfile(id: string | number, patch: Partial<Pick<Model, 'name'|'age'|'country'|'languages'|'specialties'|'profileImage'>>) {
+    const resolved = this.resolveModelId(id);
+    if (typeof resolved !== 'number') return undefined;
+    const m = this.models.get(resolved); if (!m) return undefined;
     Object.assign(m, patch);
-    this.models.set(id, m);
+    this.models.set(resolved, m);
     return m;
   }
-  async addModelPhoto(id: string, url: string) {
-    const m = this.models.get(id); if (!m) return undefined;
+  async addModelPhoto(id: string | number, url: string) {
+    const resolved = this.resolveModelId(id);
+    if (typeof resolved !== 'number') return undefined;
+    const m = this.models.get(resolved); if (!m) return undefined;
     if (!m.photos) m.photos = [];
     m.photos.push(url);
-    this.models.set(id, m);
+    this.models.set(resolved, m);
     return m.photos;
   }
-  async listModelPhotos(id: string) {
-    const m = this.models.get(id); if (!m) return [];
+  async listModelPhotos(id: string | number) {
+    const resolved = this.resolveModelId(id);
+    if (typeof resolved !== 'number') return [];
+    const m = this.models.get(resolved); if (!m) return [];
     return m.photos ?? [];
   }
 
   // moderation
-  async blockUser(modelId: string, userId: string) {
-    const set = this.blocksByModel.get(modelId) ?? new Set<string>();
+  async blockUser(modelId: string | number, userId: string) {
+    const resolved = this.resolveModelId(modelId);
+    if (typeof resolved !== 'number') return false;
+    const set = this.blocksByModel.get(resolved) ?? new Set<string>();
     set.add(userId);
-    this.blocksByModel.set(modelId, set);
+    this.blocksByModel.set(resolved, set);
     return true;
   }
-  async unblockUser(modelId: string, userId: string) {
-    const set = this.blocksByModel.get(modelId); if (!set) return false;
+  async unblockUser(modelId: string | number, userId: string) {
+    const resolved = this.resolveModelId(modelId);
+    if (typeof resolved !== 'number') return false;
+    const set = this.blocksByModel.get(resolved); if (!set) return false;
     set.delete(userId);
     return true;
   }
-  async isBlocked(modelId: string, userId: string) {
-    const set = this.blocksByModel.get(modelId);
+  async isBlocked(modelId: string | number, userId: string) {
+    const resolved = this.resolveModelId(modelId);
+    if (typeof resolved !== 'number') return false;
+    const set = this.blocksByModel.get(resolved);
     return !!set && set.has(userId);
   }
-  async listBlocks(modelId: string) {
-    return Array.from(this.blocksByModel.get(modelId) ?? []);
+  async listBlocks(modelId: string | number) {
+    const resolved = this.resolveModelId(modelId);
+    if (typeof resolved !== 'number') return [];
+    return Array.from(this.blocksByModel.get(resolved) ?? []);
   }
-  async addReport(modelId: string, userId: string, reason: string, details?: string) {
-    const r: Report = { id: randomUUID(), modelId, userId, reason, details, createdAt: new Date().toISOString() };
+  async addReport(modelId: string | number, userId: string, reason: string, details?: string) {
+    const resolved = this.resolveModelId(modelId);
+    if (typeof resolved !== 'number') throw new Error('INVALID_MODEL_ID');
+    const r: Report = { id: randomUUID(), modelId: resolved, userId, reason, details, createdAt: new Date().toISOString() };
     this.reports.unshift(r);
     // Audit trail
-    this.audit.unshift({ id: randomUUID(), when: new Date().toISOString(), actor: userId, action: 'report', target: modelId, meta: { reason } });
+    this.audit.unshift({ id: randomUUID(), when: new Date().toISOString(), actor: userId, action: 'report', target: String(resolved), meta: { reason } });
     return r;
   }
   async listReports() { return this.reports; }
@@ -361,8 +411,8 @@ export class MemStorage {
 
   // public chat (simple in-memory, global)
   // public chat (per-model)
-  async postPublicMessage(modelId: string | undefined, user: string, text: string, userId_B?: string) {
-    const mId = (modelId || 'global');
+  async postPublicMessage(modelId: string | number | undefined, user: string, text: string, userId_B?: string) {
+    const mId = this.modelKey(modelId);
     const list = this.publicChatByModel.get(mId) || [];
     const msg = { id: randomUUID(), user, text, when: new Date().toISOString(), userId_B };
     list.unshift(msg);
@@ -370,8 +420,8 @@ export class MemStorage {
     this.publicChatByModel.set(mId, list);
     return msg;
   }
-  async listPublicMessages(modelId?: string, limit = 50) {
-    const mId = (modelId || 'global');
+  async listPublicMessages(modelId?: string | number, limit = 50) {
+    const mId = this.modelKey(modelId);
     const list = this.publicChatByModel.get(mId) || [];
     return list.slice(0, limit);
   }
@@ -390,9 +440,11 @@ export class MemStorage {
   async markRefProcessed(ref?: string) { if (ref) this.processedRefs.add(ref); }
 
   // private session tracking
-  async startSession(userId_B: string, modelId: string) {
+  async startSession(userId_B: string, modelId: string | number) {
+    const resolved = this.resolveModelId(modelId);
+    if (typeof resolved !== 'number') throw new Error('INVALID_MODEL_ID');
     const now = new Date().toISOString();
-    const s = { id: randomUUID(), userId_B, modelId, startAt: now, lastChargeAt: now, billedMinutes: 0, totalCharged: 0 };
+    const s = { id: randomUUID(), userId_B, modelId: resolved, startAt: now, lastChargeAt: now, billedMinutes: 0, totalCharged: 0 };
     this.sessions.unshift(s);
     return s;
   }
@@ -404,10 +456,13 @@ export class MemStorage {
     if (typeof fields.totalCharged === 'number') s.totalCharged = fields.totalCharged;
     return s;
   }
-  async listSessions(filter?: { userId_B?: string; modelId?: string; limit?: number }) {
+  async listSessions(filter?: { userId_B?: string; modelId?: string | number; limit?: number }) {
     let arr = this.sessions;
     if (filter?.userId_B) arr = arr.filter(s => s.userId_B === filter.userId_B);
-    if (filter?.modelId) arr = arr.filter(s => s.modelId === filter.modelId);
+    if (filter?.modelId !== undefined) {
+      const resolved = this.resolveModelId(filter.modelId);
+      if (typeof resolved === 'number') arr = arr.filter(s => s.modelId === resolved);
+    }
     const lim = filter?.limit ?? 100;
     return arr.slice(0, lim);
   }
@@ -468,11 +523,13 @@ export class MemStorage {
     if (set.has(mid)) set.delete(mid); else set.add(mid);
     return Array.from(set);
   }
-  async setVisible(modelId: string, visible: boolean) {
-    const m = this.models.get(modelId);
+  async setVisible(modelId: string | number, visible: boolean) {
+    const resolved = this.resolveModelId(modelId);
+    if (typeof resolved !== 'number') return undefined;
+    const m = this.models.get(resolved);
     if (!m) return undefined;
     m.visible = !!visible;
-    this.models.set(modelId, m);
+    this.models.set(resolved, m);
     return m;
   }
   async listModelsHome(opts: { userId?: string; favoritesOverride?: string[] }) {
@@ -485,8 +542,8 @@ export class MemStorage {
       busy: models.filter(m => m.isBusy).map(m => ({ id: m.id, photo_url: m.profileImage, status: 'busy' })),
       offline: models.filter(m => !m.isOnline && !m.isBusy).map(m => ({ id: m.id, photo_url: m.profileImage, status: 'offline' })),
     });
-    const favModels = all.filter(m => favIds.has(m.id));
-    const otherModels = all.filter(m => !favIds.has(m.id));
+    const favModels = all.filter(m => favIds.has(String(m.id)));
+    const otherModels = all.filter(m => !favIds.has(String(m.id)));
     return {
       favorites: make(favModels),
       others: make(otherModels)

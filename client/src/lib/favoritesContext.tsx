@@ -3,8 +3,8 @@ import { useAuth } from "@/lib/authContext";
 
 type FavoritesContextType = {
   favorites: string[];
-  toggleFavorite: (id: string) => void;
-  isFavorite: (id: string) => boolean;
+  toggleFavorite: (id: string | number) => void;
+  isFavorite: (id: string | number) => boolean;
   clearFavorites: () => void;
 };
 
@@ -66,14 +66,14 @@ export function FavoritesProvider({ children }: { children: ReactNode }) {
     } catch {}
   }, [favorites, user?.id]);
 
-  const toggleFavorite = (id: string) => {
+  const toggleFavorite = (id: string | number) => {
     const safeId = (id ?? "").toString().trim();
     if (!safeId || safeId === 'undefined' || safeId === 'null') return;
     setFavorites((prev) => (prev.includes(safeId) ? prev.filter((x) => x !== safeId) : [...prev, safeId]));
   };
 
   const isFavorite = useMemo(() => {
-    return (id: string) => favorites.includes(id);
+    return (id: string | number) => favorites.includes(String(id));
   }, [favorites]);
 
   const clearFavorites = () => setFavorites([]);

@@ -37,6 +37,27 @@ function Minify-JsonString([hashtable]$obj) {
 Write-Host "BaseUrl:" $BaseUrl
 if ($BasicUser) { Write-Host "Basic user:" $BasicUser } else { Write-Host "Basic user: (none)" }
 
+# 0) LOCAL AUTH REGISTER (no Basic)
+# This must work in AUTH_MODE=hybrid. If users table is missing on Neon, you typically get 42P01.
+$localRegisterUrl = "$BaseUrl/api/auth/register"
+$localUsername = ('local_' + ([guid]::NewGuid().ToString('N').Substring(0, 10)))
+$localRegisterBody = Minify-JsonString(@{
+  username = $localUsername
+  email = "$localUsername@example.local"
+  password = ('P@ss' + ([guid]::NewGuid().ToString('N').Substring(0, 8)))
+  firstName = 'Local'
+  lastName = 'Smoke'
+  country = 'IT'
+})
+$localReg = Invoke-CurlJson -Method POST -Url $localRegisterUrl -Body $localRegisterBody
+Write-Host "LOCAL REGISTER ->" $localReg.StatusCode $localReg.Body
+try {
+  $localRegJson = $localReg.Body | ConvertFrom-Json -ErrorAction Stop
+  if (-not $localRegJson.token) { Write-Warning "LOCAL REGISTER: missing token in response" }
+} catch {
+  Write-Warning "LOCAL REGISTER: response is not JSON"
+}
+
 # 1) REGISTER (Basic)
 $registerUrl = "$BaseUrl/user-account/signup/b2b/registrations"
 $registerBody = Minify-JsonString(@{

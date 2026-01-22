@@ -27,8 +27,8 @@ export default function Header() {
     },
     enabled: isAuthenticated // don't fetch when logged out
   });
-  const validIds = new Set(allModels.map((m) => m.id));
-  const validFavoritesCount = favorites.filter((id) => validIds.has(id)).length;
+  const validIds = new Set(allModels.map((m) => String(m.id)));
+  const validFavoritesCount = favorites.filter((id) => validIds.has(String(id))).length;
 
   // Wallet balance for authenticated users (shared or local)
   const { data: walletInfo } = useRQ<{ balance: number } | null>({

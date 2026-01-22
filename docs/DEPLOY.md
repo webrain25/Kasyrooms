@@ -29,6 +29,34 @@ node ./node_modules/vite/bin/vite.js build
 npx --yes esbuild server/index.ts --platform=node --packages=external --bundle --format=esm --outdir=dist
 ```
 
+## DB schema (Neon PROD) without db:push
+
+This repo uses targeted, idempotent DDL scripts (no `drizzle-kit push`) to ensure the minimum tables exist in Neon.
+
+Production note:
+- Keep `AUTH_MODE=hybrid` in PROD to support both identity domains (Sirplay accounts + local users).
+
+- Sirplay domain: `accounts`, `wallet_snapshots`, `wallet_transactions`
+- Local domain: `users`, `wallets`, `user_profiles`
+	- In practice, `npm run db:ensure:local` ensures the full legacy/local schema used by the app (models, cards, ratings, transactions, sessions, dmca, kyc, audit, ...).
+
+Choose by `AUTH_MODE`:
+
+- `AUTH_MODE=sirplay` => ensure Sirplay domain only: `npm run db:ensure:sirplay`
+- `AUTH_MODE=local` => ensure Local domain only: `npm run db:ensure:local`
+- `AUTH_MODE=hybrid` => ensure both domains
+
+If you prefer applying the local-auth schema via SQL migration on Neon (instead of running Node scripts), execute:
+- `migrations/2026-01-21_create_users_wallets.sql`
+
+If Neon PROD is empty and you want a single init SQL for the full HYBRID schema (legacy/local + sirplay/canonical), execute:
+- `migrations/2026-01-22_init_neon_hybrid_schema.sql`
+
+This prevents the common PROD error on local register:
+- `42P01 relation "users" does not exist`
+
+The deploy script [scripts/deploy.sh](scripts/deploy.sh) runs these automatically if `DATABASE_URL` is available.
+
 ## Start with PM2 (zero-downtime ready)
 
 ```bash

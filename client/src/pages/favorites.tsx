@@ -32,7 +32,7 @@ export default function Favorites() {
     }
   });
 
-  const favModels = models.filter((m: any) => favorites.includes(m.id));
+  const favModels = models.filter((m: any) => favorites.includes(String(m.id)));
 
   if (isLoading) return (
     <div className="min-h-screen flex flex-col items-center justify-center bg-background">

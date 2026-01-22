@@ -76,8 +76,8 @@ export default function ModelGrid({ filter = {}, limit, showRank = false, minima
     const idx = new Map<string, number>();
     orderedIds.forEach((id, i) => idx.set(id, i));
     displayedModels = displayedModels
-      .filter(m => idx.has(m.id))
-      .sort((a, b) => (idx.get(a.id)! - idx.get(b.id)!));
+      .filter(m => idx.has(String(m.id)))
+      .sort((a, b) => (idx.get(String(a.id))! - idx.get(String(b.id))!));
   } else {
     // Default: status sort online > busy > offline
     displayedModels = displayedModels.sort((a, b) => {

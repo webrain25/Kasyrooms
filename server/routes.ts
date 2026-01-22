@@ -186,6 +186,21 @@ function requireSirplayBearerVerified() {
 
 export async function registerRoutes(app: any, opts?: { version?: string }): Promise<any> {
   const appVersion = opts?.version || "dev";
+  // Auth mode routing:
+  // - sirplay: Sirplay-only instance (SSO + accounts/wallet_snapshots canonical); local auth endpoints must be 404
+  // - local: local-only instance (users/wallets canonical)
+  // - hybrid: both user types supported; keep local auth endpoints enabled
+  type AuthMode = 'sirplay' | 'local' | 'hybrid';
+  const resolveAuthMode = (): AuthMode => {
+    const raw = String(process.env.AUTH_MODE || 'hybrid').trim().toLowerCase();
+    if (raw === 'sirplay' || raw === 'sirplay-only' || raw === 'sso') return 'sirplay';
+    if (raw === 'local' || raw === 'local-only') return 'local';
+    if (raw === 'hybrid' || raw === 'mixed' || raw === 'both') return 'hybrid';
+    logger.warn('auth_mode.unknown', { raw, default: 'hybrid' });
+    return 'hybrid';
+  };
+  const AUTH_MODE = resolveAuthMode();
+  const localAuthEnabled = AUTH_MODE === 'local' || AUTH_MODE === 'hybrid';
   // Force proxying of external images at API level when enabled, so the client always receives self-origin URLs
   const FORCE_PROXY_IMAGES = process.env.FORCE_PROXY_IMAGES === '1';
   const proxifyImage = (u?: string) => {
@@ -332,7 +347,7 @@ export async function registerRoutes(app: any, opts?: { version?: string }): Pro
       m.viewerCount = Number(m.viewerCount || 0) + 1;
       // persist back into storage map
       // @ts-ignore direct access to in-memory map for demo state
-      storage.models.set(id, m);
+      storage.models.set(m.id, m);
       return res.json({ ok: true, viewerCount: m.viewerCount });
     } catch (e:any) {
       return res.status(500).json({ error: 'view_record_failed', message: e?.message || String(e) });
@@ -353,7 +368,7 @@ export async function registerRoutes(app: any, opts?: { version?: string }): Pro
       const next = Math.round(current * 0.8 + target * 0.2);
       m.rating = Math.max(0, Math.min(50, next));
       // @ts-ignore in-memory persistence
-      storage.models.set(id, m);
+      storage.models.set(m.id, m);
       return res.json({ ok: true, rating: m.rating });
     } catch (e:any) {
       return res.status(500).json({ error: 'rate_failed', message: e?.message || String(e) });
@@ -474,52 +489,44 @@ export async function registerRoutes(app: any, opts?: { version?: string }): Pro
     const createdInput = pickStr(payload.created);
     const sirplayUserId = pickStr(payload.userId);
     const customerId = pickStr((raw && raw.customerId) ?? (payload && (payload as any).customerId));
-    // externalId for response is the Kasyrooms user id (local id), not Sirplay id
-    // We'll generate/ensure local user mapped to Sirplay id and return local id as externalId
 
     // Validate mandatory fields after normalization
     if (!sirplayUserId || !userName || !email || !status) {
       return res.status(400).json({ error: 'invalid_payload', details: { userId: !!sirplayUserId, userName: !!userName, email: !!email, status: !!status } });
     }
-    // Detect if user existed before upsert via Sirplay mapping
-    const existed = !!(await storage.getUserByExternal(sirplayUserId!));
+    // Sirplay identities are persisted canonically in `accounts` + wallet snapshots (not legacy users/wallets).
+    if (!db) return res.status(503).json({ error: 'db_disabled' });
 
-    // Ensure/create local mapping and update minimal profile
-    const ensured = await ensureLocalUserForSirplay({
-      externalUserId: sirplayUserId!,
-      email: email ?? null,
-      username: userName,
-      role: 'user',
-      firstName: name ?? null,
-      lastName: surname ?? null,
-      birthDate: birthDate ?? null,
-      phoneNumber: mobilePhone ?? null,
-    });
-
-    // Best-effort: update email + sirplay fields immediately in memory
-    await storage.updateUserById(ensured.id, { email, externalUserId: sirplayUserId!, sirplayUserId: sirplayUserId, sirplayCustomerId: customerId });
-
-    // Persist createdAt and sirplay identifiers on first insert if provided and DB is available
+    // Determine if mapping already existed to choose 200 vs 201 (best-effort)
+    let existed = false;
     try {
-      if (db) {
-        if (!existed && createdInput) {
-          await db.update(schema.users).set({ createdAt: new Date(createdInput) as any }).where(eq(schema.users.id, ensured.id));
-        }
-        await db.update(schema.users).set({
-          externalUserId: sirplayUserId!,
-          externalProvider: 'sirplay',
-          sirplayUserId: sirplayUserId,
-          sirplayCustomerId: customerId,
-        }).where(eq(schema.users.id, ensured.id));
-      }
+      const found = await db
+        .select()
+        .from(schema.accounts)
+        .where(and(eq(schema.accounts.externalProvider, 'sirplay'), eq(schema.accounts.externalUserId, sirplayUserId!)))
+        .limit(1);
+      existed = !!found[0];
     } catch {}
 
-    const createdOut = new Date().toISOString();
+    const acc = await getOrCreateAccountBySirplayUserId({
+      externalUserId: sirplayUserId!,
+      email: email!,
+      displayName: userName,
+      role: 'user',
+    });
+    // Ensure wallet snapshot exists (0 balance on registration) - idempotent
+    try { await upsertWalletSnapshot({ accountId: acc.id as number, balanceCents: 0, currency: 'EUR' }); } catch {}
+
+    const externalId = String(acc.id);
+    const createdOut = createdInput || new Date().toISOString();
     const lastUpdatedOut = null;
 
     const userData = {
       userName: userName,
-      externalId: ensured.id,
+      // Sirplay contract: externalId is the Kasyrooms identifier Sirplay will later pass to /b2b/login-tokens.
+      externalId,
+      // If present, keep userId equal to externalId to avoid mismatches.
+      userId: externalId,
       password: password ?? null,
       name: name ?? null,
       surname: surname ?? null,
@@ -534,7 +541,7 @@ export async function registerRoutes(app: any, opts?: { version?: string }): Pro
 
     // Always success response per Sirplay contract
     const httpStatus = existed ? 200 : 201;
-    logger.info("sirplay_registration.success", { path: req.path, existed, httpStatus, externalId: ensured.id, sirplayUserId, customerId });
+    logger.info("sirplay_registration.success", { path: req.path, existed, httpStatus, externalId, sirplayUserId, customerId });
     return res.status(httpStatus).json({ status: 'success', userData });
   });
 
@@ -584,63 +591,53 @@ export async function registerRoutes(app: any, opts?: { version?: string }): Pro
     const sirplayUserId = String(parsed.data.userData.userId);
     const customerId = parsed.data.customerId ?? undefined;
 
-    // Resolve the local user mapped to the Sirplay userId.
-    // Fallback to externalUserId mapping for backwards compatibility.
-    let u = await storage.getUserBySirplayUserId(sirplayUserId);
-    if (!u) u = await storage.getUserByExternal(sirplayUserId);
+    // Sirplay identities are persisted canonically in `accounts` (not legacy users).
+    if (!db) return res.status(503).json({ error: 'db_disabled' });
 
-    // Upsert (idempotent): ensure local user exists and update profile best-effort.
-    const ensured = u
-      ? u
-      : await ensureLocalUserForSirplay({
-          externalUserId: sirplayUserId,
-          email: parsed.data.userData.email ?? null,
-          username: parsed.data.userData.userName ?? null,
-          role: 'user',
-          firstName: parsed.data.userData.name ?? null,
-          lastName: parsed.data.userData.surname ?? null,
-          birthDate: parsed.data.userData.birthDate ?? null,
-          phoneNumber: parsed.data.userData.mobilePhone ?? null,
-        });
+    // Try resolve existing account mapping by provider+external_user_id
+    const existing = await db
+      .select()
+      .from(schema.accounts)
+      .where(and(eq(schema.accounts.externalProvider, 'sirplay'), eq(schema.accounts.externalUserId, sirplayUserId)))
+      .limit(1);
 
-    // Update in-memory record for immediate consistency.
-    await storage.updateUserById(ensured.id, {
-      email: parsed.data.userData.email ?? ensured.email,
-      externalUserId: sirplayUserId,
-      sirplayUserId,
-      sirplayCustomerId: customerId,
-    });
-
-    // Persist best-effort to DB: align external mapping and update profile/status.
-    try {
-      if (db) {
-        const patch: any = {
-          externalProvider: 'sirplay',
-          externalUserId: sirplayUserId,
-          sirplayUserId,
-          sirplayCustomerId: customerId,
-        };
-        if (parsed.data.userData.email !== undefined) patch.email = parsed.data.userData.email;
-        if (parsed.data.userData.name !== undefined) patch.firstName = parsed.data.userData.name;
-        if (parsed.data.userData.surname !== undefined) patch.lastName = parsed.data.userData.surname;
-        if (parsed.data.userData.mobilePhone !== undefined) patch.phoneNumber = parsed.data.userData.mobilePhone;
-        if (parsed.data.userData.birthDate !== undefined) patch.dob = new Date(parsed.data.userData.birthDate) as any;
-        if (parsed.data.userData.status !== undefined) patch.status = parsed.data.userData.status;
-        await db.update(schema.users).set(patch).where(eq(schema.users.id, ensured.id));
+    let acc = existing[0] as any;
+    if (!acc) {
+      // If account doesn't exist, we can create it only if email is provided.
+      const email = parsed.data.userData.email;
+      if (!email) return res.status(400).json({ error: 'email_required_for_upsert' });
+      acc = await getOrCreateAccountBySirplayUserId({
+        externalUserId: sirplayUserId,
+        email,
+        displayName: parsed.data.userData.userName ?? null,
+        role: 'user',
+      });
+      try { await upsertWalletSnapshot({ accountId: acc.id as number, balanceCents: 0, currency: 'EUR' }); } catch {}
+    } else {
+      // Best-effort: update mutable columns when provided
+      const patch: any = {};
+      if (parsed.data.userData.email !== undefined) patch.email = String(parsed.data.userData.email).trim().toLowerCase();
+      if (parsed.data.userData.userName !== undefined) patch.displayName = parsed.data.userData.userName;
+      if (Object.keys(patch).length) {
+        try {
+          await db.update(schema.accounts).set(patch).where(eq(schema.accounts.id, acc.id));
+        } catch {}
       }
-    } catch {}
+    }
+
+    const externalId = String(acc.id);
 
     logger.info('sirplay_registration.update.success', {
       path: req.path,
       eventId: parsed.data.eventId,
       action: parsed.data.action,
       sirplayUserId,
-      externalId: ensured.id,
+      externalId,
       customerId,
     });
 
     // Keep response stable but include the local id for traceability.
-    return res.json({ status: "UPDATED", externalUserId: sirplayUserId, externalId: ensured.id });
+    return res.json({ status: "UPDATED", externalUserId: sirplayUserId, externalId });
   });
 
   // Sirplay handshake: receive/resolve external_user_id, ensure local mapping and accounts entry
@@ -992,11 +989,40 @@ export async function registerRoutes(app: any, opts?: { version?: string }): Pro
       return res.status(400).json({ error: 'invalid_payload', details: { externalId: false } });
     }
 
-    // Lookup strictly by Kasyrooms local id (externalId == local user id)
-    const user = await storage.getUser(externalId);
-    if (!user) {
-      return res.status(404).json({ error: 'user_not_found', externalId });
+    // AUTH_MODE=sirplay must never touch legacy users/wallets.
+    // In Sirplay mode, externalId is the `accounts.id` returned by /user-account/signup/b2b/registrations.
+    const isNumericId = /^\d+$/.test(externalId);
+    if (AUTH_MODE === 'sirplay') {
+      if (!db) return res.status(503).json({ error: 'db_disabled' });
+      if (!isNumericId) return res.status(404).json({ error: 'account_not_found', externalId });
+      const accId = Number(externalId);
+      const accRows = await db.select().from(schema.accounts).where(eq(schema.accounts.id, accId)).limit(1);
+      if (!accRows[0]) return res.status(404).json({ error: 'account_not_found', externalId });
+      const loginToken = await storage.createLoginToken(`acc:${accId}`, 600);
+      let base = (process.env.BASE_URL || process.env.PUBLIC_URL || process.env.FRONTEND_URL || '').trim();
+      if (!base) base = 'http://127.0.0.1:5000';
+      const accessLink = `${base.replace(/\/+$/, '')}?token=${encodeURIComponent(loginToken)}`;
+      logger.info("b2b_login_token.issued", { path: req.path, externalId, accessLinkPreview: accessLink.slice(0, 80), mode: 'sirplay' });
+      return res.json({ status: 'success', loginToken, accessLink });
     }
+
+    // Hybrid/local: accept either account externalId (numeric) or legacy local user id.
+    if (db && isNumericId) {
+      const accId = Number(externalId);
+      const accRows = await db.select().from(schema.accounts).where(eq(schema.accounts.id, accId)).limit(1);
+      if (accRows[0]) {
+        const loginToken = await storage.createLoginToken(`acc:${accId}`, 600);
+        let base = (process.env.BASE_URL || process.env.PUBLIC_URL || process.env.FRONTEND_URL || '').trim();
+        if (!base) base = 'http://127.0.0.1:5000';
+        const accessLink = `${base.replace(/\/+$/, '')}?token=${encodeURIComponent(loginToken)}`;
+        logger.info("b2b_login_token.issued", { path: req.path, externalId, accessLinkPreview: accessLink.slice(0, 80), mode: 'sirplay_account' });
+        return res.json({ status: 'success', loginToken, accessLink });
+      }
+    }
+
+    // Fallback: legacy local user id
+    const user = await storage.getUser(externalId);
+    if (!user) return res.status(404).json({ error: 'user_not_found', externalId });
 
     // Generate and store an opaque login token with TTL
     const loginToken = await storage.createLoginToken(user.id, 600);
@@ -1023,7 +1049,46 @@ export async function registerRoutes(app: any, opts?: { version?: string }): Pro
         logger.info('login_token.consume.fail', { tokenPreview: token.slice(0,8), reason: result.error });
         return res.status(401).json({ error: 'invalid_token', reason: result.error });
       }
-      const user = await storage.getUser(result.userId!);
+
+      const subject = String(result.userId || '').trim();
+      if (!subject) return res.status(500).json({ error: 'token_subject_missing' });
+
+      // Support account-based subjects (Sirplay canonical) via prefix acc:<id>
+      if (subject.startsWith('acc:')) {
+        if (!db) return res.status(503).json({ error: 'db_disabled' });
+        const accIdStr = subject.slice('acc:'.length);
+        if (!/^\d+$/.test(accIdStr)) return res.status(400).json({ error: 'invalid_account_subject' });
+        const accId = Number(accIdStr);
+        const rows = await db.select().from(schema.accounts).where(eq(schema.accounts.id, accId)).limit(1);
+        const acc: any = rows[0];
+        if (!acc) {
+          logger.info('login_token.consume.fail', { tokenPreview: token.slice(0,8), reason: 'account_not_found', accId });
+          return res.status(404).json({ error: 'account_not_found' });
+        }
+        const username = (acc.displayName || acc.email || `acc_${accId}`) as string;
+        const role = (acc.role || 'user') as 'user'|'model'|'admin';
+        const jwtToken = jwt.sign({ uid: `acc:${accId}`, role, username }, getJWTSecret(), { expiresIn: '1d' });
+        const secure = process.env.NODE_ENV === 'production';
+        const cookie = [
+          `kr_session=${jwtToken}`,
+          'Path=/',
+          'HttpOnly',
+          secure ? 'Secure' : '',
+          'SameSite=Lax',
+          `Max-Age=${60*60*24}`
+        ].filter(Boolean).join('; ');
+        res.setHeader('Set-Cookie', cookie);
+        logger.info('login_token.consume.ok', { accountId: accId });
+        return res.json({ status: 'ok', token: jwtToken, user: { id: String(accId), username, email: acc.email, role } });
+      }
+
+      // In sirplay-only mode, do not allow legacy user subjects.
+      if (AUTH_MODE === 'sirplay') {
+        logger.info('login_token.consume.fail', { tokenPreview: token.slice(0,8), reason: 'legacy_subject_blocked' });
+        return res.status(404).json({ error: 'not_found' });
+      }
+
+      const user = await storage.getUser(subject);
       if (!user) {
         logger.info('login_token.consume.fail', { tokenPreview: token.slice(0,8), reason: 'user_not_found' });
         return res.status(404).json({ error: 'user_not_found' });
@@ -1161,6 +1226,7 @@ export async function registerRoutes(app: any, opts?: { version?: string }): Pro
 
   // Demo login endpoint issuing JWT for seeded users
   app.post('/api/auth/login', async (req: any, res: any) => {
+    if (!localAuthEnabled) return res.status(404).json({ error: 'not_found' });
     const parsed = z.object({ username: z.string().min(1), password: z.string().optional() }).safeParse(req.body ?? {});
     if (!parsed.success) return res.status(400).json({ error: 'invalid_payload', details: parsed.error.flatten() });
     const { username, password } = parsed.data;
@@ -1216,6 +1282,7 @@ export async function registerRoutes(app: any, opts?: { version?: string }): Pro
 
   // Registration endpoint capturing personal data and initializing wallet in DB
   app.post('/api/auth/register', async (req: any, res: any) => {
+    if (!localAuthEnabled) return res.status(404).json({ error: 'not_found' });
     const parsed = z.object({
       username: z.string().min(3),
       email: z.string().email().optional(),
