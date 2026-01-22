@@ -17,7 +17,7 @@ React + Vite frontend with an Express backend (bundled with esbuild) and PM2 + N
 		- Ricerca con risultati dedicati
 		- Griglia modelli (cards minimali) con stato online/busy/offline, badge NEW, rank (opzionale), toggle preferiti, CTA “Inizia Chat” evidenziata
 		- Banner “Apri la tua Room” per utenti con ruolo modella
-	- Login classico + accesso demo rapido (utente/modella/admin)
+	- Login
 	- “La tua Room” (Dashboard Modella):
 		- Stato Live: toggle Online/Offline
 		- Preferenze: “Auto‑online all’ingresso” (persistenza in localStorage)
