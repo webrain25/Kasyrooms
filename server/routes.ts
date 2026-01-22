@@ -42,7 +42,9 @@ const getB2BCreds = () => ({
 function requireB2BBasicAuth() {
   return (req: any, res: any, next: any) => {
     const unauthorized = () => {
-      res.set('WWW-Authenticate', 'Basic realm="Kasyrooms B2B"');
+      // Do NOT send WWW-Authenticate to browsers: it triggers the native Basic Auth popup.
+      // If some upstream code set it, remove it before responding.
+      try { res.removeHeader('WWW-Authenticate'); } catch {}
       logger.info("b2b_auth.fail", { path: req.path, reason: "unauthorized" });
       return res.status(401).json({ error: 'unauthorized' });
     };
@@ -247,13 +249,36 @@ export async function registerRoutes(app: any, opts?: { version?: string }): Pro
   // Simple auth extraction: prefer JWT; fallback to dev headers x-user-id/x-role
   type ReqUser = { id: string; role: 'user'|'model'|'admin'; username?: string } | null;
 
+  function getCookieValue(cookieHeader: unknown, name: string): string | undefined {
+    if (typeof cookieHeader !== 'string' || !cookieHeader) return undefined;
+    // Very small parser; avoids dependency on cookie-parser.
+    // cookie: a=b; kr_session=JWT; c=d
+    const parts = cookieHeader.split(';');
+    for (const p of parts) {
+      const idx = p.indexOf('=');
+      if (idx <= 0) continue;
+      const k = p.slice(0, idx).trim();
+      if (k !== name) continue;
+      const v = p.slice(idx + 1).trim();
+      return v || undefined;
+    }
+    return undefined;
+  }
+
   // Resolve current user from Authorization: Bearer <jwt> or dev headers
   function getReqUser(req: any): ReqUser {
     const hdr = req.headers?.authorization || req.headers?.Authorization;
+    let bearer: string | undefined;
     if (typeof hdr === 'string' && hdr.startsWith('Bearer ')) {
-      const token = hdr.slice('Bearer '.length).trim();
+      bearer = hdr.slice('Bearer '.length).trim();
+    } else {
+      // Support cookie-auth from /api/auth/login-token
+      const c = getCookieValue(req.headers?.cookie, 'kr_session');
+      if (c) bearer = c;
+    }
+    if (bearer) {
       try {
-        const payload = jwt.verify(token, getJWTSecret()) as any;
+        const payload = jwt.verify(bearer, getJWTSecret()) as any;
         const id = String(payload?.uid || payload?.id || '');
         const role = (payload?.role || 'user') as 'user'|'model'|'admin';
         const username = typeof payload?.username === 'string' ? payload.username : undefined;
@@ -275,6 +300,38 @@ export async function registerRoutes(app: any, opts?: { version?: string }): Pro
       return next();
     };
   }
+
+  // User-facing wallet endpoint (browser): authenticated via Bearer JWT or kr_session cookie.
+  // IMPORTANT: the browser must NOT call the B2B Basic-auth route (/api/wallet/balance).
+  app.get('/api/me/wallet', requireRole(['user', 'model', 'admin']), async (req: any, res: any) => {
+    const ru = (req as any).user as { id: string; role: string } | null;
+    if (!ru?.id) return res.status(401).json({ error: 'unauthorized' });
+
+    // Account-based sessions: uid may be "acc:<id>" (canonical) or sometimes just numeric.
+    const rawId = String(ru.id);
+    const accIdStr = rawId.startsWith('acc:') ? rawId.slice('acc:'.length) : rawId;
+    if (/^\d+$/.test(accIdStr) && db) {
+      const accId = Number(accIdStr);
+      const rows = await db.select().from(schema.walletSnapshots).where(eq(schema.walletSnapshots.accountId, accId)).limit(1);
+      const snap: any = rows[0];
+      const balanceCents = snap ? Number(snap.balanceCents ?? 0) : 0;
+      const currency = snap?.currency ? String(snap.currency) : 'EUR';
+      return res.json({ balance: balanceCents / 100, currency, mode: 'shared', provider: snap?.provider || 'sirplay' });
+    }
+    if (/^\d+$/.test(accIdStr) && !db && rawId.startsWith('acc:')) {
+      return res.status(503).json({ error: 'db_disabled' });
+    }
+
+    // Legacy/local sessions
+    const user = await storage.getUser(rawId);
+    if (!user) return res.status(404).json({ error: 'user_not_found' });
+    if (user.externalUserId) {
+      const balance = await storage.getBalance(user.externalUserId);
+      return res.json({ balance, currency: 'EUR', mode: 'shared' });
+    }
+    const balance = await storage.getLocalBalance(user.id);
+    return res.json({ balance, currency: 'EUR', mode: 'local' });
+  });
 
   // uploads root for KYC/DMCA assets
   const uploadsRoot = path.resolve(process.cwd(), 'uploads');

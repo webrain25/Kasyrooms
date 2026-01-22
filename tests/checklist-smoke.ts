@@ -55,6 +55,16 @@ async function run() {
   }
   const handshakeToken = seedRes.body.token as string;
 
+  console.log('--- ME WALLET (user auth)');
+  const meWalletRes = await agent
+    .get('/api/me/wallet')
+    .set('Authorization', `Bearer ${handshakeToken}`);
+  console.log('ME WALLET status:', meWalletRes.status, 'body:', meWalletRes.body);
+  if (meWalletRes.status !== 200) {
+    console.error('ME WALLET FAILED');
+    process.exit(1);
+  }
+
   console.log('--- REGISTER inbound');
   const regPayload = {
     eventId: 'smoke-001',

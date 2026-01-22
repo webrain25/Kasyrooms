@@ -60,16 +60,16 @@ export default function VideoChatModal({ isOpen, onClose, modelName, isModelOnli
     if (user) {
       (async () => {
         try {
-          let resp = await fetch(`/api/wallet/balance?userId=${encodeURIComponent(user.id)}`);
-          if (!resp.ok) {
-            // try shared mode
-            resp = await fetch(`/api/wallet/balance?userId_A=${encodeURIComponent(user.id)}`);
-          }
-          if (resp.ok) {
-            const data = await resp.json();
-            if (typeof data.balance === 'number') setBalance(data.balance);
-            if (data.mode === 'local' || data.mode === 'shared') setWalletMode(data.mode);
-          }
+          let authHeaders: Record<string, string> = {};
+          try {
+            const token = localStorage.getItem('token');
+            if (token) authHeaders['Authorization'] = `Bearer ${token}`;
+          } catch {}
+          const resp = await fetch('/api/me/wallet', { credentials: 'include', headers: authHeaders });
+          if (!resp.ok) return;
+          const data = await resp.json();
+          if (typeof data.balance === 'number') setBalance(data.balance);
+          if (data.mode === 'local' || data.mode === 'shared') setWalletMode(data.mode);
         } catch {}
       })();
     }

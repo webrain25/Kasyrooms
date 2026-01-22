@@ -281,8 +281,16 @@ jobs:
             echo "B2B invalid-json OK (400)"
 
             # Build Basic header from .env credentials (required by registrations endpoint)
-            u="$(grep -E '^(B2B_BASIC_AUTH_USER|SIRPLAY_B2B_USER)=' .env | tail -n1 | cut -d= -f2-)"
-            p="$(grep -E '^(B2B_BASIC_AUTH_PASS|SIRPLAY_B2B_PASSWORD)=' .env | tail -n1 | cut -d= -f2-)"
+            u="$(grep -E '^(B2B_BASIC_AUTH_USER|SIRPLAY_B2B_USER)=' .env | tail -n1 | cut -d= -f2- || true)"
+            p="$(grep -E '^(B2B_BASIC_AUTH_PASS|SIRPLAY_B2B_PASSWORD)=' .env | tail -n1 | cut -d= -f2- || true)"
+            u="${u%$'\r'}"
+            p="${p%$'\r'}"
+            if [ -z "${u:-}" ] || [ -z "${p:-}" ]; then
+              echo "Missing B2B Basic credentials in .env (B2B_BASIC_AUTH_* or SIRPLAY_B2B_*)" >&2
+              echo "-- matching lines (if any) --" >&2
+              grep -nE '^(B2B_BASIC_AUTH_USER|B2B_BASIC_AUTH_PASS|SIRPLAY_B2B_USER|SIRPLAY_B2B_PASSWORD)=' .env | cat -A || true
+              exit 1
+            fi
             BASIC="$(printf '%s' "$u:$p" | base64 | tr -d '\n')"
 
             echo "[Local Smoke] seeding test user via Sirplay handshake"

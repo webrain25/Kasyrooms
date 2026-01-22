@@ -32,15 +32,19 @@ export default function Header() {
 
   // Wallet balance for authenticated users (shared or local)
   const { data: walletInfo } = useRQ<{ balance: number } | null>({
-    queryKey: ["/api/wallet/balance", user?.id],
+    queryKey: ["/api/me/wallet"],
     queryFn: async () => {
-      if (!user?.id) return null;
-      const url = `/api/wallet/balance?userId=${encodeURIComponent(user.id)}`;
-      const res = await fetch(url);
+      if (!isAuthenticated) return null;
+      let authHeaders: Record<string, string> = {};
+      try {
+        const token = localStorage.getItem('token');
+        if (token) authHeaders['Authorization'] = `Bearer ${token}`;
+      } catch {}
+      const res = await fetch('/api/me/wallet', { credentials: 'include', headers: authHeaders });
       if (!res.ok) return null;
       return res.json();
     },
-    enabled: !!user?.id,
+    enabled: isAuthenticated,
     refetchInterval: 20000,
   });
 
