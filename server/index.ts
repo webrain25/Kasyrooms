@@ -427,7 +427,8 @@ if (!isProd) {
 
   app.use(vite.middlewares);
 
-  app.get("*", async (req: any, res: any, next: any) => {
+  // SPA fallback (dev): never handle /api/* paths.
+  app.get(/^\/(?!api\/).*/, async (req: any, res: any, next: any) => {
     try {
       const url = req.originalUrl;
       const indexHtmlPath = path.resolve(clientRoot, "index.html");
@@ -438,6 +439,11 @@ if (!isProd) {
     } catch (e) {
       next(e);
     }
+  });
+
+  // For unknown API routes, never serve the SPA: return JSON 404.
+  app.use("/api", (_req: any, res: any) => {
+    res.status(404).json({ error: "not_found" });
   });
 } else {
   // Production: serve built assets
@@ -482,9 +488,15 @@ if (!isProd) {
     })
   );
 
-  app.get("*", (_req: any, res: any) => {
+  // SPA fallback (prod): never handle /api/* paths.
+  app.get(/^\/(?!api\/).*/, (_req: any, res: any) => {
     res.setHeader("Cache-Control", "no-cache");
     res.sendFile(path.join(clientDist, "index.html"));
+  });
+
+  // For unknown API routes, never serve the SPA: return JSON 404.
+  app.use("/api", (_req: any, res: any) => {
+    res.status(404).json({ error: "not_found" });
   });
 }
 
