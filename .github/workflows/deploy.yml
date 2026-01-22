@@ -94,6 +94,8 @@ jobs:
           key: ${{ env.VPS_SSH_KEY }}
           script: |
             set -e
+            set -x
+            : "ssh step start"
             mkdir -p "${{ env.VPS_APP_DIR }}"
             cat > "${{ env.VPS_APP_DIR }}/.env" <<'EOF__APP_ENV'
             ${{ env.APP_ENV_FILE }}
@@ -108,6 +110,8 @@ jobs:
           key: ${{ env.VPS_SSH_KEY }}
           script: |
             set -e
+            set -x
+            : "ssh step start"
             cd "${{ env.VPS_APP_DIR }}"
             echo "Checking B2B credentials in .env..."
             grep -nE '^(B2B_BASIC_AUTH_USER|B2B_BASIC_AUTH_PASS|SIRPLAY_B2B_USER|SIRPLAY_B2B_PASSWORD)=' .env | cat -A || {
@@ -124,6 +128,8 @@ jobs:
           key: ${{ env.VPS_SSH_KEY }}
           script: |
             set -e
+            set -x
+            : "ssh step start"
             cd "${{ env.VPS_APP_DIR }}"
 
             # Export DATABASE_URL for non-app commands (drizzle-kit, etc.).
@@ -172,6 +178,8 @@ jobs:
           key: ${{ env.VPS_SSH_KEY }}
           script: |
             set -euo pipefail
+            set -x
+            : "ssh step start"
             cd "${{ env.VPS_APP_DIR }}"
 
             base_url="http://127.0.0.1:5000"
@@ -298,7 +306,7 @@ jobs:
             echo "Seed OK (token captured)"
 
             echo "[Local Smoke] register inbound to persist mapping (Basic Auth)"
-            # Sirplay -> Kasyrooms registration event (request contains Sirplay userId; response returns Kasyrooms externalId)
+            # Sirplay -> Kasyrooms registration event (request contains Sirplay userId; response returns internal Kasyrooms userId)
             REG_STATUS="$(curl -sS -o /tmp/reg.json -w "%{http_code}" \
               -X POST "$base_url/user-account/signup/b2b/registrations" \
               -H "Content-Type: application/json" \
@@ -330,9 +338,13 @@ jobs:
             fi
             echo "Register OK ($REG_STATUS)"
 
-            # Extract Kasyrooms externalId from registration response
-            KASY_EXTERNAL_ID="$(node -e "const o=require('/tmp/reg.json'); if(!o?.userData?.externalId){process.exit(2)} process.stdout.write(o.userData.externalId)")"
-            echo "Resolved KASY_EXTERNAL_ID=$KASY_EXTERNAL_ID"
+            # Extract internal Kasyrooms userId from registration response
+            KASY_USER_ID="$(node -e "const o=require('/tmp/reg.json'); const id=o?.userData?.userId; if(!id){process.exit(2)} process.stdout.write(String(id))")"
+            echo "Resolved KASY_USER_ID=$KASY_USER_ID"
+
+            # Optional: Sirplay externalId may be present; log it but don't fail if missing
+            SIRPLAY_EXTERNAL_ID="$(node -e "const o=require('/tmp/reg.json'); const id=o?.userData?.externalId; if(!id){process.exit(0)} process.stdout.write(String(id))" || true)"
+            echo "Resolved SIRPLAY_EXTERNAL_ID=${SIRPLAY_EXTERNAL_ID:-<empty>}"
 
             echo "[Local Smoke] verify mapping via getUserInfo (by Sirplay userId)"
             tmp="$(mktemp)"
@@ -348,12 +360,12 @@ jobs:
             fi
             echo "getUserInfo OK (200)"
 
-            echo "[Local Smoke] b2b login-tokens (auth-positive) using Kasyrooms externalId"
+            echo "[Local Smoke] b2b login-tokens (auth-positive) using internal Kasyrooms userId"
             TOK_STATUS="$(curl -sS -o /tmp/tok.json -w "%{http_code}" \
               -X POST "$base_url/api/b2b/login-tokens" \
               -H "Content-Type: application/json" \
               -H "Authorization: Basic $BASIC" \
-              -d "{\"externalId\":\"$KASY_EXTERNAL_ID\"}")"
+              -d "{\"externalId\":\"$KASY_USER_ID\"}")"
 
             cat /tmp/tok.json || true
 
