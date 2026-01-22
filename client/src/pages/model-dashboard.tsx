@@ -35,7 +35,6 @@ export default function ModelDashboard() {
 
   useEffect(() => {
     if (!user) return;
-    // demo: assume model id == user.id
     (async () => {
       try {
         const headers: Record<string,string> = { 'x-user-id': user.id, 'x-role': user.role || '' };
@@ -428,7 +427,7 @@ export default function ModelDashboard() {
           <CardContent className="space-y-3">
             {!sessionId ? (
               <div className="flex gap-2 items-center">
-                <input id="ps-user" placeholder="ID utente (es. u-001)" className="flex-1 px-3 py-2 rounded-md bg-card border border-border text-sm" />
+                  <input id="ps-user" placeholder="ID utente" className="flex-1 px-3 py-2 rounded-md bg-card border border-border text-sm" />
                 <Button onClick={()=>{
                   const el = document.getElementById('ps-user') as HTMLInputElement | null;
                   startPrivate(el?.value || '');
@@ -440,7 +439,6 @@ export default function ModelDashboard() {
                 <Button variant="destructive" onClick={endPrivate} disabled={busy}>Termina</Button>
               </div>
             )}
-            <div className="text-xs text-muted">Suggerimento: usa u-001 per i test rapidi.</div>
           </CardContent>
         </Card>
 

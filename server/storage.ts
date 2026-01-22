@@ -88,14 +88,14 @@ export class MemStorage {
 
   constructor() {
     this.seed();
-  // Account di prova
+
     const testUser = {
       username: "testuser",
       email: "test@example.com",
       externalUserId: "testA"
     };
     this.createUser(testUser);
-    // Seed ruoli demo coerenti con il client
+
     this.users.set('u-001', { id:'u-001', username:'utente', email:'utente@example.com', role:'user', createdAt:new Date().toISOString() });
     this.users.set('m-001', { id:'m-001', username:'modella', email:'modella@example.com', role:'model', createdAt:new Date().toISOString() });
     this.users.set('a-001', { id:'a-001', username:'admin', email:'admin@example.com', role:'admin', createdAt:new Date().toISOString() });
@@ -143,17 +143,17 @@ export class MemStorage {
       this.models.set(id, { ...m, id, visible: true, createdAt: new Date().toISOString() });
     }
 
-    // Demo model account has user id 'm-001'. Keep client compatibility by aliasing that user id to a numeric model id.
-    const demoModelId = nextId++;
+    // Alias the seeded model user id ('m-001') to a numeric model id.
+    const aliasModelId = nextId++;
     const base = sample[0];
-    this.models.set(demoModelId, {
+    this.models.set(aliasModelId, {
       ...base,
-      id: demoModelId,
-      name: 'Modella Demo',
+      id: aliasModelId,
+      name: 'Modella',
       visible: true,
       createdAt: new Date().toISOString()
     });
-    this.modelAliases.set('m-001', demoModelId);
+    this.modelAliases.set('m-001', aliasModelId);
   }
 
   async createUser(u: {username:string; email?:string; externalUserId?:string; role?: User['role'];}): Promise<User> {

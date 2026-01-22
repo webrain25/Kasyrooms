@@ -25,7 +25,6 @@ interface AuthContextType {
   isAuthenticated: boolean;
   isLoading: boolean;
   token: string | null;
-  // Demo accounts ignore password; keep param for future real auth but do not send to API
   login: (username: string, password?: string) => Promise<void>;
   register: (payload: RegisterPayload) => Promise<void>;
   logout: () => void;
@@ -59,10 +58,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     checkAuth();
   }, []);
 
-  const login = async (username: string, _password?: string) => {
+  const login = async (username: string, password?: string) => {
     try {
-      // Backend expects only { username }
-      const res = await fetch('/api/auth/login', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ username }) });
+      const res = await fetch('/api/auth/login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ username, password })
+      });
       if (!res.ok) throw new Error('Invalid credentials');
       const data = await res.json();
       const u: User = data.user;
@@ -71,7 +73,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       localStorage.setItem('user', JSON.stringify(u));
       localStorage.setItem('token', data.token);
     } catch (error) {
-      throw new Error('Login failed: usa "utente", "modella" o "admin"');
+      throw new Error('Login failed');
     }
   };
 

@@ -80,7 +80,7 @@ export default function AdminDashboard() {
       <div className="min-h-screen bg-background">
         <Header />
         <div className="container mx-auto px-4 py-8">
-          <p className="text-muted">Area riservata all'admin. Effettua login come "admin".</p>
+          <p className="text-muted">Area riservata agli amministratori. Effettua l'accesso con un account admin.</p>
         </div>
         <Footer />
       </div>
@@ -226,7 +226,7 @@ export default function AdminDashboard() {
                   </div>
                   <div className="flex-1">
                     <label className="text-xs text-muted block mb-1">User ID to block</label>
-                    <input value={blockUserId} onChange={(e)=>setBlockUserId(e.target.value)} placeholder="e.g. u-001" className="w-full px-3 py-2 rounded-md bg-card border border-border text-sm" />
+                    <input value={blockUserId} onChange={(e)=>setBlockUserId(e.target.value)} placeholder="User ID" className="w-full px-3 py-2 rounded-md bg-card border border-border text-sm" />
                   </div>
                   <Button onClick={async ()=>{
                     if (!selectedModelId || !blockUserId.trim()) return;

@@ -458,7 +458,7 @@ export async function registerRoutes(app: any, opts?: { version?: string }): Pro
       if (!m) return res.status(404).json({ error: 'not_found' });
       m.viewerCount = Number(m.viewerCount || 0) + 1;
       // persist back into storage map
-      // @ts-ignore direct access to in-memory map for demo state
+      // @ts-ignore direct access to in-memory map for transient state
       storage.models.set(m.id, m);
       return res.json({ ok: true, viewerCount: m.viewerCount });
     } catch (e:any) {
@@ -487,7 +487,7 @@ export async function registerRoutes(app: any, opts?: { version?: string }): Pro
     }
   });
 
-  // Tip a model using local wallet (demo)
+  // Tip a model using local wallet
   app.post('/api/models/:id/tip', async (req: any, res: any) => {
     try {
       const id = String(req.params.id || '').trim();
@@ -1395,7 +1395,7 @@ export async function registerRoutes(app: any, opts?: { version?: string }): Pro
     res.json(list);
   });
 
-  // Demo login endpoint issuing JWT for seeded users
+  // Login endpoint issuing JWT for users
   app.post('/api/auth/login', async (req: any, res: any) => {
     if (!localAuthEnabled) return res.status(404).json({ error: 'not_found' });
     const parsed = z.object({ username: z.string().min(1), password: z.string().optional() }).safeParse(req.body ?? {});
@@ -1411,7 +1411,7 @@ export async function registerRoutes(app: any, opts?: { version?: string }): Pro
         const dbUsers = await db.select().from(schema.users).where(eq(schema.users.username, username));
         if (dbUsers && dbUsers.length > 0) {
           const dbUser = dbUsers[0];
-          // Simple password check (assuming plain text for demo or you might need hashing)
+          // Simple password check (plain text)
           if (password && dbUser.password !== password) {
             return res.status(401).json({ error: 'invalid credentials' });
           }
@@ -1429,7 +1429,7 @@ export async function registerRoutes(app: any, opts?: { version?: string }): Pro
     }
 
     if (!user) {
-      // Fallback for demo users defined in routes
+      // Fallback for seeded users
       const map: Record<string, { id: string; role: 'user'|'model'|'admin' }> = {
         utente: { id: 'u-001', role: 'user' },
         modella: { id: 'm-001', role: 'model' },

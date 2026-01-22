@@ -80,7 +80,7 @@ export default function Login() {
               </div>
               
               <div className="space-y-2">
-                <Label htmlFor="password">{t('password')} <span className="opacity-60 text-xs">(per le utenze demo puoi lasciare vuoto)</span></Label>
+                <Label htmlFor="password">{t('password')}</Label>
                 <Input
                   id="password"
                   name="password"
@@ -116,44 +116,6 @@ export default function Login() {
                 </a>
               </div>
             </form>
-
-            {/* Demo quick login */}
-            <div className="mt-6">
-              <div className="text-center text-sm mb-3 opacity-80">Accesso demo rapido</div>
-              <div className="grid grid-cols-3 gap-2">
-                <Button variant="secondary" onClick={async () => {
-                  try {
-                    setIsLoading(true);
-                    await login('utente', '');
-                    toast({ title: 'Login demo (utente)', description: 'Accesso eseguito' });
-                    setLocation('/');
-                  } catch {
-                    toast({ title: 'Login fallito', variant: 'destructive' });
-                  } finally { setIsLoading(false); }
-                }}>Utente</Button>
-                <Button variant="secondary" onClick={async () => {
-                  try {
-                    setIsLoading(true);
-                    await login('modella', '');
-                    toast({ title: 'Login demo (modella)', description: 'Accesso eseguito' });
-                    setLocation('/dashboard/model');
-                  } catch {
-                    toast({ title: 'Login fallito', variant: 'destructive' });
-                  } finally { setIsLoading(false); }
-                }}>Modella</Button>
-                <Button variant="secondary" onClick={async () => {
-                  try {
-                    setIsLoading(true);
-                    await login('admin', '');
-                    toast({ title: 'Login demo (admin)', description: 'Accesso eseguito' });
-                    setLocation('/admin');
-                  } catch {
-                    toast({ title: 'Login fallito', variant: 'destructive' });
-                  } finally { setIsLoading(false); }
-                }}>Admin</Button>
-              </div>
-              <div className="mt-2 text-xs text-center opacity-70">Le utenze demo non richiedono password.</div>
-            </div>
           </CardContent>
         </Card>
       </div>
