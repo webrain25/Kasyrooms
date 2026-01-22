@@ -65,11 +65,12 @@ export default function VideoChatModal({ isOpen, onClose, modelName, isModelOnli
             const token = localStorage.getItem('token');
             if (token) authHeaders['Authorization'] = `Bearer ${token}`;
           } catch {}
-          const resp = await fetch('/api/me/wallet', { credentials: 'include', headers: authHeaders });
+          const resp = await fetch('/api/me', { credentials: 'include', headers: authHeaders });
           if (!resp.ok) return;
           const data = await resp.json();
-          if (typeof data.balance === 'number') setBalance(data.balance);
-          if (data.mode === 'local' || data.mode === 'shared') setWalletMode(data.mode);
+          const w = data?.wallet;
+          if (w && typeof w.balanceCents === 'number') setBalance(w.balanceCents / 100);
+          if (w?.mode === 'local' || w?.mode === 'shared') setWalletMode(w.mode);
         } catch {}
       })();
     }

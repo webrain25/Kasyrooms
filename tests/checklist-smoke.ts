@@ -55,13 +55,21 @@ async function run() {
   }
   const handshakeToken = seedRes.body.token as string;
 
-  console.log('--- ME WALLET (user auth)');
-  const meWalletRes = await agent
-    .get('/api/me/wallet')
+  console.log('--- ME (user auth)');
+  const meRes = await agent
+    .get('/api/me')
     .set('Authorization', `Bearer ${handshakeToken}`);
-  console.log('ME WALLET status:', meWalletRes.status, 'body:', meWalletRes.body);
-  if (meWalletRes.status !== 200) {
-    console.error('ME WALLET FAILED');
+  console.log('ME status:', meRes.status, 'body:', meRes.body);
+  if (meRes.status !== 200) {
+    console.error('ME FAILED');
+    process.exit(1);
+  }
+  if (!meRes.body?.user || !meRes.body?.wallet) {
+    console.error('ME missing user/wallet');
+    process.exit(1);
+  }
+  if (typeof meRes.body.wallet.balanceCents !== 'number') {
+    console.error('ME wallet.balanceCents expected number');
     process.exit(1);
   }
 

@@ -301,37 +301,92 @@ export async function registerRoutes(app: any, opts?: { version?: string }): Pro
     };
   }
 
-  // User-facing wallet endpoint (browser): authenticated via Bearer JWT or kr_session cookie.
+  // =========================
+  // ME / PROFILE / SESSION (Browser JSON)
+  // Auth: Bearer JWT or cookie session (NOT BasicAuth)
+  // =========================
+  function noStore(res: any) {
+    res.setHeader('Cache-Control', 'no-store');
+  }
+
+  type MeWalletMode = 'sirplay' | 'local' | 'shared' | 'unknown';
+  type MeWallet = { balanceCents: number; currency: string; mode: MeWalletMode };
+  type MeUser = { id: string; username?: string; email?: string; role?: 'user'|'model'|'admin' };
+
+  // Helper: build the JSON contract the FE expects
+  async function buildMePayload(req: any): Promise<{ user: MeUser; wallet: MeWallet }> {
+    const user = (req as any).user as MeUser;
+    let wallet: MeWallet = { balanceCents: 0, currency: 'EUR', mode: 'unknown' };
+
+    // Strategy:
+    // - Sirplay (accounts): wallet_snapshots(account_id)
+    // - Local (users): wallets(user_id)
+    try {
+      // Account-based sessions are encoded as uid: "acc:<id>".
+      const rawId = String((user as any)?.id || '');
+      const accIdStr = rawId.startsWith('acc:') ? rawId.slice('acc:'.length) : '';
+      if (accIdStr && /^\d+$/.test(accIdStr)) {
+        if (db) {
+          const accId = Number(accIdStr);
+          const snapRows = await db.select().from(schema.walletSnapshots).where(eq(schema.walletSnapshots.accountId, accId)).limit(1);
+          const snap: any = snapRows[0];
+          const balanceCents = snap ? Number(snap.balanceCents ?? 0) : 0;
+          const currency = snap?.currency ? String(snap.currency) : 'EUR';
+          const provider = snap?.provider ? String(snap.provider) : 'sirplay';
+          wallet = {
+            balanceCents,
+            currency,
+            mode: provider === 'sirplay' ? 'sirplay' : 'shared',
+          };
+        }
+        return { user, wallet };
+      }
+
+      // Local users: if DB enabled, prefer wallets table; else fallback to in-memory storage.
+      if (db && rawId) {
+        const wRows = await db.select().from(schema.wallets).where(eq(schema.wallets.userId, rawId)).limit(1);
+        const w: any = wRows[0];
+        if (w) {
+          wallet = {
+            balanceCents: Number(w.balanceCents ?? 0),
+            currency: w.currency ? String(w.currency) : 'EUR',
+            mode: 'local',
+          };
+          return { user, wallet };
+        }
+      }
+
+      // Hybrid legacy compatibility: if user has externalUserId, show shared balance.
+      const memUser = rawId ? await storage.getUser(rawId) : undefined;
+      if (memUser?.externalUserId) {
+        const bal = await storage.getBalance(memUser.externalUserId);
+        wallet = { balanceCents: Math.round(Number(bal || 0) * 100), currency: 'EUR', mode: 'shared' };
+      } else if (memUser?.id) {
+        const bal = await storage.getLocalBalance(memUser.id);
+        wallet = { balanceCents: Math.round(Number(bal || 0) * 100), currency: 'EUR', mode: 'local' };
+      }
+    } catch {
+      // Keep defaults; do not fail the request just because wallet cannot be computed.
+    }
+
+    return { user, wallet };
+  }
+
+  async function meHandler(req: any, res: any) {
+    noStore(res);
+    const payload = await buildMePayload(req);
+    return res.status(200).json(payload);
+  }
+
+  // Aliases (all same handler)
+  app.get('/api/me', requireRole(['user', 'model', 'admin']), meHandler);
+  app.get('/api/auth/me', requireRole(['user', 'model', 'admin']), meHandler);
+  app.get('/api/profile', requireRole(['user', 'model', 'admin']), meHandler);
+  app.get('/api/session', requireRole(['user', 'model', 'admin']), meHandler);
+
+  // Back-compat endpoint: keep /api/me/wallet but return the same payload.
   // IMPORTANT: the browser must NOT call the B2B Basic-auth route (/api/wallet/balance).
-  app.get('/api/me/wallet', requireRole(['user', 'model', 'admin']), async (req: any, res: any) => {
-    const ru = (req as any).user as { id: string; role: string } | null;
-    if (!ru?.id) return res.status(401).json({ error: 'unauthorized' });
-
-    // Account-based sessions: uid may be "acc:<id>" (canonical) or sometimes just numeric.
-    const rawId = String(ru.id);
-    const accIdStr = rawId.startsWith('acc:') ? rawId.slice('acc:'.length) : rawId;
-    if (/^\d+$/.test(accIdStr) && db) {
-      const accId = Number(accIdStr);
-      const rows = await db.select().from(schema.walletSnapshots).where(eq(schema.walletSnapshots.accountId, accId)).limit(1);
-      const snap: any = rows[0];
-      const balanceCents = snap ? Number(snap.balanceCents ?? 0) : 0;
-      const currency = snap?.currency ? String(snap.currency) : 'EUR';
-      return res.json({ balance: balanceCents / 100, currency, mode: 'shared', provider: snap?.provider || 'sirplay' });
-    }
-    if (/^\d+$/.test(accIdStr) && !db && rawId.startsWith('acc:')) {
-      return res.status(503).json({ error: 'db_disabled' });
-    }
-
-    // Legacy/local sessions
-    const user = await storage.getUser(rawId);
-    if (!user) return res.status(404).json({ error: 'user_not_found' });
-    if (user.externalUserId) {
-      const balance = await storage.getBalance(user.externalUserId);
-      return res.json({ balance, currency: 'EUR', mode: 'shared' });
-    }
-    const balance = await storage.getLocalBalance(user.id);
-    return res.json({ balance, currency: 'EUR', mode: 'local' });
-  });
+  app.get('/api/me/wallet', requireRole(['user', 'model', 'admin']), meHandler);
 
   // uploads root for KYC/DMCA assets
   const uploadsRoot = path.resolve(process.cwd(), 'uploads');

@@ -31,8 +31,8 @@ export default function Header() {
   const validFavoritesCount = favorites.filter((id) => validIds.has(String(id))).length;
 
   // Wallet balance for authenticated users (shared or local)
-  const { data: walletInfo } = useRQ<{ balance: number } | null>({
-    queryKey: ["/api/me/wallet"],
+  const { data: meInfo } = useRQ<{ user: any; wallet: { balanceCents: number; currency: string; mode: string } } | null>({
+    queryKey: ["/api/me"],
     queryFn: async () => {
       if (!isAuthenticated) return null;
       let authHeaders: Record<string, string> = {};
@@ -40,7 +40,7 @@ export default function Header() {
         const token = localStorage.getItem('token');
         if (token) authHeaders['Authorization'] = `Bearer ${token}`;
       } catch {}
-      const res = await fetch('/api/me/wallet', { credentials: 'include', headers: authHeaders });
+      const res = await fetch('/api/me', { credentials: 'include', headers: authHeaders });
       if (!res.ok) return null;
       return res.json();
     },
@@ -190,9 +190,9 @@ export default function Header() {
             {isAuthenticated && (
               <>
                 <span className="text-sm text-muted">{t('welcome')}, {user?.username}</span>
-                {walletInfo && (
+                {meInfo?.wallet && (
                   <span className="px-2 py-1 text-xs rounded-md bg-card border border-border ml-1">
-                    €{Number(walletInfo.balance ?? 0).toFixed(2)}
+                    €{(Number(meInfo.wallet.balanceCents ?? 0) / 100).toFixed(2)}
                   </span>
                 )}
                 {/* Role shortcuts */}

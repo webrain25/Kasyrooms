@@ -220,6 +220,35 @@ jobs:
             fi
             echo "Healthz OK (200)"
 
+            # User profile endpoint must exist (browser-facing). Without auth, it should return 401 (not 404).
+            echo "[Local Smoke] /api/me without auth (expect 401, never 404/500)"
+            tmp="$(mktemp)"
+            status="$(curl -sS -o "$tmp" -w '%{http_code}' "$base_url/api/me" || echo "000")"
+            body="$(cat "$tmp" 2>/dev/null || true)"
+            rm -f "$tmp"
+            if [ -z "$status" ] || [ "$status" = "000" ] || ! printf '%s' "$status" | grep -Eq '^[0-9]{3}$'; then
+              echo "/api/me CONNECTION ERROR or invalid status: $status" >&2
+              echo "-- response (truncated) --"
+              printf '%s' "$body" | head -c 2048
+              echo
+              exit 1
+            fi
+            if [ "$status" -eq 500 ] || [ "$status" -eq 404 ]; then
+              echo "/api/me REGRESSION: got $status" >&2
+              echo "-- response (truncated) --"
+              printf '%s' "$body" | head -c 2048
+              echo
+              exit 1
+            fi
+            if [ "$status" -ne 401 ]; then
+              echo "/api/me FAILED: expected 401, got $status" >&2
+              echo "-- response (truncated) --"
+              printf '%s' "$body" | head -c 2048
+              echo
+              exit 1
+            fi
+            echo "/api/me OK (401)"
+
             # B2B no-auth should be 401 and never 500
             echo "[Local Smoke] b2b login-tokens without Authorization (expect 401, never 500)"
             tmp="$(mktemp)"
