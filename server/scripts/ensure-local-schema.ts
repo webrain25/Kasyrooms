@@ -83,6 +83,15 @@ async function main() {
     await sql`alter table if exists public.users add column if not exists last_login timestamp`;
     await sql`alter table if exists public.users add column if not exists created_at timestamp default now()`;
 
+    // Admin RBAC fields
+    await sql`alter table if exists public.users add column if not exists permissions jsonb`;
+    await sql`alter table if exists public.users add column if not exists notes text`;
+    await sql`alter table if exists public.users add column if not exists mfa_enabled boolean default false`;
+    await sql`alter table if exists public.users add column if not exists mfa_secret text`;
+    await sql`alter table if exists public.users add column if not exists created_by_admin_id varchar`;
+    await sql`alter table if exists public.users add column if not exists updated_by_admin_id varchar`;
+    await sql`alter table if exists public.users add column if not exists updated_at timestamp default now()`;
+
     await sql`
       create table if not exists public.models (
         id bigint primary key generated always as identity,
@@ -107,6 +116,11 @@ async function main() {
     await sql`alter table if exists public.models add column if not exists is_new boolean default false`;
     await sql`alter table if exists public.models add column if not exists private_shows integer default 0`;
     await sql`alter table if exists public.models add column if not exists hours_online integer default 0`;
+
+    // Admin moderation fields
+    await sql`alter table if exists public.models add column if not exists status varchar(16) default 'active'`;
+    await sql`alter table if exists public.models add column if not exists suspended_reason text`;
+    await sql`alter table if exists public.models add column if not exists updated_at timestamp default now()`;
 
     await sql`
       create table if not exists public.user_profiles (
@@ -228,13 +242,80 @@ async function main() {
       )
     `;
 
+    // Moderation: reports / moderation actions / audit log
+    await sql`
+      create table if not exists public.reports (
+        id varchar primary key,
+        type varchar(32) not null,
+        status varchar(16) not null default 'open',
+        severity varchar(16) not null default 'low',
+
+        reported_by_user_id varchar,
+        target_user_id varchar,
+        target_model_id bigint,
+        target_message_id varchar,
+
+        reason_code varchar(64),
+        free_text text,
+
+        assigned_to_admin_id varchar,
+        resolution_action varchar(64),
+        resolution_notes text,
+
+        created_at timestamp default now(),
+        updated_at timestamp default now()
+      )
+    `;
+
+    await sql`
+      create table if not exists public.moderation_actions (
+        id varchar primary key,
+        admin_id varchar not null,
+        action varchar(64) not null,
+        target_type varchar(32) not null,
+        target_id varchar not null,
+        reason text,
+        metadata jsonb,
+        created_at timestamp default now()
+      )
+    `;
+
+    await sql`
+      create table if not exists public.audit_log (
+        id varchar primary key,
+        actor_admin_id varchar not null,
+        action varchar(64) not null,
+        target_type varchar(32) not null,
+        target_id varchar,
+        before jsonb,
+        after jsonb,
+        ip text,
+        user_agent text,
+        created_at timestamp default now()
+      )
+    `;
+
     // Helpful indexes for common lookups
     await sql`create index if not exists idx_users_external_user_id on public.users (external_user_id)`;
     await sql`create index if not exists idx_users_sirplay_user_id on public.users (sirplay_user_id)`;
+    await sql`create index if not exists idx_users_role on public.users (role)`;
+    await sql`create index if not exists idx_users_status on public.users (status)`;
+
+    // Case-insensitive unique email (where present)
+    await sql`create unique index if not exists uniq_users_email_ci on public.users (lower(email)) where email is not null`;
     await sql`create index if not exists idx_cards_user_id on public.cards (user_id)`;
     await sql`create index if not exists idx_transactions_user_id_b on public.transactions (user_id_b)`;
     await sql`create index if not exists idx_sessions_user_id_b on public.sessions (user_id_b)`;
     await sql`create index if not exists idx_sessions_model_id on public.sessions (model_id)`;
+
+    await sql`create index if not exists idx_models_status on public.models (status)`;
+
+    await sql`create index if not exists idx_reports_status_created_at on public.reports (status, created_at desc)`;
+    await sql`create index if not exists idx_reports_assigned_to on public.reports (assigned_to_admin_id)`;
+    await sql`create index if not exists idx_moderation_actions_admin_id on public.moderation_actions (admin_id, created_at desc)`;
+    await sql`create index if not exists idx_moderation_actions_target on public.moderation_actions (target_type, target_id)`;
+    await sql`create index if not exists idx_audit_actor_created_at on public.audit_log (actor_admin_id, created_at desc)`;
+    await sql`create index if not exists idx_audit_action_created_at on public.audit_log (action, created_at desc)`;
 
     await sql`commit`;
     console.log("DDL applied successfully");

@@ -24,6 +24,7 @@
     "test:sirplay:adapter:outbound": "tsx tests/sirplay-adapter-outbound.ts",
     "test:sirplay:db": "tsx tests/sirplay-adapter-db.ts",
     "test:b2b": "tsx tests/b2b-login-tokens.ts",
+    "test:admin": "tsx tests/admin-rbac.ts",
     "postman:local": "newman run tests/postman/Kasyrooms_Local.postman_collection.json -e tests/postman/Local.postman_environment.json --insecure",
     "pm2:start": "pm2 start ecosystem.config.cjs",
     "pm2:restart": "pm2 restart kasyrooms",
@@ -35,6 +36,7 @@
     "db:ensure:sirplay": "tsx server/scripts/ensure-sirplay-schema.ts",
     "db:ensure:local": "tsx server/scripts/ensure-local-schema.ts",
     "db:patch:dev:legacy-missing": "tsx server/scripts/patch-dev-legacy-missing.ts",
+    "admin:seed": "tsx server/scripts/admin-seed.ts",
     "db:push": "drizzle-kit push",
     "postinstall": "npx --yes update-browserslist-db@latest || true"
   },

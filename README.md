@@ -190,6 +190,35 @@ Optional – Regression check
 
 Confirm `/api/b2b/login-tokens` no longer returns 500 for well-formed JSON (it should return 401 without Authorization).
 
+## Admin backoffice (RBAC)
+
+The project includes a separate Admin area at `/admin` with its own authentication and session cookie.
+
+- UI routes: `/admin/login`, `/admin`
+- API routes: `/api/admin/*`
+- Admin session cookie: `kr_admin_session` (HttpOnly, `SameSite=Strict`, `Secure` in production)
+
+### Admin environment variables
+
+- `ADMIN_JWT_SECRET` (recommended): secret used to sign/verify admin session JWTs.
+	- Fallback: if missing, the server uses `JWT_SECRET`.
+- `ADMIN_SEED_EMAIL`, `ADMIN_SEED_USERNAME`, `ADMIN_SEED_PASSWORD`: used by the seed script below.
+
+### Create the first admin (idempotent)
+
+Requires `DATABASE_URL`.
+
+```bash
+npm run admin:seed
+```
+
+### Notes
+
+- If `DATABASE_URL` is not set, admin endpoints return `503 {"error":"db_disabled"}`.
+- Admin API returns:
+	- `401` when the admin session is missing/invalid (UI redirects to `/admin/login`)
+	- `403` when the session is valid but permissions are missing (JSON includes `missing`)
+
 ## Sirplay Integration
 
 See detailed setup in [docs/SIRPLAY.md](docs/SIRPLAY.md).

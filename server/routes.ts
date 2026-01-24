@@ -9,10 +9,16 @@ import { db, schema } from "./db.js";
 import multer from "multer";
 import path from "path";
 import fs from "fs";
-import { and, eq } from "drizzle-orm";
+import { and, desc, eq, ilike, or, sql } from "drizzle-orm";
 import { getOrCreateAccountBySirplayUserId, upsertWalletSnapshot, recordWalletTransactionIdempotent } from "./services/sirplayAdapter.js";
 import { ensureLocalUserForSirplay } from "./services/identity.js";
 import { toDbErrorMeta } from "./dbError.js";
+import { verifyPassword, hashPasswordPBKDF2 } from "./auth/password.js";
+import {
+  resolveEffectivePermissions,
+  type Permission,
+  type Role,
+} from "../shared/rbac.js";
 // @ts-ignore - bundler resolves this TS module; suppress TS2306 in check
 import {
   getSirplayConfigFromEnv,
@@ -300,6 +306,536 @@ export async function registerRoutes(app: any, opts?: { version?: string }): Pro
       return next();
     };
   }
+
+  // =========================
+  // ADMIN RBAC (separate auth + cookie)
+  // =========================
+  const getAdminJWTSecret = () => (process.env.ADMIN_JWT_SECRET || getJWTSecret());
+
+  type ReqAdmin = {
+    id: string;
+    role: Role;
+    username?: string;
+    email?: string;
+    permissions: Set<Permission>;
+  };
+
+  function getReqAdminToken(req: any): string | undefined {
+    const hdr = req.headers?.authorization || req.headers?.Authorization;
+    if (typeof hdr === 'string' && hdr.startsWith('Bearer ')) {
+      const t = hdr.slice('Bearer '.length).trim();
+      return t || undefined;
+    }
+    return getCookieValue(req.headers?.cookie, 'kr_admin_session');
+  }
+
+  function requireAdminAuth() {
+    return async (req: any, res: any, next: any) => {
+      const token = getReqAdminToken(req);
+      if (!token) return res.status(401).json({ error: 'unauthorized' });
+
+      let payload: any;
+      try {
+        payload = jwt.verify(token, getAdminJWTSecret());
+      } catch {
+        return res.status(401).json({ error: 'unauthorized' });
+      }
+
+      const uid = String(payload?.uid || '').trim();
+      if (!uid) return res.status(401).json({ error: 'unauthorized' });
+      if (!db) return res.status(503).json({ error: 'db_disabled' });
+
+      const rows = await db.select().from(schema.users).where(eq(schema.users.id, uid)).limit(1);
+      const u: any = rows[0];
+      if (!u) return res.status(401).json({ error: 'unauthorized' });
+
+      const role = String(u.role || 'user') as Role;
+      const allowed: Role[] = ['admin', 'support', 'finance', 'super_admin'];
+      if (!allowed.includes(role)) return res.status(403).json({ error: 'forbidden' });
+
+      const status = String(u.status || 'active');
+      if (status !== 'active') return res.status(403).json({ error: 'forbidden', reason: 'account_inactive' });
+
+      const perms = resolveEffectivePermissions({ role, permissionsOverride: u.permissions });
+      (req as any).admin = {
+        id: String(u.id),
+        role,
+        username: u.username ? String(u.username) : undefined,
+        email: u.email ? String(u.email) : undefined,
+        permissions: perms,
+      } satisfies ReqAdmin;
+
+      return next();
+    };
+  }
+
+  function requirePermission(permission: Permission) {
+    return (req: any, res: any, next: any) => {
+      const admin = (req as any).admin as ReqAdmin | undefined;
+      if (!admin) return res.status(401).json({ error: 'unauthorized' });
+      if (!admin.permissions.has(permission)) return res.status(403).json({ error: 'forbidden', missing: permission });
+      return next();
+    };
+  }
+
+  function setAdminCookie(res: any, jwtToken: string, maxAgeSec: number) {
+    const secure = process.env.NODE_ENV === 'production';
+    const cookie = [
+      `kr_admin_session=${jwtToken}`,
+      'Path=/',
+      'HttpOnly',
+      secure ? 'Secure' : '',
+      'SameSite=Strict',
+      `Max-Age=${maxAgeSec}`,
+    ].filter(Boolean).join('; ');
+    res.setHeader('Set-Cookie', cookie);
+  }
+
+  function clearAdminCookie(res: any) {
+    const secure = process.env.NODE_ENV === 'production';
+    const cookie = [
+      'kr_admin_session=',
+      'Path=/',
+      'HttpOnly',
+      secure ? 'Secure' : '',
+      'SameSite=Strict',
+      'Max-Age=0',
+    ].filter(Boolean).join('; ');
+    res.setHeader('Set-Cookie', cookie);
+  }
+
+  // Login limiter (dedicated to admin login)
+  const adminLoginLimiter = (await import('express-rate-limit')).default({
+    windowMs: 60_000,
+    limit: 10,
+    standardHeaders: true,
+    legacyHeaders: false,
+  });
+
+  // Admin Auth
+  app.post('/api/admin/auth/login', adminLoginLimiter as any, async (req: any, res: any) => {
+    const parsed = z.object({
+      usernameOrEmail: z.string().min(1),
+      password: z.string().min(1),
+    }).safeParse(req.body ?? {});
+    if (!parsed.success) return res.status(400).json({ error: 'invalid_payload', details: parsed.error.flatten() });
+    if (!db) return res.status(503).json({ error: 'db_disabled' });
+
+    const input = parsed.data.usernameOrEmail.trim();
+    const inputLower = input.toLowerCase();
+
+    const rows = await db
+      .select()
+      .from(schema.users)
+      .where(or(eq(schema.users.username, input), sql`lower(${schema.users.email}) = ${inputLower}`))
+      .limit(1);
+    const u: any = rows[0];
+    if (!u) return res.status(401).json({ error: 'invalid_credentials' });
+
+    const role = String(u.role || 'user') as Role;
+    const allowed: Role[] = ['admin', 'support', 'finance', 'super_admin'];
+    if (!allowed.includes(role)) return res.status(403).json({ error: 'forbidden' });
+    const status = String(u.status || 'active');
+    if (status !== 'active') return res.status(403).json({ error: 'forbidden', reason: 'account_inactive' });
+
+    if (!verifyPassword(parsed.data.password, String(u.password || ''))) {
+      return res.status(401).json({ error: 'invalid_credentials' });
+    }
+
+    try {
+      await db.update(schema.users).set({ lastLogin: new Date(), updatedAt: new Date() } as any).where(eq(schema.users.id, String(u.id)));
+    } catch {}
+
+    const perms = resolveEffectivePermissions({ role, permissionsOverride: u.permissions });
+    const jwtToken = jwt.sign({ uid: String(u.id), role, kind: 'admin' }, getAdminJWTSecret(), { expiresIn: '8h' });
+    setAdminCookie(res, jwtToken, 60 * 60 * 8);
+
+    return res.json({
+      status: 'ok',
+      admin: {
+        id: String(u.id),
+        username: u.username ? String(u.username) : undefined,
+        email: u.email ? String(u.email) : undefined,
+        role,
+        permissions: Array.from(perms),
+      },
+    });
+  });
+
+  app.post('/api/admin/auth/logout', (_req: any, res: any) => {
+    clearAdminCookie(res);
+    return res.json({ status: 'ok' });
+  });
+
+  app.get('/api/admin/auth/me', requireAdminAuth(), (req: any, res: any) => {
+    const admin = (req as any).admin as ReqAdmin;
+    return res.json({
+      admin: {
+        id: admin.id,
+        role: admin.role,
+        username: admin.username,
+        email: admin.email,
+        permissions: Array.from(admin.permissions),
+      },
+    });
+  });
+
+  async function writeAudit(args: {
+    req: any;
+    adminId: string;
+    action: string;
+    targetType: string;
+    targetId?: string;
+    before?: any;
+    after?: any;
+  }) {
+    if (!db) return;
+    try {
+      await db.insert(schema.auditLog).values({
+        id: crypto.randomUUID(),
+        actorAdminId: args.adminId,
+        action: args.action,
+        targetType: args.targetType,
+        targetId: args.targetId,
+        before: args.before ?? null,
+        after: args.after ?? null,
+        ip: String(args.req.ip || ''),
+        userAgent: String(args.req.headers?.['user-agent'] || ''),
+        createdAt: new Date(),
+      } as any);
+    } catch {}
+  }
+
+  async function writeModerationAction(args: {
+    adminId: string;
+    action: string;
+    targetType: string;
+    targetId: string;
+    reason?: string;
+    metadata?: any;
+  }) {
+    if (!db) return;
+    try {
+      await db.insert(schema.moderationActions).values({
+        id: crypto.randomUUID(),
+        adminId: args.adminId,
+        action: args.action,
+        targetType: args.targetType,
+        targetId: args.targetId,
+        reason: args.reason ?? null,
+        metadata: args.metadata ?? null,
+        createdAt: new Date(),
+      } as any);
+    } catch {}
+  }
+
+  // Admin Users
+  app.get('/api/admin/users', requireAdminAuth(), requirePermission('users.read'), async (req: any, res: any) => {
+    const query = typeof req.query.query === 'string' ? req.query.query.trim() : '';
+    const status = typeof req.query.status === 'string' ? req.query.status.trim() : '';
+    const page = Math.max(1, Number(req.query.page || 1));
+    const limit = Math.min(100, Math.max(1, Number(req.query.limit || 25)));
+    const offset = (page - 1) * limit;
+
+    const whereParts: any[] = [];
+    if (status) whereParts.push(eq(schema.users.status as any, status));
+    if (query) whereParts.push(or(ilike(schema.users.username, `%${query}%`), ilike(schema.users.email as any, `%${query}%`)));
+    const where = whereParts.length === 0 ? undefined : (whereParts.length === 1 ? whereParts[0] : and(...whereParts));
+
+    const rows = await db
+      .select({
+        id: schema.users.id,
+        username: schema.users.username,
+        email: schema.users.email,
+        role: schema.users.role,
+        status: schema.users.status,
+        lastLogin: schema.users.lastLogin,
+        createdAt: schema.users.createdAt,
+      })
+      .from(schema.users)
+      .where(where as any)
+      .orderBy(desc(schema.users.createdAt))
+      .limit(limit)
+      .offset(offset);
+
+    return res.json({ page, limit, items: rows });
+  });
+
+  app.get('/api/admin/users/:id', requireAdminAuth(), requirePermission('users.read'), async (req: any, res: any) => {
+    const id = String(req.params.id || '').trim();
+    const rows = await db.select().from(schema.users).where(eq(schema.users.id, id)).limit(1);
+    const u: any = rows[0];
+    if (!u) return res.status(404).json({ error: 'not_found' });
+    delete u.password;
+    return res.json({ user: u });
+  });
+
+  app.post('/api/admin/users/:id/suspend', requireAdminAuth(), requirePermission('users.disable'), async (req: any, res: any) => {
+    const admin = (req as any).admin as ReqAdmin;
+    const id = String(req.params.id || '').trim();
+    const parsed = z.object({ reason: z.string().min(1) }).safeParse(req.body ?? {});
+    if (!parsed.success) return res.status(400).json({ error: 'invalid_payload', details: parsed.error.flatten() });
+
+    const rows = await db.select().from(schema.users).where(eq(schema.users.id, id)).limit(1);
+    const before: any = rows[0];
+    if (!before) return res.status(404).json({ error: 'not_found' });
+
+    await db.update(schema.users).set({
+      status: 'suspended',
+      updatedByAdminId: admin.id,
+      updatedAt: new Date(),
+    } as any).where(eq(schema.users.id, id));
+
+    const afterRows = await db.select().from(schema.users).where(eq(schema.users.id, id)).limit(1);
+    const after: any = afterRows[0];
+
+    await writeModerationAction({ adminId: admin.id, action: 'SUSPEND_USER', targetType: 'user', targetId: id, reason: parsed.data.reason });
+    await writeAudit({ req, adminId: admin.id, action: 'users.suspend', targetType: 'user', targetId: id, before, after });
+    return res.json({ status: 'ok' });
+  });
+
+  app.post('/api/admin/users/:id/unsuspend', requireAdminAuth(), requirePermission('users.restore'), async (req: any, res: any) => {
+    const admin = (req as any).admin as ReqAdmin;
+    const id = String(req.params.id || '').trim();
+
+    const rows = await db.select().from(schema.users).where(eq(schema.users.id, id)).limit(1);
+    const before: any = rows[0];
+    if (!before) return res.status(404).json({ error: 'not_found' });
+
+    await db.update(schema.users).set({
+      status: 'active',
+      updatedByAdminId: admin.id,
+      updatedAt: new Date(),
+    } as any).where(eq(schema.users.id, id));
+
+    const afterRows = await db.select().from(schema.users).where(eq(schema.users.id, id)).limit(1);
+    const after: any = afterRows[0];
+
+    await writeModerationAction({ adminId: admin.id, action: 'UNSUSPEND_USER', targetType: 'user', targetId: id });
+    await writeAudit({ req, adminId: admin.id, action: 'users.unsuspend', targetType: 'user', targetId: id, before, after });
+    return res.json({ status: 'ok' });
+  });
+
+  // Admin Models
+  app.get('/api/admin/models', requireAdminAuth(), requirePermission('models.read'), async (req: any, res: any) => {
+    const query = typeof req.query.query === 'string' ? req.query.query.trim() : '';
+    const status = typeof req.query.status === 'string' ? req.query.status.trim() : '';
+    const page = Math.max(1, Number(req.query.page || 1));
+    const limit = Math.min(100, Math.max(1, Number(req.query.limit || 25)));
+    const offset = (page - 1) * limit;
+
+    const whereParts: any[] = [];
+    if (status) whereParts.push(eq(schema.models.status as any, status));
+    if (query) whereParts.push(ilike(schema.models.name, `%${query}%`));
+    const where = whereParts.length === 0 ? undefined : (whereParts.length === 1 ? whereParts[0] : and(...whereParts));
+
+    const rows = await db
+      .select()
+      .from(schema.models)
+      .where(where as any)
+      .orderBy(desc(schema.models.createdAt))
+      .limit(limit)
+      .offset(offset);
+    return res.json({ page, limit, items: rows });
+  });
+
+  app.get('/api/admin/models/:id', requireAdminAuth(), requirePermission('models.read'), async (req: any, res: any) => {
+    const idStr = String(req.params.id || '').trim();
+    if (!/^\d+$/.test(idStr)) return res.status(400).json({ error: 'invalid_id' });
+    const id = Number(idStr);
+    const rows = await db.select().from(schema.models).where(eq(schema.models.id, id)).limit(1);
+    const m: any = rows[0];
+    if (!m) return res.status(404).json({ error: 'not_found' });
+    return res.json({ model: m });
+  });
+
+  app.post('/api/admin/models/:id/suspend', requireAdminAuth(), requirePermission('models.suspend'), async (req: any, res: any) => {
+    const admin = (req as any).admin as ReqAdmin;
+    const idStr = String(req.params.id || '').trim();
+    if (!/^\d+$/.test(idStr)) return res.status(400).json({ error: 'invalid_id' });
+    const id = Number(idStr);
+    const parsed = z.object({ reason: z.string().min(1) }).safeParse(req.body ?? {});
+    if (!parsed.success) return res.status(400).json({ error: 'invalid_payload', details: parsed.error.flatten() });
+
+    const rows = await db.select().from(schema.models).where(eq(schema.models.id, id)).limit(1);
+    const before: any = rows[0];
+    if (!before) return res.status(404).json({ error: 'not_found' });
+
+    await db.update(schema.models).set({ status: 'suspended', suspendedReason: parsed.data.reason, updatedAt: new Date() } as any).where(eq(schema.models.id, id));
+    const afterRows = await db.select().from(schema.models).where(eq(schema.models.id, id)).limit(1);
+    const after: any = afterRows[0];
+
+    await writeModerationAction({ adminId: admin.id, action: 'SUSPEND_MODEL', targetType: 'model', targetId: String(id), reason: parsed.data.reason });
+    await writeAudit({ req, adminId: admin.id, action: 'models.suspend', targetType: 'model', targetId: String(id), before, after });
+    return res.json({ status: 'ok' });
+  });
+
+  app.post('/api/admin/models/:id/unsuspend', requireAdminAuth(), requirePermission('models.write'), async (req: any, res: any) => {
+    const admin = (req as any).admin as ReqAdmin;
+    const idStr = String(req.params.id || '').trim();
+    if (!/^\d+$/.test(idStr)) return res.status(400).json({ error: 'invalid_id' });
+    const id = Number(idStr);
+
+    const rows = await db.select().from(schema.models).where(eq(schema.models.id, id)).limit(1);
+    const before: any = rows[0];
+    if (!before) return res.status(404).json({ error: 'not_found' });
+
+    await db.update(schema.models).set({ status: 'active', suspendedReason: null, updatedAt: new Date() } as any).where(eq(schema.models.id, id));
+    const afterRows = await db.select().from(schema.models).where(eq(schema.models.id, id)).limit(1);
+    const after: any = afterRows[0];
+
+    await writeModerationAction({ adminId: admin.id, action: 'UNSUSPEND_MODEL', targetType: 'model', targetId: String(id) });
+    await writeAudit({ req, adminId: admin.id, action: 'models.unsuspend', targetType: 'model', targetId: String(id), before, after });
+    return res.json({ status: 'ok' });
+  });
+
+  // Admin Reports
+  app.get('/api/admin/reports', requireAdminAuth(), requirePermission('reports.read'), async (req: any, res: any) => {
+    const status = typeof req.query.status === 'string' ? req.query.status.trim() : '';
+    const type = typeof req.query.type === 'string' ? req.query.type.trim() : '';
+    const page = Math.max(1, Number(req.query.page || 1));
+    const limit = Math.min(100, Math.max(1, Number(req.query.limit || 25)));
+    const offset = (page - 1) * limit;
+
+    const whereParts: any[] = [];
+    if (status) whereParts.push(eq(schema.reports.status as any, status));
+    if (type) whereParts.push(eq(schema.reports.type as any, type));
+    const where = whereParts.length === 0 ? undefined : (whereParts.length === 1 ? whereParts[0] : and(...whereParts));
+
+    const rows = await db.select().from(schema.reports).where(where as any).orderBy(desc(schema.reports.createdAt)).limit(limit).offset(offset);
+    return res.json({ page, limit, items: rows });
+  });
+
+  app.get('/api/admin/reports/:id', requireAdminAuth(), requirePermission('reports.read'), async (req: any, res: any) => {
+    const id = String(req.params.id || '').trim();
+    const rows = await db.select().from(schema.reports).where(eq(schema.reports.id, id)).limit(1);
+    const r: any = rows[0];
+    if (!r) return res.status(404).json({ error: 'not_found' });
+    return res.json({ report: r });
+  });
+
+  app.post('/api/admin/reports/:id/assign', requireAdminAuth(), requirePermission('reports.write'), async (req: any, res: any) => {
+    const admin = (req as any).admin as ReqAdmin;
+    const id = String(req.params.id || '').trim();
+    const parsed = z.object({ toAdminId: z.string().min(1) }).safeParse(req.body ?? {});
+    if (!parsed.success) return res.status(400).json({ error: 'invalid_payload', details: parsed.error.flatten() });
+
+    const rows = await db.select().from(schema.reports).where(eq(schema.reports.id, id)).limit(1);
+    const before: any = rows[0];
+    if (!before) return res.status(404).json({ error: 'not_found' });
+
+    await db.update(schema.reports).set({ assignedToAdminId: parsed.data.toAdminId, status: 'in_progress', updatedAt: new Date() } as any).where(eq(schema.reports.id, id));
+    const afterRows = await db.select().from(schema.reports).where(eq(schema.reports.id, id)).limit(1);
+    const after: any = afterRows[0];
+
+    await writeAudit({ req, adminId: admin.id, action: 'reports.assign', targetType: 'report', targetId: id, before, after });
+    return res.json({ status: 'ok' });
+  });
+
+  app.post('/api/admin/reports/:id/resolve', requireAdminAuth(), requirePermission('reports.resolve'), async (req: any, res: any) => {
+    const admin = (req as any).admin as ReqAdmin;
+    const id = String(req.params.id || '').trim();
+    const parsed = z.object({ action: z.string().min(1), notes: z.string().optional() }).safeParse(req.body ?? {});
+    if (!parsed.success) return res.status(400).json({ error: 'invalid_payload', details: parsed.error.flatten() });
+
+    const rows = await db.select().from(schema.reports).where(eq(schema.reports.id, id)).limit(1);
+    const before: any = rows[0];
+    if (!before) return res.status(404).json({ error: 'not_found' });
+
+    await db.update(schema.reports).set({ status: 'resolved', resolutionAction: parsed.data.action, resolutionNotes: parsed.data.notes ?? null, updatedAt: new Date() } as any).where(eq(schema.reports.id, id));
+    const afterRows = await db.select().from(schema.reports).where(eq(schema.reports.id, id)).limit(1);
+    const after: any = afterRows[0];
+
+    await writeModerationAction({ adminId: admin.id, action: 'RESOLVE_REPORT', targetType: 'report', targetId: id, metadata: { action: parsed.data.action } });
+    await writeAudit({ req, adminId: admin.id, action: 'reports.resolve', targetType: 'report', targetId: id, before, after });
+    return res.json({ status: 'ok' });
+  });
+
+  // Admin Audit
+  app.get('/api/admin/audit', requireAdminAuth(), requirePermission('audit.read'), async (req: any, res: any) => {
+    const actorId = typeof req.query.actorId === 'string' ? req.query.actorId.trim() : '';
+    const action = typeof req.query.action === 'string' ? req.query.action.trim() : '';
+    const page = Math.max(1, Number(req.query.page || 1));
+    const limit = Math.min(100, Math.max(1, Number(req.query.limit || 25)));
+    const offset = (page - 1) * limit;
+
+    const whereParts: any[] = [];
+    if (actorId) whereParts.push(eq(schema.auditLog.actorAdminId as any, actorId));
+    if (action) whereParts.push(eq(schema.auditLog.action as any, action));
+    const where = whereParts.length === 0 ? undefined : (whereParts.length === 1 ? whereParts[0] : and(...whereParts));
+
+    const rows = await db.select().from(schema.auditLog).where(where as any).orderBy(desc(schema.auditLog.createdAt)).limit(limit).offset(offset);
+    return res.json({ page, limit, items: rows });
+  });
+
+  // Admin Metrics
+  app.get('/api/admin/metrics/overview', requireAdminAuth(), requirePermission('settings.read'), async (req: any, res: any) => {
+    const range = typeof req.query.range === 'string' ? req.query.range.trim() : '7d';
+    const days = range === '30d' ? 30 : range === '90d' ? 90 : 7;
+    const since = new Date(Date.now() - days * 24 * 60 * 60 * 1000);
+
+    const [usersCount] = await db.select({ c: sql<number>`count(*)::int` }).from(schema.users).where(sql`${schema.users.createdAt} >= ${since}` as any);
+    const [reportsOpen] = await db.select({ c: sql<number>`count(*)::int` }).from(schema.reports).where(eq(schema.reports.status as any, 'open'));
+    const [reportsResolved] = await db.select({ c: sql<number>`count(*)::int` }).from(schema.reports).where(eq(schema.reports.status as any, 'resolved'));
+    const [modelsActive] = await db.select({ c: sql<number>`count(*)::int` }).from(schema.models).where(eq(schema.models.status as any, 'active'));
+
+    return res.json({
+      range: `${days}d`,
+      usersRegistered: Number((usersCount as any)?.c || 0),
+      modelsActive: Number((modelsActive as any)?.c || 0),
+      reportsOpen: Number((reportsOpen as any)?.c || 0),
+      reportsResolved: Number((reportsResolved as any)?.c || 0),
+    });
+  });
+
+  // Sirplay (diagnostics only)
+  app.get('/api/admin/sirplay/health', requireAdminAuth(), requirePermission('sirplay.mapping.read'), async (_req: any, res: any) => {
+    try {
+      const cfg = getSirplayConfigFromEnv();
+      const cache = await sirplayLogin(cfg);
+      return res.json({
+        ok: true,
+        baseUrl: cfg.baseUrl,
+        expiresAtMs: cache.expiresAtMs,
+        hasRefreshToken: Boolean(cache.refreshToken),
+        tokenPreview: cache.token ? `${cache.token.slice(0, 8)}…` : null,
+      });
+    } catch (e: any) {
+      return res.status(502).json({ ok: false, error: 'sirplay_unreachable', message: e?.message || String(e) });
+    }
+  });
+
+  app.get('/api/admin/sirplay/mappings', requireAdminAuth(), requirePermission('sirplay.mapping.read'), async (req: any, res: any) => {
+    const query = typeof req.query.query === 'string' ? req.query.query.trim() : '';
+    const page = Math.max(1, Number(req.query.page || 1));
+    const limit = Math.min(100, Math.max(1, Number(req.query.limit || 25)));
+    const offset = (page - 1) * limit;
+
+    const where = query
+      ? or(
+          ilike(schema.accounts.email as any, `%${query}%`),
+          ilike(schema.accounts.externalUserId as any, `%${query}%`),
+        )
+      : undefined;
+
+    const rows = await db
+      .select({
+        id: schema.accounts.id,
+        email: schema.accounts.email,
+        externalProvider: schema.accounts.externalProvider,
+        externalUserId: schema.accounts.externalUserId,
+        role: schema.accounts.role,
+        createdAt: schema.accounts.createdAt,
+        updatedAt: schema.accounts.updatedAt,
+      })
+      .from(schema.accounts)
+      .where(where as any)
+      .orderBy(desc(schema.accounts.createdAt))
+      .limit(limit)
+      .offset(offset);
+
+    return res.json({ page, limit, items: rows });
+  });
 
   // =========================
   // ME / PROFILE / SESSION (Browser JSON)
@@ -1411,8 +1947,8 @@ export async function registerRoutes(app: any, opts?: { version?: string }): Pro
         const dbUsers = await db.select().from(schema.users).where(eq(schema.users.username, username));
         if (dbUsers && dbUsers.length > 0) {
           const dbUser = dbUsers[0];
-          // Simple password check (plain text)
-          if (password && dbUser.password !== password) {
+          // Backward-compatible password check (plain-text or PBKDF2 hash)
+          if (password && !verifyPassword(password, String((dbUser as any).password || ''))) {
             return res.status(401).json({ error: 'invalid credentials' });
           }
           // Seed into MemStorage for current session

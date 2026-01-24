@@ -57,6 +57,20 @@ This prevents the common PROD error on local register:
 
 The deploy script [scripts/deploy.sh](scripts/deploy.sh) runs these automatically if `DATABASE_URL` is available.
 
+## Admin backoffice (RBAC)
+
+If you use the admin backoffice at `/admin`:
+
+- Set `ADMIN_JWT_SECRET` (recommended) or ensure `JWT_SECRET` is set.
+- Provision the first admin user (requires DB):
+
+```bash
+export ADMIN_SEED_EMAIL="admin@example.com"
+export ADMIN_SEED_USERNAME="admin"
+export ADMIN_SEED_PASSWORD="<strong-password>"
+npm run admin:seed
+```
+
 ## Start with PM2 (zero-downtime ready)
 
 ```bash

@@ -23,6 +23,8 @@ export const users = pgTable("users", {
   password: text("password").notNull(),
   email: text("email"),
   role: varchar("role", { length: 16 }).default("user"),
+  // Optional granular permission overrides (RBAC). Effective perms = role bundle + overrides.
+  permissions: jsonb("permissions"),
   // External identity mapping (provider + user id)
   externalProvider: text("external_provider"),
   externalUserId: text("external_user_id"),
@@ -37,7 +39,15 @@ export const users = pgTable("users", {
   phoneNumber: text("phone_number"),
   status: varchar("status", { length: 16 }).default('active'), // active/banned/...
   lastLogin: timestamp("last_login"),
+  // Admin-only fields (MVP)
+  notes: text("notes"),
+  mfaEnabled: boolean("mfa_enabled").default(false),
+  mfaSecret: text("mfa_secret"),
+  createdByAdminId: varchar("created_by_admin_id"),
+  updatedByAdminId: varchar("updated_by_admin_id"),
+
   createdAt: timestamp("created_at").default(sql`now()`),
+  updatedAt: timestamp("updated_at").default(sql`now()`),
 });
 
 export const models = pgTable("models", {
@@ -51,12 +61,62 @@ export const models = pgTable("models", {
   // New: busy state when in a private show
   isBusy: boolean("is_busy").default(false),
   isNew: boolean("is_new").default(false),
+  status: varchar("status", { length: 16 }).default('active'), // active/suspended/...
+  suspendedReason: text("suspended_reason"),
   rating: integer("rating").default(0), // out of 50 (5.0 stars * 10)
   viewerCount: integer("viewer_count").default(0),
   profileImage: text("profile_image").notNull(),
   // Simple stats for admin
   privateShows: integer("private_shows").default(0),
   hoursOnline: integer("hours_online").default(0),
+  createdAt: timestamp("created_at").default(sql`now()`),
+  updatedAt: timestamp("updated_at").default(sql`now()`),
+});
+
+// Moderation reports (MVP)
+export const reports = pgTable("reports", {
+  id: varchar("id").primaryKey(),
+  type: varchar("type", { length: 32 }).notNull(), // CHAT_MESSAGE | USER_PROFILE | MODEL_PROFILE | PAYMENT | OTHER
+  status: varchar("status", { length: 16 }).notNull().default('open'), // OPEN/IN_PROGRESS/RESOLVED/REJECTED
+  severity: varchar("severity", { length: 16 }).notNull().default('low'), // LOW/MEDIUM/HIGH
+
+  reportedByUserId: varchar("reported_by_user_id"),
+  targetUserId: varchar("target_user_id"),
+  targetModelId: bigint("target_model_id", { mode: "number" }),
+  targetMessageId: varchar("target_message_id"),
+
+  reasonCode: varchar("reason_code", { length: 64 }),
+  freeText: text("free_text"),
+
+  assignedToAdminId: varchar("assigned_to_admin_id"),
+  resolutionAction: varchar("resolution_action", { length: 64 }),
+  resolutionNotes: text("resolution_notes"),
+
+  createdAt: timestamp("created_at").default(sql`now()`),
+  updatedAt: timestamp("updated_at").default(sql`now()`),
+});
+
+export const moderationActions = pgTable("moderation_actions", {
+  id: varchar("id").primaryKey(),
+  adminId: varchar("admin_id").notNull(),
+  action: varchar("action", { length: 64 }).notNull(),
+  targetType: varchar("target_type", { length: 32 }).notNull(),
+  targetId: varchar("target_id").notNull(),
+  reason: text("reason"),
+  metadata: jsonb("metadata"),
+  createdAt: timestamp("created_at").default(sql`now()`),
+});
+
+export const auditLog = pgTable("audit_log", {
+  id: varchar("id").primaryKey(),
+  actorAdminId: varchar("actor_admin_id").notNull(),
+  action: varchar("action", { length: 64 }).notNull(),
+  targetType: varchar("target_type", { length: 32 }).notNull(),
+  targetId: varchar("target_id"),
+  before: jsonb("before"),
+  after: jsonb("after"),
+  ip: text("ip"),
+  userAgent: text("user_agent"),
   createdAt: timestamp("created_at").default(sql`now()`),
 });
 
@@ -237,6 +297,9 @@ export type Session = typeof sessions.$inferSelect;
 export type DmcaNoticeRow = typeof dmcaNotices.$inferSelect;
 export type KycApplicationRow = typeof kycApplications.$inferSelect;
 export type AuditEventRow = typeof auditEvents.$inferSelect;
+export type ReportRow = typeof reports.$inferSelect;
+export type ModerationActionRow = typeof moderationActions.$inferSelect;
+export type AuditLogRow = typeof auditLog.$inferSelect;
 export type AccountRow = typeof accounts.$inferSelect;
 export type WalletSnapshotRow = typeof walletSnapshots.$inferSelect;
 export type WalletTransactionRow = typeof walletTransactions.$inferSelect;

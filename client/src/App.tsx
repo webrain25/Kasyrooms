@@ -30,7 +30,7 @@ const DmcaPage = lazy(() => import("@/pages/dmca"));
 const DmcaSubmitPage = lazy(() => import("@/pages/dmca-submit"));
 const GuidelinesPage = lazy(() => import("@/pages/guidelines"));
 const RefundPolicyPage = lazy(() => import("@/pages/refund"));
-const AdminDashboard = lazy(() => import("@/pages/admin"));
+const AdminApp = lazy(() => import("@/pages/admin-app"));
 const ModelDashboard = lazy(() => import("@/pages/model-dashboard"));
 const AgeCompliance = lazy(() => import("@/pages/age-compliance"));
 const KycOnboardingPage = lazy(() => import("@/pages/kyc"));
@@ -38,7 +38,6 @@ const KycOnboardingPage = lazy(() => import("@/pages/kyc"));
 const DebugImages = lazy(() => import("@/pages/debug-images"));
 
 function Router() {
-  const AdminOnly = withRole(['admin'], AdminDashboard);
   const ModelOnly = withRole(['model'], ModelDashboard);
   return (
     <Suspense fallback={<div className="p-6 text-center">Loading…</div>}>
@@ -61,7 +60,13 @@ function Router() {
         <Route path="/guidelines" component={GuidelinesPage} />
         <Route path="/refund" component={RefundPolicyPage} />
   <Route path="/18plus" component={AgeCompliance} />
-  <Route path="/admin">{() => <AdminOnly />}</Route>
+  <Route path="/admin/login" component={AdminApp} />
+  <Route path="/admin" component={AdminApp} />
+  <Route path="/admin/users" component={AdminApp} />
+  <Route path="/admin/models" component={AdminApp} />
+  <Route path="/admin/reports" component={AdminApp} />
+  <Route path="/admin/audit" component={AdminApp} />
+  <Route path="/admin/sirplay" component={AdminApp} />
   <Route path="/dashboard/model">{() => <ModelOnly />}</Route>
         <Route path="/model/:id" component={ModelProfile} />
         <Route path="/login" component={Login} />
