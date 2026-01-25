@@ -193,8 +193,6 @@ export default function Home() {
           <ModelGrid filter={config.filter} showRank={config.showRank} minimal orderedIds={orderedIds} refetchIntervalMs={10000} />
         </div>
       </section>
-
-  {/* VIP promotion removed */}
       <Footer />
     </div>
   );

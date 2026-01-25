@@ -7,9 +7,9 @@ const slides = [
   {
     id: 1,
     title: "Connect with Premium Models",
-    subtitle: "Experience exclusive private shows with verified VIP models. Join now and get 100 free credits.",
+    subtitle: "Experience exclusive private shows with verified models. Join now and get 100 free credits.",
     image: "https://images.unsplash.com/photo-1529626455594-4ff0802cfb7e?ixlib=rb-4.0.3&auto=format&fit=crop&w=1920&h=1080",
-    badge: "VIP Featured"
+    badge: "Featured"
   },
   {
     id: 2,

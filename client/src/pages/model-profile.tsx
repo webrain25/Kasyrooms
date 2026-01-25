@@ -228,7 +228,6 @@ export default function ModelProfile() {
                 <i className="fas fa-circle mr-1 text-xs"></i>
                 {model.isOnline ? t("online") : t("offline")}
               </Badge>
-              {/* VIP removed */}
             </div>
 
             {/* New Badge - Top Right */}

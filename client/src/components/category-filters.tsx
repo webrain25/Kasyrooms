@@ -22,7 +22,6 @@ const filters = [
     icon: "fas fa-star",
     iconClass: "text-gold-primary"
   },
-  // VIP removed
   {
     id: "new",
     label: "New Models",

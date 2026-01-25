@@ -2,14 +2,12 @@ import { createContext, useContext, useEffect, useMemo, useState, ReactNode } fr
 
 export type Lang = "it" | "en" | "fr" | "de" | "es";
 
-const translations: Record<Lang, Record<string, string>> = {
+export const translations: Record<Lang, Record<string, string>> = {
   en: {
     // Header
     favorites: "Favorites",
     login: "Log in",
     signup: "Sign up",
-  // VIP removed
-  // becomeVip: "VIP Members",
     becomeModel: "Become a Model",
     logout: "Logout",
     welcome: "Welcome",
@@ -17,14 +15,12 @@ const translations: Record<Lang, Record<string, string>> = {
     // Filters (alias)
     "filters.online": "Online",
     "filters.top": "Top Rated",
-  // "filters.vip": "VIP Models",
     "filters.new": "New Models",
     "filters.trending": "Trending",
     "filters.favorites": "Favorites",
     // Filters
     "filter.online": "Online Now",
     "filter.top": "Top Rated",
-  // "filter.vip": "VIP Models",
     "filter.new": "New Models",
     "filter.trending": "Trending",
     "filter.favorites": "Favorites",
@@ -45,7 +41,6 @@ const translations: Record<Lang, Record<string, string>> = {
     termsOfService: "Terms of Service",
     privacyPolicy: "Privacy Policy",
     cookiePolicy: "Cookie Policy",
-  // vipMembership: "VIP Membership",
     becomeAModel: "Become a Model",
     yourFavorites: "Your Favorites",
     noFavoritesYet: "No favorites yet",
@@ -262,7 +257,6 @@ const translations: Record<Lang, Record<string, string>> = {
     "footer.about.description": "Premium video chat platform connecting you with verified models worldwide.",
     "footer.quickLinks.title": "Quick Links",
     "footer.quickLinks.browse": "Browse Models",
-  // "footer.quickLinks.vip": "VIP Membership",
     
     "footer.quickLinks.becomeModel": "Become a Model",
     
@@ -280,8 +274,6 @@ const translations: Record<Lang, Record<string, string>> = {
   "footer.links.cookies": "Cookies",
   "footer.links.policies": "Related policies",
     "footer.copyright": "All rights reserved. | 18+ Only",
-
-  // VIP Page removed
 
     // Become Model Page
     "becomeModel.title": "Become a Model",
@@ -321,7 +313,7 @@ const translations: Record<Lang, Record<string, string>> = {
   "support.email": "Email",
   "support.needMore": "Need more help? Write to",
   "faq.title": "Frequently Asked Questions",
-  "faq.intro": "The most common questions from our community.",
+  "faq.intro": "Click a question to see the answer.",
   "faq.q1": "How do I create an account?",
   "faq.q2": "How does a session with a model work?",
   "faq.q3": "Can I pause a session?",
@@ -332,6 +324,16 @@ const translations: Record<Lang, Record<string, string>> = {
   "faq.q8": "Are chats and sessions private?",
   "faq.q9": "How do I become a model?",
   "faq.q10": "How can I contact support?",
+  "faq.a1": "Click Sign Up, fill in the required fields, and confirm your email to activate your account.",
+  "faq.a2": "Go to the model’s profile and start the session. Time starts immediately and the cost is automatically deducted from your balance.",
+  "faq.a3": "No. Once started, a session can’t be paused or stopped.",
+  "faq.a4": "Yes. All new users receive a one-time welcome bonus that must be used before real credits.",
+  "faq.a5": "The timer keeps running. When you come back, you continue with the remaining available time.",
+  "faq.a6": "You can top up your balance from the Wallet section by choosing one of the available payment methods.",
+  "faq.a7": "No. Purchased credits do not expire.",
+  "faq.a8": "Yes. All communications are private and are not recorded.",
+  "faq.a9": "Visit the Become a Model page and complete the registration and verification process.",
+  "faq.a10": "You can contact support via the Contact page or by email for any need.",
   "faq.stillNeed": "Still need assistance?",
   "contact.title": "Contact Us",
   "contact.subtitle": "We're here to help you succeed.",
@@ -480,7 +482,6 @@ const translations: Record<Lang, Record<string, string>> = {
     favorites: "Preferiti",
     login: "Accedi",
     signup: "Registrati",
-  // becomeVip: "Membri VIP",
     becomeModel: "Diventa Modella",
     logout: "Esci",
     welcome: "Benvenuto",
@@ -488,7 +489,6 @@ const translations: Record<Lang, Record<string, string>> = {
     // Filters (alias)
     "filters.online": "Online",
     "filters.top": "Top Valutate",
-  // "filters.vip": "Modelle VIP",
     "filters.new": "Nuove Modelle",
     "filters.trending": "Di Tendenza",
     "filters.favorites": "Preferiti",
@@ -502,7 +502,6 @@ const translations: Record<Lang, Record<string, string>> = {
       "home.favorites.subtitle": "Le tue modelle salvate",
       "home.all.subtitle": "Sfoglia tutte le modelle disponibili",
     "filter.top": "Top Valutate",
-  // "filter.vip": "Modelle VIP",
     "filter.new": "Nuove Modelle",
     "filter.trending": "Di Tendenza",
     "filter.favorites": "Preferiti",
@@ -523,7 +522,6 @@ const translations: Record<Lang, Record<string, string>> = {
     termsOfService: "Termini di Servizio",
     privacyPolicy: "Privacy Policy",
     cookiePolicy: "Cookie Policy",
-  // vipMembership: "Abbonamento VIP",
     becomeAModel: "Diventa Modella",
     yourFavorites: "I Tuoi Preferiti",
     noFavoritesYet: "Nessun preferito ancora",
@@ -733,7 +731,6 @@ const translations: Record<Lang, Record<string, string>> = {
     "footer.about.description": "Piattaforma di video chat premium che ti connette con modelle verificate in tutto il mondo.",
     "footer.quickLinks.title": "Link Rapidi",
     "footer.quickLinks.browse": "Scopri le Modelle",
-  // "footer.quickLinks.vip": "Abbonamento VIP",
     
     "footer.quickLinks.becomeModel": "Diventa Modella",
     
@@ -751,8 +748,6 @@ const translations: Record<Lang, Record<string, string>> = {
   "footer.links.cookies": "Cookie",
   "footer.links.policies": "Policy legali",
     "footer.copyright": "Tutti i diritti riservati. | Solo 18+",
-
-  // VIP removed (it)
 
     // Diventa Modella
     "becomeModel.title": "Diventa Modella",
@@ -792,7 +787,7 @@ const translations: Record<Lang, Record<string, string>> = {
   "support.email": "Email",
   "support.needMore": "Serve ancora aiuto? Scrivi a",
   "faq.title": "Domande Frequenti",
-  "faq.intro": "Le domande più comuni della community.",
+  "faq.intro": "Clicca su una domanda per vedere la risposta.",
   "faq.q1": "Come creo un account?",
   "faq.q2": "Come funziona una sessione con una modella?",
   "faq.q3": "Posso mettere in pausa una sessione?",
@@ -803,6 +798,16 @@ const translations: Record<Lang, Record<string, string>> = {
   "faq.q8": "Le chat e le sessioni sono private?",
   "faq.q9": "Come divento una modella?",
   "faq.q10": "Come posso contattare l’assistenza?",
+  "faq.a1": "Clicca su Registrati, compila i campi richiesti e conferma l’email per attivare l’account.",
+  "faq.a2": "Accedi al profilo della modella e avvia la sessione. Il tempo parte subito e il costo viene scalato automaticamente dal tuo saldo.",
+  "faq.a3": "No. Una volta avviata, la sessione non può essere messa in pausa né interrotta.",
+  "faq.a4": "Sì. Tutti i nuovi utenti ricevono un bonus iniziale utilizzabile una sola volta, che deve essere consumato prima dei crediti reali.",
+  "faq.a5": "Il timer continua a scorrere. Rientrando, riprendi con il tempo residuo disponibile.",
+  "faq.a6": "Puoi ricaricare il saldo dalla sezione Wallet scegliendo uno dei metodi di pagamento disponibili.",
+  "faq.a7": "No. I crediti acquistati non scadono.",
+  "faq.a8": "Sì. Tutte le comunicazioni sono private e non vengono registrate.",
+  "faq.a9": "Visita la pagina Diventa Modella e completa il processo di registrazione e verifica.",
+  "faq.a10": "Puoi contattare il supporto tramite la pagina Contatti o via email per qualsiasi necessità.",
   "faq.stillNeed": "Hai ancora bisogno di assistenza?",
   "contact.title": "Contattaci",
   "contact.subtitle": "Siamo qui per aiutarti a crescere.",
@@ -954,9 +959,9 @@ const translations: Record<Lang, Record<string, string>> = {
       "home.trending.subtitle": "Modèles les plus populaires en ce moment",
       "home.favorites.subtitle": "Vos modèles enregistrés",
       "home.all.subtitle": "Parcourir tous les modèles disponibles",
-    favorites: "Favoris", login: "Connexion", signup: "Inscription", becomeVip: "Membres VIP", becomeModel: "Devenir Modèle", logout: "Déconnexion", welcome: "Bienvenue", searchPlaceholder: "Rechercher des modèles...", browseModels: "Parcourir les Modèles", startPrivateShow: "Démarrer le show privé", startChat: "Commencer Chat", viewAll: "Voir tout", allModels: "Tous les Modèles", noModelsFound: "Aucun modèle trouvé", clearFilters: "Effacer les filtres", helpCenter: "Centre d'aide", contactUs: "Nous contacter", termsOfService: "Conditions d'utilisation", privacyPolicy: "Politique de confidentialité", cookiePolicy: "Politique des cookies", vipMembership: "Adhésion VIP", becomeAModel: "Devenir Modèle", yourFavorites: "Vos Favoris", noFavoritesYet: "Pas encore de favoris", tapHeartToAdd: "Appuyez sur le cœur d'un modèle pour l'ajouter aux favoris", welcomeBack: "Bon retour", signInToAccount: "Connectez-vous à votre compte pour accéder au contenu premium", username: "Nom d'utilisateur", password: "Mot de passe", enterUsername: "Entrez votre nom d'utilisateur", enterPassword: "Entrez votre mot de passe", signingIn: "Connexion...", signIn: "Se connecter", dontHaveAccount: "Vous n'avez pas de compte ?", signUpHere: "Inscrivez-vous ici", loginSuccessful: "Connexion réussie", loginFailed: "Échec de la connexion", invalidCredentials: "Utilisez le nom d'utilisateur 'testuser' avec n'importe quel mot de passe", yearsOld: "ans", watching: "regardent", languages: "Langues", specialties: "Spécialités", online: "En ligne", offline: "Hors ligne", securePayments: "Paiements sécurisés", acceptPaymentMethods: "Nous acceptons tous les principaux modes de paiement", search: "Rechercher", sortBy: "Trier par", status: "Statut", all: "Tous", name: "Nom", rating: "Évaluation", viewers: "Spectateurs", age: "Âge", showing: "Affichage", of: "de", models: "modèles"
-    ,"filters.online": "En ligne", "filters.top": "Les mieux notés", "filters.vip": "Modèles VIP", "filters.new": "Nouveaux modèles", "filters.trending": "Tendance", "filters.favorites": "Favoris"
-    ,"filter.online": "En ligne maintenant", "filter.top": "Les mieux notés", "filter.vip": "Modèles VIP", "filter.new": "Nouveaux modèles", "filter.trending": "Tendance", "filter.favorites": "Favoris"
+    favorites: "Favoris", login: "Connexion", signup: "Inscription", becomeModel: "Devenir Modèle", logout: "Déconnexion", welcome: "Bienvenue", searchPlaceholder: "Rechercher des modèles...", browseModels: "Parcourir les Modèles", startPrivateShow: "Démarrer le show privé", startChat: "Commencer Chat", viewAll: "Voir tout", allModels: "Tous les Modèles", noModelsFound: "Aucun modèle trouvé", clearFilters: "Effacer les filtres", helpCenter: "Centre d'aide", contactUs: "Nous contacter", termsOfService: "Conditions d'utilisation", privacyPolicy: "Politique de confidentialité", cookiePolicy: "Politique des cookies", becomeAModel: "Devenir Modèle", yourFavorites: "Vos Favoris", noFavoritesYet: "Pas encore de favoris", tapHeartToAdd: "Appuyez sur le cœur d'un modèle pour l'ajouter aux favoris", welcomeBack: "Bon retour", signInToAccount: "Connectez-vous à votre compte pour accéder au contenu premium", username: "Nom d'utilisateur", password: "Mot de passe", enterUsername: "Entrez votre nom d'utilisateur", enterPassword: "Entrez votre mot de passe", signingIn: "Connexion...", signIn: "Se connecter", dontHaveAccount: "Vous n'avez pas de compte ?", signUpHere: "Inscrivez-vous ici", loginSuccessful: "Connexion réussie", loginFailed: "Échec de la connexion", invalidCredentials: "Utilisez le nom d'utilisateur 'testuser' avec n'importe quel mot de passe", yearsOld: "ans", watching: "regardent", languages: "Langues", specialties: "Spécialités", online: "En ligne", offline: "Hors ligne", securePayments: "Paiements sécurisés", acceptPaymentMethods: "Nous acceptons tous les principaux modes de paiement", search: "Rechercher", sortBy: "Trier par", status: "Statut", all: "Tous", name: "Nom", rating: "Évaluation", viewers: "Spectateurs", age: "Âge", showing: "Affichage", of: "de", models: "modèles"
+    ,"filters.online": "En ligne", "filters.top": "Les mieux notés", "filters.new": "Nouveaux modèles", "filters.trending": "Tendance", "filters.favorites": "Favoris"
+    ,"filter.online": "En ligne maintenant", "filter.top": "Les mieux notés", "filter.new": "Nouveaux modèles", "filter.trending": "Tendance", "filter.favorites": "Favoris"
 
     ,"favorites.title": "Vos Favoris"
     ,"favorites.empty.title": "Pas encore de favoris"
@@ -974,7 +979,6 @@ const translations: Record<Lang, Record<string, string>> = {
     ,"footer.about.description": "Plateforme de chat vidéo premium vous connectant à des modèles vérifiés dans le monde entier."
     ,"footer.quickLinks.title": "Liens rapides"
     ,"footer.quickLinks.browse": "Parcourir les Modèles"
-    ,"footer.quickLinks.vip": "Adhésion VIP"
     
     ,"footer.quickLinks.becomeModel": "Devenir Modèle"
     
@@ -993,45 +997,37 @@ const translations: Record<Lang, Record<string, string>> = {
   ,"footer.links.policies": "Politiques connexes"
     ,"footer.copyright": "Tous droits réservés. | 18+ seulement"
 
-    ,"vip.title": "Adhésion VIP"
-    ,"vip.subtitle": "Débloquez des fonctionnalités premium et des expériences exclusives."
-    ,"vip.benefitsTitle": "Avantages VIP"
-    ,"vip.benefits.0": "Expérience sans publicité"
-    ,"vip.benefits.1": "Support prioritaire"
-    ,"vip.benefits.2": "Shows exclusifs"
-    ,"vip.benefits.3": "Crédits bonus"
-    ,"vip.benefits.4": "Badge VIP"
-    ,"vip.benefits.5": "Accès anticipé aux fonctionnalités"
-    ,"vip.plansTitle": "Choisissez votre plan"
-    ,"vip.popular": "Le plus populaire"
-    ,"vip.choosePlan": "Choisir le plan"
-    ,"vip.plans.basic.name": "Basique"
-    ,"vip.plans.basic.duration": "mois"
-    ,"vip.plans.basic.features.0": "Navigation sans publicité"
-    ,"vip.plans.basic.features.1": "Badge VIP"
-    ,"vip.plans.basic.features.2": "Support de base"
-    ,"vip.plans.premium.name": "Premium"
-    ,"vip.plans.premium.duration": "mois"
-    ,"vip.plans.premium.features.0": "Toutes les fonctionnalités Basique"
-    ,"vip.plans.premium.features.1": "Support prioritaire"
-    ,"vip.plans.premium.features.2": "Accès aux shows exclusifs"
-    ,"vip.plans.premium.features.3": "Crédits bonus mensuels"
-    ,"vip.plans.ultimate.name": "Ultime"
-    ,"vip.plans.ultimate.duration": "mois"
-    ,"vip.plans.ultimate.features.0": "Toutes les fonctionnalités Premium"
-    ,"vip.plans.ultimate.features.1": "Accès anticipé"
-    ,"vip.plans.ultimate.features.2": "Visibilité maximale"
-    ,"vip.plans.ultimate.features.3": "Crédits bonus doublés"
-    ,"vip.plans.ultimate.features.4": "Conciergerie dédiée"
-    ,"vip.faqTitle": "Questions fréquentes"
-    ,"vip.faq.0.question": "Que comprend le VIP ?"
-    ,"vip.faq.0.answer": "Accès aux shows exclusifs, meilleure visibilité et plus."
-    ,"vip.faq.1.question": "Puis-je annuler à tout moment ?"
-    ,"vip.faq.1.answer": "Oui, vous pouvez annuler quand vous voulez."
-    ,"vip.faq.2.question": "Mon paiement est-il sécurisé ?"
-    ,"vip.faq.2.answer": "Toutes les transactions sont sécurisées et chiffrées."
-    ,"vip.faq.3.question": "Les VIP ont-ils un support prioritaire ?"
-    ,"vip.faq.3.answer": "Oui, les membres VIP ont une assistance prioritaire."
+    // Support / FAQ
+    ,"support.title": "Support"
+    ,"support.intro": "Accédez aux ressources, aux politiques et à l’assistance pour chaque besoin."
+    ,"support.help": "Centre d'aide"
+    ,"support.faq": "FAQ"
+    ,"support.contact": "Contact"
+    ,"support.email": "E-mail"
+    ,"support.needMore": "Besoin de plus d’aide ? Écrivez à"
+    ,"faq.title": "Foire aux questions"
+    ,"faq.intro": "Cliquez sur une question pour voir la réponse."
+    ,"faq.q1": "Comment créer un compte ?"
+    ,"faq.a1": "Cliquez sur S’inscrire, remplissez les champs requis et confirmez votre e-mail pour activer le compte."
+    ,"faq.q2": "Comment fonctionne une session avec un modèle ?"
+    ,"faq.a2": "Ouvrez le profil du modèle et démarrez la session. Le temps démarre immédiatement et le coût est déduit automatiquement de votre solde."
+    ,"faq.q3": "Puis-je mettre une session en pause ?"
+    ,"faq.a3": "Non. Une fois démarrée, une session ne peut pas être mise en pause ni interrompue."
+    ,"faq.q4": "Y a-t-il un bonus de bienvenue ?"
+    ,"faq.a4": "Oui. Tous les nouveaux utilisateurs reçoivent un bonus utilisable une seule fois, à consommer avant les crédits payants."
+    ,"faq.q5": "Que se passe-t-il si je quitte ou perds la connexion pendant une session ?"
+    ,"faq.a5": "Le minuteur continue de tourner. En revenant, vous reprenez avec le temps restant."
+    ,"faq.q6": "Comment recharger mon solde ?"
+    ,"faq.a6": "Vous pouvez recharger votre solde depuis la section Wallet en choisissant un moyen de paiement disponible."
+    ,"faq.q7": "Les crédits achetés expirent-ils ?"
+    ,"faq.a7": "Non. Les crédits achetés n’expirent pas."
+    ,"faq.q8": "Les chats et les sessions sont-ils privés ?"
+    ,"faq.a8": "Oui. Toutes les communications sont privées et ne sont pas enregistrées."
+    ,"faq.q9": "Comment devenir modèle ?"
+    ,"faq.a9": "Visitez la page Devenir Modèle et terminez le processus d’inscription et de vérification."
+    ,"faq.q10": "Comment contacter l’assistance ?"
+    ,"faq.a10": "Vous pouvez contacter le support via la page Contact ou par e-mail pour toute demande."
+    ,"faq.stillNeed": "Besoin d’assistance supplémentaire ?"
 
     ,"becomeModel.title": "Devenir Modèle"
     ,"becomeModel.subtitle": "Rejoignez notre plateforme et monétisez votre talent."
@@ -1220,6 +1216,143 @@ const translations: Record<Lang, Record<string, string>> = {
   ,"refund.section.law.title": "Droits Légaux"
   ,"refund.section.law.content": "Aucune disposition n'altère vos droits impératifs en matière de protection des consommateurs."
   ,"ageCompliance.title": "Vérification d'âge (18+) & 2257"
+
+  // Missing keys (kept in sync with EN)
+  ,"email": "E-mail"
+  ,"common.loading.auth": "Chargement de l’authentification…"
+
+  ,"models.subtitle": "Découvrez tous nos modèles incroyables"
+  ,"notFound.title": "404 Page introuvable"
+  ,"notFound.subtitle": "La page que vous cherchez n'existe pas."
+
+  ,"ageCompliance.modal.title": "Confirmer l'âge"
+  ,"ageCompliance.modal.body": "Ce site contient du contenu pour adultes. Confirmez-vous avoir au moins 18 ans (ou l'âge légal dans votre pays) ?"
+  ,"ageCompliance.modal.yes": "Oui, j'ai 18+"
+  ,"ageCompliance.modal.no": "Non"
+  ,"ageCompliance.modal.blocked": "Session terminée. Pour accéder au contenu, vous devez avoir au moins 18 ans."
+  ,"ageCompliance.modal.exit": "Quitter"
+
+  ,"register.title": "Rejoindre Kasyrooms"
+  ,"register.subtitle": "Créez votre compte pour accéder à du contenu exclusif"
+  ,"register.firstName": "Prénom"
+  ,"register.firstName.placeholder": "Jane"
+  ,"register.lastName": "Nom"
+  ,"register.lastName.placeholder": "Doe"
+  ,"register.dob": "Date de naissance"
+  ,"register.username.placeholder": "Choisissez un nom d'utilisateur"
+  ,"register.email.placeholder": "Entrez votre e-mail"
+  ,"register.password.placeholder": "Créez un mot de passe"
+  ,"register.confirmPassword": "Confirmer le mot de passe"
+  ,"register.confirmPassword.placeholder": "Confirmez votre mot de passe"
+  ,"register.creating": "Création du compte…"
+  ,"register.create": "Créer un compte"
+  ,"register.haveAccount": "Vous avez déjà un compte ?"
+  ,"register.signInHere": "Connectez-vous ici"
+  ,"register.toast.passwordMismatch.title": "Mot de passe différent"
+  ,"register.toast.passwordMismatch.desc": "Les mots de passe ne correspondent pas"
+  ,"register.toast.accountCreated.title": "Compte créé"
+  ,"register.toast.accountCreated.desc": "Bienvenue sur Kasyrooms !"
+  ,"register.toast.failed.title": "Inscription échouée"
+  ,"register.toast.failed.desc": "Veuillez réessayer plus tard"
+
+  ,"kyc.title": "Onboarding KYC"
+  ,"kyc.loggedAs": "Connecté en tant que"
+  ,"kyc.validation.title": "Validation"
+  ,"kyc.validation.fullName": "Nom complet requis"
+  ,"kyc.validation.docType": "Sélectionnez un type de document"
+  ,"kyc.submitted.title": "Envoyé"
+  ,"kyc.submitted.desc": "Demande KYC créée. Vous pouvez maintenant télécharger des images."
+  ,"kyc.submissionFailed.title": "Envoi échoué"
+  ,"kyc.upload.missingApp.title": "Demande manquante"
+  ,"kyc.upload.missingApp.desc": "Soumettez d'abord le formulaire KYC pour obtenir un ID de demande."
+  ,"kyc.upload.noFile.title": "Aucun fichier sélectionné"
+  ,"kyc.upload.noFile.desc": "Choisissez une image à télécharger."
+  ,"kyc.uploaded.title": "Téléversé"
+  ,"kyc.uploaded.descSuffix": "téléversé avec succès."
+  ,"kyc.upload.kind.front": "Recto"
+  ,"kyc.upload.kind.back": "Verso"
+  ,"kyc.upload.kind.selfie": "Selfie"
+  ,"kyc.uploadFailed.title": "Échec du téléchargement"
+  ,"kyc.form.fullName": "Nom complet"
+  ,"kyc.form.fullName.placeholder": "Jane Doe"
+  ,"kyc.form.dob": "Date de naissance"
+  ,"kyc.form.country": "Pays"
+  ,"kyc.form.country.placeholder": "Pays"
+  ,"kyc.form.docType": "Type de document"
+  ,"kyc.form.docType.select": "Sélectionner…"
+  ,"kyc.form.docType.passport": "Passeport"
+  ,"kyc.form.docType.idCard": "Carte d'identité"
+  ,"kyc.form.docType.driver": "Permis de conduire"
+  ,"kyc.form.docFrontUrl": "URL du document (recto)"
+  ,"kyc.form.docBackUrl": "URL du document (verso)"
+  ,"kyc.form.selfieUrl": "URL du selfie"
+  ,"kyc.form.url.placeholder": "https://..."
+  ,"kyc.form.notes": "Notes (optionnel)"
+  ,"kyc.form.notes.placeholder": "Quelque chose à ajouter"
+  ,"kyc.form.submit": "Envoyer la demande"
+  ,"kyc.form.submitting": "Envoi…"
+  ,"kyc.applicationId": "ID de demande"
+  ,"kyc.noImage": "Aucune image"
+  ,"kyc.upload": "Téléverser"
+  ,"kyc.uploading": "Téléversement…"
+
+  ,"dmcaSubmit.title": "Soumettre une demande de retrait DMCA"
+  ,"dmcaSubmit.validation.title": "Validation"
+  ,"dmcaSubmit.validation.noUrls": "Ajoutez au moins une URL contrefaisante."
+  ,"dmcaSubmit.submitted.title": "Envoyé"
+  ,"dmcaSubmit.submitted.desc": "Demande DMCA envoyée. Nous examinerons sous peu."
+  ,"dmcaSubmit.failed.title": "Envoi échoué"
+  ,"dmcaSubmit.form.name": "Votre nom"
+  ,"dmcaSubmit.form.email": "Votre e-mail"
+  ,"dmcaSubmit.form.originalUrl": "URL du contenu original"
+  ,"dmcaSubmit.form.infringingUrls": "URLs contrefaisantes (une par ligne ou séparées par des virgules)"
+  ,"dmcaSubmit.form.signature": "Signature (tapez votre nom complet)"
+  ,"dmcaSubmit.form.notes": "Notes supplémentaires (optionnel)"
+  ,"dmcaSubmit.form.submit": "Envoyer la demande"
+  ,"dmcaSubmit.form.submitting": "Envoi…"
+  ,"dmcaSubmit.placeholder.name": "Jane Doe"
+  ,"dmcaSubmit.placeholder.email": "vous@exemple.com"
+  ,"dmcaSubmit.placeholder.originalUrl": "https://votre-site.com/original"
+  ,"dmcaSubmit.placeholder.infringingUrls": "https://exemple.com/contrefaisant-1\nhttps://exemple.com/contrefaisant-2"
+  ,"dmcaSubmit.placeholder.signature": "Jane Doe"
+  ,"dmcaSubmit.placeholder.notes": "Contexte ou clarification"
+
+  ,"modelProfile.notFound.title": "Modèle introuvable"
+  ,"modelProfile.notFound.subtitle": "Le modèle que vous cherchez n'existe pas."
+  ,"modelProfile.goBack": "Retour"
+  ,"modelProfile.unavailable": "Indisponible"
+  ,"modelProfile.busy": "Occupé"
+  ,"modelProfile.blocked": "Bloqué"
+  ,"modelProfile.sendMessage.title": "Envoyer un message"
+  ,"modelProfile.sendMessage.placeholder": "Tapez votre message"
+  ,"modelProfile.sendMessage.sending": "Envoi…"
+  ,"modelProfile.sendMessage.send": "Envoyer"
+  ,"modelProfile.blockedNotice": "Vous êtes bloqué par ce modèle."
+  ,"modelProfile.tip.title": "Envoyer un pourboire"
+  ,"modelProfile.tip.placeholder": "Montant"
+  ,"modelProfile.tip.help": "Les pourboires sont prélevés sur le solde de votre wallet."
+  ,"modelProfile.tip.sending": "Envoi…"
+  ,"modelProfile.tip.send": "Envoyer"
+  ,"modelProfile.moderation.title": "Modération"
+  ,"modelProfile.moderation.placeholder": "Motif du signalement"
+  ,"modelProfile.moderation.sending": "Envoi…"
+  ,"modelProfile.moderation.report": "Signaler"
+  ,"modelProfile.block": "Bloquer"
+  ,"modelProfile.stats.rating": "Note"
+  ,"modelProfile.stats.viewers": "Spectateurs"
+  ,"modelProfile.alert.blocked": "Vous êtes bloqué par ce modèle."
+  ,"modelProfile.alert.offline": "Ce modèle est hors ligne."
+  ,"modelProfile.alert.busy": "Ce modèle est actuellement occupé."
+  ,"modelProfile.alert.typeMessage": "Veuillez saisir un message"
+  ,"modelProfile.alert.messageFailed": "Échec de l'envoi du message"
+  ,"modelProfile.alert.messageSent": "Message envoyé"
+  ,"modelProfile.alert.enterReason": "Veuillez indiquer un motif"
+  ,"modelProfile.alert.reportSent": "Signalement envoyé"
+  ,"modelProfile.alert.tipInvalid": "Saisissez un montant valide"
+  ,"modelProfile.alert.insufficientFunds": "Fonds insuffisants"
+  ,"modelProfile.alert.tipFailed": "Échec du pourboire"
+  ,"modelProfile.alert.thanksTip": "Merci pour le pourboire !"
+  ,"modelProfile.alert.blockedDone": "Bloqué"
   },
   de: {
       // Home section subtitles
@@ -1229,9 +1362,9 @@ const translations: Record<Lang, Record<string, string>> = {
       "home.trending.subtitle": "Zurzeit beliebteste Modelle",
       "home.favorites.subtitle": "Ihre gespeicherten Modelle",
       "home.all.subtitle": "Alle verfügbaren Modelle durchsuchen",
-    favorites: "Favoriten", login: "Anmelden", signup: "Registrieren", becomeVip: "VIP-Mitglieder", becomeModel: "Model werden", logout: "Abmelden", welcome: "Willkommen", searchPlaceholder: "Modelle suchen...", browseModels: "Modelle ansehen", startPrivateShow: "Privatshow starten", startChat: "Chat starten", viewAll: "Alle anzeigen", allModels: "Alle Modelle", noModelsFound: "Keine Modelle gefunden", clearFilters: "Filter löschen", helpCenter: "Hilfezentrum", contactUs: "Kontakt", termsOfService: "Nutzungsbedingungen", privacyPolicy: "Datenschutzrichtlinie", cookiePolicy: "Cookie-Richtlinie", vipMembership: "VIP-Mitgliedschaft", becomeAModel: "Model werden", yourFavorites: "Ihre Favoriten", noFavoritesYet: "Noch keine Favoriten", tapHeartToAdd: "Tippen Sie auf das Herz eines Models, um es zu den Favoriten hinzuzufügen", welcomeBack: "Willkommen zurück", signInToAccount: "Melden Sie sich in Ihrem Konto an, um auf Premium-Inhalte zuzugreifen", username: "Benutzername", password: "Passwort", enterUsername: "Geben Sie Ihren Benutzernamen ein", enterPassword: "Geben Sie Ihr Passwort ein", signingIn: "Anmeldung...", signIn: "Anmelden", dontHaveAccount: "Haben Sie kein Konto?", signUpHere: "Hier registrieren", loginSuccessful: "Anmeldung erfolgreich", loginFailed: "Anmeldung fehlgeschlagen", invalidCredentials: "Verwenden Sie den Benutzernamen 'testuser' mit einem beliebigen Passwort", yearsOld: "Jahre alt", watching: "schauen zu", languages: "Sprachen", specialties: "Spezialitäten", online: "Online", offline: "Offline", securePayments: "Sichere Zahlungen", acceptPaymentMethods: "Wir akzeptieren alle gängigen Zahlungsmethoden", search: "Suchen", sortBy: "Sortieren nach", status: "Status", all: "Alle", name: "Name", rating: "Bewertung", viewers: "Zuschauer", age: "Alter", showing: "Zeige", of: "von", models: "Modelle"
-    ,"filters.online": "Online", "filters.top": "Top bewertet", "filters.vip": "VIP-Modelle", "filters.new": "Neue Modelle", "filters.trending": "Im Trend", "filters.favorites": "Favoriten"
-    ,"filter.online": "Jetzt online", "filter.top": "Top bewertet", "filter.vip": "VIP-Modelle", "filter.new": "Neue Modelle", "filter.trending": "Im Trend", "filter.favorites": "Favoriten"
+    favorites: "Favoriten", login: "Anmelden", signup: "Registrieren", becomeModel: "Model werden", logout: "Abmelden", welcome: "Willkommen", searchPlaceholder: "Modelle suchen...", browseModels: "Modelle ansehen", startPrivateShow: "Privatshow starten", startChat: "Chat starten", viewAll: "Alle anzeigen", allModels: "Alle Modelle", noModelsFound: "Keine Modelle gefunden", clearFilters: "Filter löschen", helpCenter: "Hilfezentrum", contactUs: "Kontakt", termsOfService: "Nutzungsbedingungen", privacyPolicy: "Datenschutzrichtlinie", cookiePolicy: "Cookie-Richtlinie", becomeAModel: "Model werden", yourFavorites: "Ihre Favoriten", noFavoritesYet: "Noch keine Favoriten", tapHeartToAdd: "Tippen Sie auf das Herz eines Models, um es zu den Favoriten hinzuzufügen", welcomeBack: "Willkommen zurück", signInToAccount: "Melden Sie sich in Ihrem Konto an, um auf Premium-Inhalte zuzugreifen", username: "Benutzername", password: "Passwort", enterUsername: "Geben Sie Ihren Benutzernamen ein", enterPassword: "Geben Sie Ihr Passwort ein", signingIn: "Anmeldung...", signIn: "Anmelden", dontHaveAccount: "Haben Sie kein Konto?", signUpHere: "Hier registrieren", loginSuccessful: "Anmeldung erfolgreich", loginFailed: "Anmeldung fehlgeschlagen", invalidCredentials: "Verwenden Sie den Benutzernamen 'testuser' mit einem beliebigen Passwort", yearsOld: "Jahre alt", watching: "schauen zu", languages: "Sprachen", specialties: "Spezialitäten", online: "Online", offline: "Offline", securePayments: "Sichere Zahlungen", acceptPaymentMethods: "Wir akzeptieren alle gängigen Zahlungsmethoden", search: "Suchen", sortBy: "Sortieren nach", status: "Status", all: "Alle", name: "Name", rating: "Bewertung", viewers: "Zuschauer", age: "Alter", showing: "Zeige", of: "von", models: "Modelle"
+    ,"filters.online": "Online", "filters.top": "Top bewertet", "filters.new": "Neue Modelle", "filters.trending": "Im Trend", "filters.favorites": "Favoriten"
+    ,"filter.online": "Jetzt online", "filter.top": "Top bewertet", "filter.new": "Neue Modelle", "filter.trending": "Im Trend", "filter.favorites": "Favoriten"
 
     ,"favorites.title": "Ihre Favoriten"
     ,"favorites.empty.title": "Noch keine Favoriten"
@@ -1249,7 +1382,6 @@ const translations: Record<Lang, Record<string, string>> = {
     ,"footer.about.description": "Premium-Videochat-Plattform, die Sie mit verifizierten Modellen weltweit verbindet."
     ,"footer.quickLinks.title": "Schnellzugriffe"
     ,"footer.quickLinks.browse": "Modelle ansehen"
-    ,"footer.quickLinks.vip": "VIP-Mitgliedschaft"
     
     ,"footer.quickLinks.becomeModel": "Model werden"
     
@@ -1268,45 +1400,37 @@ const translations: Record<Lang, Record<string, string>> = {
   ,"footer.links.policies": "Verwandte Richtlinien"
     ,"footer.copyright": "Alle Rechte vorbehalten. | Nur 18+"
 
-    ,"vip.title": "VIP-Mitgliedschaft"
-    ,"vip.subtitle": "Schalten Sie Premium-Funktionen und exklusive Erlebnisse frei."
-    ,"vip.benefitsTitle": "VIP-Vorteile"
-    ,"vip.benefits.0": "Werbefreies Erlebnis"
-    ,"vip.benefits.1": "Prioritäts-Support"
-    ,"vip.benefits.2": "Exklusive Shows"
-    ,"vip.benefits.3": "Bonusguthaben"
-    ,"vip.benefits.4": "VIP-Abzeichen"
-    ,"vip.benefits.5": "Früher Zugriff auf Funktionen"
-    ,"vip.plansTitle": "Wählen Sie Ihren Plan"
-    ,"vip.popular": "Am beliebtesten"
-    ,"vip.choosePlan": "Plan wählen"
-    ,"vip.plans.basic.name": "Basis"
-    ,"vip.plans.basic.duration": "Monat"
-    ,"vip.plans.basic.features.0": "Werbefreies Browsen"
-    ,"vip.plans.basic.features.1": "VIP-Abzeichen"
-    ,"vip.plans.basic.features.2": "Basissupport"
-    ,"vip.plans.premium.name": "Premium"
-    ,"vip.plans.premium.duration": "Monat"
-    ,"vip.plans.premium.features.0": "Alle Basisfunktionen"
-    ,"vip.plans.premium.features.1": "Prioritäts-Support"
-    ,"vip.plans.premium.features.2": "Zugang zu exklusiven Shows"
-    ,"vip.plans.premium.features.3": "Monatliche Bonusguthaben"
-    ,"vip.plans.ultimate.name": "Ultimate"
-    ,"vip.plans.ultimate.duration": "Monat"
-    ,"vip.plans.ultimate.features.0": "Alle Premiumfunktionen"
-    ,"vip.plans.ultimate.features.1": "Früher Zugriff"
-    ,"vip.plans.ultimate.features.2": "Maximale Sichtbarkeit"
-    ,"vip.plans.ultimate.features.3": "Doppelte Bonusguthaben"
-    ,"vip.plans.ultimate.features.4": "Dedizierter Concierge"
-    ,"vip.faqTitle": "Häufige Fragen"
-    ,"vip.faq.0.question": "Was ist im VIP enthalten?"
-    ,"vip.faq.0.answer": "Zugang zu exklusiven Shows, bessere Sichtbarkeit uvm."
-    ,"vip.faq.1.question": "Kann ich jederzeit kündigen?"
-    ,"vip.faq.1.answer": "Ja, Sie können jederzeit kündigen."
-    ,"vip.faq.2.question": "Ist die Zahlung sicher?"
-    ,"vip.faq.2.answer": "Alle Transaktionen sind sicher verschlüsselt."
-    ,"vip.faq.3.question": "Gibt es Prioritäts-Support?"
-    ,"vip.faq.3.answer": "Ja, VIPs erhalten vorrangige Unterstützung."
+    // Support / FAQ
+    ,"support.title": "Support"
+    ,"support.intro": "Zugriff auf Ressourcen, Richtlinien und Hilfe für jedes Anliegen."
+    ,"support.help": "Hilfezentrum"
+    ,"support.faq": "FAQ"
+    ,"support.contact": "Kontakt"
+    ,"support.email": "E-Mail"
+    ,"support.needMore": "Noch mehr Hilfe nötig? Schreibe an"
+    ,"faq.title": "Häufig gestellte Fragen"
+    ,"faq.intro": "Klicke auf eine Frage, um die Antwort zu sehen."
+    ,"faq.q1": "Wie erstelle ich ein Konto?"
+    ,"faq.a1": "Klicke auf Registrieren, fülle die erforderlichen Felder aus und bestätige deine E-Mail, um dein Konto zu aktivieren."
+    ,"faq.q2": "Wie funktioniert eine Session mit einem Model?"
+    ,"faq.a2": "Öffne das Profil des Models und starte die Session. Die Zeit läuft sofort und die Kosten werden automatisch von deinem Guthaben abgezogen."
+    ,"faq.q3": "Kann ich eine Session pausieren?"
+    ,"faq.a3": "Nein. Sobald sie gestartet ist, kann eine Session weder pausiert noch beendet werden."
+    ,"faq.q4": "Gibt es einen Willkommensbonus?"
+    ,"faq.a4": "Ja. Alle neuen Nutzer erhalten einen einmaligen Willkommensbonus, der vor echten Credits verbraucht werden muss."
+    ,"faq.q5": "Was passiert, wenn ich während einer Session gehe oder die Verbindung verliere?"
+    ,"faq.a5": "Der Timer läuft weiter. Wenn du zurückkommst, machst du mit der verbleibenden Zeit weiter."
+    ,"faq.q6": "Wie kann ich mein Guthaben aufladen?"
+    ,"faq.a6": "Du kannst dein Guthaben im Wallet-Bereich aufladen und eine der verfügbaren Zahlungsmethoden wählen."
+    ,"faq.q7": "Verfallen gekaufte Credits?"
+    ,"faq.a7": "Nein. Gekaufte Credits verfallen nicht."
+    ,"faq.q8": "Sind Chats und Sessions privat?"
+    ,"faq.a8": "Ja. Alle Kommunikationen sind privat und werden nicht aufgezeichnet."
+    ,"faq.q9": "Wie werde ich ein Model?"
+    ,"faq.a9": "Besuche die Seite „Model werden“ und schließe Registrierung und Verifizierung ab."
+    ,"faq.q10": "Wie kann ich den Support kontaktieren?"
+    ,"faq.a10": "Du kannst den Support über die Kontaktseite oder per E-Mail erreichen."
+    ,"faq.stillNeed": "Brauchst du noch Hilfe?"
 
     ,"becomeModel.title": "Model werden"
     ,"becomeModel.subtitle": "Treten Sie unserer Plattform bei und monetarisieren Sie Ihr Talent."
@@ -1495,6 +1619,143 @@ const translations: Record<Lang, Record<string, string>> = {
   ,"refund.section.law.title": "Gesetzliche Rechte"
   ,"refund.section.law.content": "Nichts beschränkt Rechte, die nach geltendem Verbraucherrecht nicht ausgeschlossen werden können."
   ,"ageCompliance.title": "Altersnachweis (18+) & 2257"
+
+  // Missing keys (kept in sync with EN)
+  ,"email": "E-Mail"
+  ,"common.loading.auth": "Authentifizierung wird geladen…"
+
+  ,"models.subtitle": "Entdecken Sie all unsere großartigen Modelle"
+  ,"notFound.title": "404 Seite nicht gefunden"
+  ,"notFound.subtitle": "Die Seite, die du suchst, existiert nicht."
+
+  ,"ageCompliance.modal.title": "Alter bestätigen"
+  ,"ageCompliance.modal.body": "Diese Seite enthält Inhalte für Erwachsene. Bestätigst du, dass du mindestens 18 Jahre alt bist (oder volljährig in deinem Land)?"
+  ,"ageCompliance.modal.yes": "Ja, ich bin 18+"
+  ,"ageCompliance.modal.no": "Nein"
+  ,"ageCompliance.modal.blocked": "Sitzung beendet. Um Inhalte zu sehen, musst du mindestens 18 Jahre alt sein."
+  ,"ageCompliance.modal.exit": "Beenden"
+
+  ,"register.title": "Kasyrooms beitreten"
+  ,"register.subtitle": "Erstelle ein Konto, um exklusiven Inhalt zu sehen"
+  ,"register.firstName": "Vorname"
+  ,"register.firstName.placeholder": "Jane"
+  ,"register.lastName": "Nachname"
+  ,"register.lastName.placeholder": "Doe"
+  ,"register.dob": "Geburtsdatum"
+  ,"register.username.placeholder": "Wähle einen Benutzernamen"
+  ,"register.email.placeholder": "Gib deine E-Mail ein"
+  ,"register.password.placeholder": "Erstelle ein Passwort"
+  ,"register.confirmPassword": "Passwort bestätigen"
+  ,"register.confirmPassword.placeholder": "Bestätige dein Passwort"
+  ,"register.creating": "Konto wird erstellt…"
+  ,"register.create": "Konto erstellen"
+  ,"register.haveAccount": "Hast du schon ein Konto?"
+  ,"register.signInHere": "Hier anmelden"
+  ,"register.toast.passwordMismatch.title": "Passwörter stimmen nicht überein"
+  ,"register.toast.passwordMismatch.desc": "Die Passwörter stimmen nicht überein"
+  ,"register.toast.accountCreated.title": "Konto erstellt"
+  ,"register.toast.accountCreated.desc": "Willkommen bei Kasyrooms!"
+  ,"register.toast.failed.title": "Registrierung fehlgeschlagen"
+  ,"register.toast.failed.desc": "Bitte später erneut versuchen"
+
+  ,"kyc.title": "KYC-Onboarding"
+  ,"kyc.loggedAs": "Angemeldet als"
+  ,"kyc.validation.title": "Validierung"
+  ,"kyc.validation.fullName": "Vollständiger Name erforderlich"
+  ,"kyc.validation.docType": "Wählen Sie einen Dokumenttyp"
+  ,"kyc.submitted.title": "Gesendet"
+  ,"kyc.submitted.desc": "KYC-Antrag erstellt. Sie können jetzt Bilder hochladen."
+  ,"kyc.submissionFailed.title": "Übermittlung fehlgeschlagen"
+  ,"kyc.upload.missingApp.title": "Antrag fehlt"
+  ,"kyc.upload.missingApp.desc": "Senden Sie zuerst das KYC-Formular, um eine Antrags-ID zu erhalten."
+  ,"kyc.upload.noFile.title": "Keine Datei ausgewählt"
+  ,"kyc.upload.noFile.desc": "Wählen Sie eine Bilddatei zum Hochladen."
+  ,"kyc.uploaded.title": "Hochgeladen"
+  ,"kyc.uploaded.descSuffix": "erfolgreich hochgeladen."
+  ,"kyc.upload.kind.front": "Vorderseite"
+  ,"kyc.upload.kind.back": "Rückseite"
+  ,"kyc.upload.kind.selfie": "Selfie"
+  ,"kyc.uploadFailed.title": "Upload fehlgeschlagen"
+  ,"kyc.form.fullName": "Vollständiger Name"
+  ,"kyc.form.fullName.placeholder": "Jane Doe"
+  ,"kyc.form.dob": "Geburtsdatum"
+  ,"kyc.form.country": "Land"
+  ,"kyc.form.country.placeholder": "Land"
+  ,"kyc.form.docType": "Dokumenttyp"
+  ,"kyc.form.docType.select": "Auswählen…"
+  ,"kyc.form.docType.passport": "Reisepass"
+  ,"kyc.form.docType.idCard": "Personalausweis"
+  ,"kyc.form.docType.driver": "Führerschein"
+  ,"kyc.form.docFrontUrl": "Dokument-URL (Vorderseite)"
+  ,"kyc.form.docBackUrl": "Dokument-URL (Rückseite)"
+  ,"kyc.form.selfieUrl": "Selfie-URL"
+  ,"kyc.form.url.placeholder": "https://..."
+  ,"kyc.form.notes": "Notizen (optional)"
+  ,"kyc.form.notes.placeholder": "Optionaler Hinweis"
+  ,"kyc.form.submit": "Antrag senden"
+  ,"kyc.form.submitting": "Wird gesendet…"
+  ,"kyc.applicationId": "Antrags-ID"
+  ,"kyc.noImage": "Kein Bild"
+  ,"kyc.upload": "Hochladen"
+  ,"kyc.uploading": "Hochladen…"
+
+  ,"dmcaSubmit.title": "DMCA-Löschantrag einreichen"
+  ,"dmcaSubmit.validation.title": "Validierung"
+  ,"dmcaSubmit.validation.noUrls": "Fügen Sie mindestens eine verletzende URL hinzu."
+  ,"dmcaSubmit.submitted.title": "Gesendet"
+  ,"dmcaSubmit.submitted.desc": "DMCA-Hinweis eingereicht. Wir prüfen ihn in Kürze."
+  ,"dmcaSubmit.failed.title": "Übermittlung fehlgeschlagen"
+  ,"dmcaSubmit.form.name": "Ihr Name"
+  ,"dmcaSubmit.form.email": "Ihre E-Mail"
+  ,"dmcaSubmit.form.originalUrl": "URL des Originalinhalts"
+  ,"dmcaSubmit.form.infringingUrls": "Verletzende URLs (eine pro Zeile oder kommagetrennt)"
+  ,"dmcaSubmit.form.signature": "Unterschrift (vollständigen Namen eingeben)"
+  ,"dmcaSubmit.form.notes": "Zusätzliche Notizen (optional)"
+  ,"dmcaSubmit.form.submit": "Hinweis senden"
+  ,"dmcaSubmit.form.submitting": "Wird gesendet…"
+  ,"dmcaSubmit.placeholder.name": "Jane Doe"
+  ,"dmcaSubmit.placeholder.email": "sie@beispiel.de"
+  ,"dmcaSubmit.placeholder.originalUrl": "https://ihre-seite.de/original"
+  ,"dmcaSubmit.placeholder.infringingUrls": "https://beispiel.de/verstoß-1\nhttps://beispiel.de/verstoß-2"
+  ,"dmcaSubmit.placeholder.signature": "Jane Doe"
+  ,"dmcaSubmit.placeholder.notes": "Kontext oder Klarstellung"
+
+  ,"modelProfile.notFound.title": "Model nicht gefunden"
+  ,"modelProfile.notFound.subtitle": "Das Model, das du suchst, existiert nicht."
+  ,"modelProfile.goBack": "Zurück"
+  ,"modelProfile.unavailable": "Nicht verfügbar"
+  ,"modelProfile.busy": "Beschäftigt"
+  ,"modelProfile.blocked": "Blockiert"
+  ,"modelProfile.sendMessage.title": "Nachricht senden"
+  ,"modelProfile.sendMessage.placeholder": "Nachricht eingeben"
+  ,"modelProfile.sendMessage.sending": "Wird gesendet…"
+  ,"modelProfile.sendMessage.send": "Senden"
+  ,"modelProfile.blockedNotice": "Du wurdest von diesem Model blockiert."
+  ,"modelProfile.tip.title": "Trinkgeld senden"
+  ,"modelProfile.tip.placeholder": "Betrag"
+  ,"modelProfile.tip.help": "Trinkgelder werden von deinem Wallet-Guthaben abgebucht."
+  ,"modelProfile.tip.sending": "Wird gesendet…"
+  ,"modelProfile.tip.send": "Senden"
+  ,"modelProfile.moderation.title": "Moderation"
+  ,"modelProfile.moderation.placeholder": "Grund für die Meldung"
+  ,"modelProfile.moderation.sending": "Wird gesendet…"
+  ,"modelProfile.moderation.report": "Melden"
+  ,"modelProfile.block": "Blockieren"
+  ,"modelProfile.stats.rating": "Bewertung"
+  ,"modelProfile.stats.viewers": "Zuschauer"
+  ,"modelProfile.alert.blocked": "Du wurdest von diesem Model blockiert."
+  ,"modelProfile.alert.offline": "Dieses Model ist offline."
+  ,"modelProfile.alert.busy": "Dieses Model ist gerade beschäftigt."
+  ,"modelProfile.alert.typeMessage": "Bitte gib eine Nachricht ein"
+  ,"modelProfile.alert.messageFailed": "Nachricht fehlgeschlagen"
+  ,"modelProfile.alert.messageSent": "Nachricht gesendet"
+  ,"modelProfile.alert.enterReason": "Bitte gib einen Grund ein"
+  ,"modelProfile.alert.reportSent": "Meldung gesendet"
+  ,"modelProfile.alert.tipInvalid": "Gib einen gültigen Betrag ein"
+  ,"modelProfile.alert.insufficientFunds": "Nicht genügend Guthaben"
+  ,"modelProfile.alert.tipFailed": "Trinkgeld fehlgeschlagen"
+  ,"modelProfile.alert.thanksTip": "Danke für das Trinkgeld!"
+  ,"modelProfile.alert.blockedDone": "Blockiert"
   },
   es: {
       // Home section subtitles
@@ -1504,9 +1765,9 @@ const translations: Record<Lang, Record<string, string>> = {
       "home.trending.subtitle": "Modelos más populares ahora mismo",
       "home.favorites.subtitle": "Tus modelos guardados",
       "home.all.subtitle": "Explora todos los modelos disponibles",
-    favorites: "Favoritos", login: "Iniciar sesión", signup: "Registrarse", becomeVip: "Miembros VIP", becomeModel: "Hazte Modelo", logout: "Cerrar sesión", welcome: "Bienvenido", searchPlaceholder: "Buscar modelos...", browseModels: "Ver Modelos", startPrivateShow: "Iniciar show privado", startChat: "Iniciar Chat", viewAll: "Ver todo", allModels: "Todos los Modelos", noModelsFound: "No se encontraron modelos", clearFilters: "Limpiar filtros", helpCenter: "Centro de ayuda", contactUs: "Contáctanos", termsOfService: "Términos de servicio", privacyPolicy: "Política de privacidad", cookiePolicy: "Política de cookies", vipMembership: "Membresía VIP", becomeAModel: "Hazte Modelo", yourFavorites: "Tus Favoritos", noFavoritesYet: "Aún no tienes favoritos", tapHeartToAdd: "Toca el corazón en un modelo para agregarlo a favoritos", welcomeBack: "Bienvenido de vuelta", signInToAccount: "Inicia sesión en tu cuenta para acceder al contenido premium", username: "Nombre de usuario", password: "Contraseña", enterUsername: "Ingresa tu nombre de usuario", enterPassword: "Ingresa tu contraseña", signingIn: "Iniciando sesión...", signIn: "Iniciar sesión", dontHaveAccount: "¿No tienes una cuenta?", signUpHere: "Regístrate aquí", loginSuccessful: "Inicio de sesión exitoso", loginFailed: "Error en el inicio de sesión", invalidCredentials: "Usa el nombre de usuario 'testuser' con cualquier contraseña", yearsOld: "años", watching: "viendo", languages: "Idiomas", specialties: "Especialidades", online: "En línea", offline: "Desconectado", securePayments: "Pagos seguros", acceptPaymentMethods: "Aceptamos todos los métodos de pago principales", search: "Buscar", sortBy: "Ordenar por", status: "Estado", all: "Todos", name: "Nombre", rating: "Calificación", viewers: "Espectadores", age: "Edad", showing: "Mostrando", of: "de", models: "modelos"
-    ,"filters.online": "En línea", "filters.top": "Mejor valorados", "filters.vip": "Modelos VIP", "filters.new": "Nuevos modelos", "filters.trending": "Tendencia", "filters.favorites": "Favoritos"
-    ,"filter.online": "En línea ahora", "filter.top": "Mejor valorados", "filter.vip": "Modelos VIP", "filter.new": "Nuevos modelos", "filter.trending": "Tendencia", "filter.favorites": "Favoritos"
+    favorites: "Favoritos", login: "Iniciar sesión", signup: "Registrarse", becomeModel: "Hazte Modelo", logout: "Cerrar sesión", welcome: "Bienvenido", searchPlaceholder: "Buscar modelos...", browseModels: "Ver Modelos", startPrivateShow: "Iniciar show privado", startChat: "Iniciar Chat", viewAll: "Ver todo", allModels: "Todos los Modelos", noModelsFound: "No se encontraron modelos", clearFilters: "Limpiar filtros", helpCenter: "Centro de ayuda", contactUs: "Contáctanos", termsOfService: "Términos de servicio", privacyPolicy: "Política de privacidad", cookiePolicy: "Política de cookies", becomeAModel: "Hazte Modelo", yourFavorites: "Tus Favoritos", noFavoritesYet: "Aún no tienes favoritos", tapHeartToAdd: "Toca el corazón en un modelo para agregarlo a favoritos", welcomeBack: "Bienvenido de vuelta", signInToAccount: "Inicia sesión en tu cuenta para acceder al contenido premium", username: "Nombre de usuario", password: "Contraseña", enterUsername: "Ingresa tu nombre de usuario", enterPassword: "Ingresa tu contraseña", signingIn: "Iniciando sesión...", signIn: "Iniciar sesión", dontHaveAccount: "¿No tienes una cuenta?", signUpHere: "Regístrate aquí", loginSuccessful: "Inicio de sesión exitoso", loginFailed: "Error en el inicio de sesión", invalidCredentials: "Usa el nombre de usuario 'testuser' con cualquier contraseña", yearsOld: "años", watching: "viendo", languages: "Idiomas", specialties: "Especialidades", online: "En línea", offline: "Desconectado", securePayments: "Pagos seguros", acceptPaymentMethods: "Aceptamos todos los métodos de pago principales", search: "Buscar", sortBy: "Ordenar por", status: "Estado", all: "Todos", name: "Nombre", rating: "Calificación", viewers: "Espectadores", age: "Edad", showing: "Mostrando", of: "de", models: "modelos"
+    ,"filters.online": "En línea", "filters.top": "Mejor valorados", "filters.new": "Nuevos modelos", "filters.trending": "Tendencia", "filters.favorites": "Favoritos"
+    ,"filter.online": "En línea ahora", "filter.top": "Mejor valorados", "filter.new": "Nuevos modelos", "filter.trending": "Tendencia", "filter.favorites": "Favoritos"
 
     ,"favorites.title": "Tus Favoritos"
     ,"favorites.empty.title": "Aún no tienes favoritos"
@@ -1524,7 +1785,6 @@ const translations: Record<Lang, Record<string, string>> = {
     ,"footer.about.description": "Plataforma premium de video chat que te conecta con modelos verificados en todo el mundo."
     ,"footer.quickLinks.title": "Enlaces rápidos"
     ,"footer.quickLinks.browse": "Ver Modelos"
-    ,"footer.quickLinks.vip": "Membresía VIP"
     
     ,"footer.quickLinks.becomeModel": "Hazte Modelo"
     
@@ -1543,45 +1803,37 @@ const translations: Record<Lang, Record<string, string>> = {
   ,"footer.links.policies": "Políticas relacionadas"
     ,"footer.copyright": "Todos los derechos reservados. | Solo 18+"
 
-    ,"vip.title": "Membresía VIP"
-    ,"vip.subtitle": "Desbloquea funciones premium y experiencias exclusivas."
-    ,"vip.benefitsTitle": "Beneficios VIP"
-    ,"vip.benefits.0": "Experiencia sin anuncios"
-    ,"vip.benefits.1": "Soporte prioritario"
-    ,"vip.benefits.2": "Shows exclusivos"
-    ,"vip.benefits.3": "Créditos de bono"
-    ,"vip.benefits.4": "Insignia VIP"
-    ,"vip.benefits.5": "Acceso anticipado a funciones"
-    ,"vip.plansTitle": "Elige tu plan"
-    ,"vip.popular": "Más popular"
-    ,"vip.choosePlan": "Elegir plan"
-    ,"vip.plans.basic.name": "Básico"
-    ,"vip.plans.basic.duration": "mes"
-    ,"vip.plans.basic.features.0": "Navegación sin anuncios"
-    ,"vip.plans.basic.features.1": "Insignia VIP"
-    ,"vip.plans.basic.features.2": "Soporte básico"
-    ,"vip.plans.premium.name": "Premium"
-    ,"vip.plans.premium.duration": "mes"
-    ,"vip.plans.premium.features.0": "Todas las funciones Básico"
-    ,"vip.plans.premium.features.1": "Soporte prioritario"
-    ,"vip.plans.premium.features.2": "Acceso a shows exclusivos"
-    ,"vip.plans.premium.features.3": "Créditos mensuales de bono"
-    ,"vip.plans.ultimate.name": "Ultimate"
-    ,"vip.plans.ultimate.duration": "mes"
-    ,"vip.plans.ultimate.features.0": "Todas las funciones Premium"
-    ,"vip.plans.ultimate.features.1": "Acceso anticipado"
-    ,"vip.plans.ultimate.features.2": "Máxima visibilidad"
-    ,"vip.plans.ultimate.features.3": "Créditos de bono dobles"
-    ,"vip.plans.ultimate.features.4": "Conserje dedicado"
-    ,"vip.faqTitle": "Preguntas frecuentes"
-    ,"vip.faq.0.question": "¿Qué incluye VIP?"
-    ,"vip.faq.0.answer": "Acceso a shows exclusivos, mejor visibilidad y más."
-    ,"vip.faq.1.question": "¿Puedo cancelar en cualquier momento?"
-    ,"vip.faq.1.answer": "Sí, puedes cancelar cuando quieras."
-    ,"vip.faq.2.question": "¿Mi pago es seguro?"
-    ,"vip.faq.2.answer": "Todas las transacciones son seguras y cifradas."
-    ,"vip.faq.3.question": "¿Los VIP tienen soporte prioritario?"
-    ,"vip.faq.3.answer": "Sí, los VIP reciben asistencia prioritaria."
+    // Support / FAQ
+    ,"support.title": "Soporte"
+    ,"support.intro": "Accede a recursos, políticas y asistencia para cualquier necesidad."
+    ,"support.help": "Centro de ayuda"
+    ,"support.faq": "FAQ"
+    ,"support.contact": "Contacto"
+    ,"support.email": "Correo"
+    ,"support.needMore": "¿Necesitas más ayuda? Escribe a"
+    ,"faq.title": "Preguntas frecuentes"
+    ,"faq.intro": "Haz clic en una pregunta para ver la respuesta."
+    ,"faq.q1": "¿Cómo creo una cuenta?"
+    ,"faq.a1": "Haz clic en Registrarse, completa los campos requeridos y confirma tu correo para activar la cuenta."
+    ,"faq.q2": "¿Cómo funciona una sesión con una modelo?"
+    ,"faq.a2": "Entra en el perfil de la modelo e inicia la sesión. El tiempo empieza de inmediato y el coste se descuenta automáticamente de tu saldo."
+    ,"faq.q3": "¿Puedo pausar una sesión?"
+    ,"faq.a3": "No. Una vez iniciada, la sesión no se puede pausar ni interrumpir."
+    ,"faq.q4": "¿Hay un bono de bienvenida?"
+    ,"faq.a4": "Sí. Todos los nuevos usuarios reciben un bono de bienvenida de un solo uso, que debe consumirse antes que los créditos reales."
+    ,"faq.q5": "¿Qué pasa si salgo o pierdo la conexión durante una sesión?"
+    ,"faq.a5": "El temporizador sigue corriendo. Al volver, continúas con el tiempo restante disponible."
+    ,"faq.q6": "¿Cómo puedo recargar mi saldo?"
+    ,"faq.a6": "Puedes recargar tu saldo desde la sección Wallet eligiendo uno de los métodos de pago disponibles."
+    ,"faq.q7": "¿Los créditos comprados caducan?"
+    ,"faq.a7": "No. Los créditos comprados no caducan."
+    ,"faq.q8": "¿Los chats y las sesiones son privados?"
+    ,"faq.a8": "Sí. Todas las comunicaciones son privadas y no se registran."
+    ,"faq.q9": "¿Cómo me convierto en modelo?"
+    ,"faq.a9": "Visita la página Hazte Modelo y completa el proceso de registro y verificación."
+    ,"faq.q10": "¿Cómo puedo contactar con soporte?"
+    ,"faq.a10": "Puedes contactar con soporte a través de la página de Contacto o por correo para cualquier necesidad."
+    ,"faq.stillNeed": "¿Aún necesitas ayuda?"
 
     ,"becomeModel.title": "Hazte Modelo"
     ,"becomeModel.subtitle": "Únete a nuestra plataforma y monetiza tu talento."
@@ -1770,6 +2022,143 @@ const translations: Record<Lang, Record<string, string>> = {
   ,"refund.section.law.title": "Derechos Legales"
   ,"refund.section.law.content": "Nada limita los derechos que no pueden excluirse por la normativa aplicable."
   ,"ageCompliance.title": "Verificación de edad (18+) y 2257"
+
+  // Missing keys (kept in sync with EN)
+  ,"email": "Correo"
+  ,"common.loading.auth": "Cargando autenticación…"
+
+  ,"models.subtitle": "Descubre todos nuestros increíbles modelos"
+  ,"notFound.title": "404 Página no encontrada"
+  ,"notFound.subtitle": "La página que buscas no existe."
+
+  ,"ageCompliance.modal.title": "Confirmar edad"
+  ,"ageCompliance.modal.body": "Este sitio contiene contenido para adultos. ¿Confirmas que tienes al menos 18 años (o la mayoría de edad en tu país)?"
+  ,"ageCompliance.modal.yes": "Sí, soy 18+"
+  ,"ageCompliance.modal.no": "No"
+  ,"ageCompliance.modal.blocked": "Sesión finalizada. Para acceder al contenido debes tener al menos 18 años."
+  ,"ageCompliance.modal.exit": "Salir"
+
+  ,"register.title": "Únete a Kasyrooms"
+  ,"register.subtitle": "Crea tu cuenta para acceder a contenido exclusivo"
+  ,"register.firstName": "Nombre"
+  ,"register.firstName.placeholder": "Jane"
+  ,"register.lastName": "Apellido"
+  ,"register.lastName.placeholder": "Doe"
+  ,"register.dob": "Fecha de nacimiento"
+  ,"register.username.placeholder": "Elige un nombre de usuario"
+  ,"register.email.placeholder": "Introduce tu correo"
+  ,"register.password.placeholder": "Crea una contraseña"
+  ,"register.confirmPassword": "Confirmar contraseña"
+  ,"register.confirmPassword.placeholder": "Confirma tu contraseña"
+  ,"register.creating": "Creando cuenta…"
+  ,"register.create": "Crear cuenta"
+  ,"register.haveAccount": "¿Ya tienes una cuenta?"
+  ,"register.signInHere": "Inicia sesión aquí"
+  ,"register.toast.passwordMismatch.title": "Las contraseñas no coinciden"
+  ,"register.toast.passwordMismatch.desc": "Las contraseñas no coinciden"
+  ,"register.toast.accountCreated.title": "Cuenta creada"
+  ,"register.toast.accountCreated.desc": "¡Bienvenido a Kasyrooms!"
+  ,"register.toast.failed.title": "Registro fallido"
+  ,"register.toast.failed.desc": "Inténtalo de nuevo más tarde"
+
+  ,"kyc.title": "Onboarding KYC"
+  ,"kyc.loggedAs": "Conectado como"
+  ,"kyc.validation.title": "Validación"
+  ,"kyc.validation.fullName": "Se requiere nombre completo"
+  ,"kyc.validation.docType": "Selecciona un tipo de documento"
+  ,"kyc.submitted.title": "Enviado"
+  ,"kyc.submitted.desc": "Solicitud KYC creada. Ya puedes subir imágenes."
+  ,"kyc.submissionFailed.title": "Envío fallido"
+  ,"kyc.upload.missingApp.title": "Falta solicitud"
+  ,"kyc.upload.missingApp.desc": "Envía primero el formulario KYC para obtener un ID de solicitud."
+  ,"kyc.upload.noFile.title": "Ningún archivo seleccionado"
+  ,"kyc.upload.noFile.desc": "Elige una imagen para subir."
+  ,"kyc.uploaded.title": "Subido"
+  ,"kyc.uploaded.descSuffix": "subido correctamente."
+  ,"kyc.upload.kind.front": "Frente"
+  ,"kyc.upload.kind.back": "Reverso"
+  ,"kyc.upload.kind.selfie": "Selfie"
+  ,"kyc.uploadFailed.title": "Error al subir"
+  ,"kyc.form.fullName": "Nombre completo"
+  ,"kyc.form.fullName.placeholder": "Jane Doe"
+  ,"kyc.form.dob": "Fecha de nacimiento"
+  ,"kyc.form.country": "País"
+  ,"kyc.form.country.placeholder": "País"
+  ,"kyc.form.docType": "Tipo de documento"
+  ,"kyc.form.docType.select": "Seleccionar…"
+  ,"kyc.form.docType.passport": "Pasaporte"
+  ,"kyc.form.docType.idCard": "Documento de identidad"
+  ,"kyc.form.docType.driver": "Permiso de conducir"
+  ,"kyc.form.docFrontUrl": "URL del documento (frente)"
+  ,"kyc.form.docBackUrl": "URL del documento (reverso)"
+  ,"kyc.form.selfieUrl": "URL del selfie"
+  ,"kyc.form.url.placeholder": "https://..."
+  ,"kyc.form.notes": "Notas (opcional)"
+  ,"kyc.form.notes.placeholder": "Algo que añadir"
+  ,"kyc.form.submit": "Enviar solicitud"
+  ,"kyc.form.submitting": "Enviando…"
+  ,"kyc.applicationId": "ID de solicitud"
+  ,"kyc.noImage": "Sin imagen"
+  ,"kyc.upload": "Subir"
+  ,"kyc.uploading": "Subiendo…"
+
+  ,"dmcaSubmit.title": "Enviar un aviso de retirada DMCA"
+  ,"dmcaSubmit.validation.title": "Validación"
+  ,"dmcaSubmit.validation.noUrls": "Añade al menos una URL infractora."
+  ,"dmcaSubmit.submitted.title": "Enviado"
+  ,"dmcaSubmit.submitted.desc": "Aviso DMCA enviado. Lo revisaremos en breve."
+  ,"dmcaSubmit.failed.title": "Envío fallido"
+  ,"dmcaSubmit.form.name": "Tu nombre"
+  ,"dmcaSubmit.form.email": "Tu correo"
+  ,"dmcaSubmit.form.originalUrl": "URL del contenido original"
+  ,"dmcaSubmit.form.infringingUrls": "URLs infractoras (una por línea o separadas por comas)"
+  ,"dmcaSubmit.form.signature": "Firma (escribe tu nombre completo)"
+  ,"dmcaSubmit.form.notes": "Notas adicionales (opcional)"
+  ,"dmcaSubmit.form.submit": "Enviar aviso"
+  ,"dmcaSubmit.form.submitting": "Enviando…"
+  ,"dmcaSubmit.placeholder.name": "Jane Doe"
+  ,"dmcaSubmit.placeholder.email": "tu@ejemplo.com"
+  ,"dmcaSubmit.placeholder.originalUrl": "https://tu-sitio.com/original"
+  ,"dmcaSubmit.placeholder.infringingUrls": "https://ejemplo.com/infractor-1\nhttps://ejemplo.com/infractor-2"
+  ,"dmcaSubmit.placeholder.signature": "Jane Doe"
+  ,"dmcaSubmit.placeholder.notes": "Contexto o aclaración"
+
+  ,"modelProfile.notFound.title": "Modelo no encontrado"
+  ,"modelProfile.notFound.subtitle": "El modelo que buscas no existe."
+  ,"modelProfile.goBack": "Volver"
+  ,"modelProfile.unavailable": "No disponible"
+  ,"modelProfile.busy": "Ocupado"
+  ,"modelProfile.blocked": "Bloqueado"
+  ,"modelProfile.sendMessage.title": "Enviar un mensaje"
+  ,"modelProfile.sendMessage.placeholder": "Escribe tu mensaje"
+  ,"modelProfile.sendMessage.sending": "Enviando…"
+  ,"modelProfile.sendMessage.send": "Enviar"
+  ,"modelProfile.blockedNotice": "Estás bloqueado por este modelo."
+  ,"modelProfile.tip.title": "Enviar propina"
+  ,"modelProfile.tip.placeholder": "Importe"
+  ,"modelProfile.tip.help": "Las propinas se cobran de tu saldo del wallet."
+  ,"modelProfile.tip.sending": "Enviando…"
+  ,"modelProfile.tip.send": "Enviar"
+  ,"modelProfile.moderation.title": "Moderación"
+  ,"modelProfile.moderation.placeholder": "Motivo de la denuncia"
+  ,"modelProfile.moderation.sending": "Enviando…"
+  ,"modelProfile.moderation.report": "Denunciar"
+  ,"modelProfile.block": "Bloquear"
+  ,"modelProfile.stats.rating": "Valoración"
+  ,"modelProfile.stats.viewers": "Espectadores"
+  ,"modelProfile.alert.blocked": "Estás bloqueado por este modelo."
+  ,"modelProfile.alert.offline": "Este modelo está desconectado."
+  ,"modelProfile.alert.busy": "Este modelo está ocupado actualmente."
+  ,"modelProfile.alert.typeMessage": "Por favor escribe un mensaje"
+  ,"modelProfile.alert.messageFailed": "Error al enviar el mensaje"
+  ,"modelProfile.alert.messageSent": "Mensaje enviado"
+  ,"modelProfile.alert.enterReason": "Por favor introduce un motivo"
+  ,"modelProfile.alert.reportSent": "Denuncia enviada"
+  ,"modelProfile.alert.tipInvalid": "Introduce un importe válido"
+  ,"modelProfile.alert.insufficientFunds": "Fondos insuficientes"
+  ,"modelProfile.alert.tipFailed": "Error al enviar la propina"
+  ,"modelProfile.alert.thanksTip": "¡Gracias por la propina!"
+  ,"modelProfile.alert.blockedDone": "Bloqueado"
   },
 };
 

@@ -69,7 +69,6 @@ export default function Footer() {
                 <AccordionContent>
                   <ul className="space-y-2 text-sm">
                     <li><a href="/models" className="text-muted hover:text-gold-primary transition-colors text-left" data-testid="footer-link-browse">{t('footer.quickLinks.browse')}</a></li>
-                    {/* VIP removed */}
                     <li><a href="/become-model" className="text-muted hover:text-gold-primary transition-colors text-left" data-testid="footer-link-become-model">{t('footer.quickLinks.becomeModel')}</a></li>
                     {user?.role === 'model' && (
                       <li><a href="/dashboard/model" className="text-muted hover:text-gold-primary transition-colors text-left">Model Dashboard</a></li>
@@ -101,7 +100,6 @@ export default function Footer() {
             <h3 className="font-semibold text-foreground mb-4">{t('footer.quickLinks.title')}</h3>
             <ul className="space-y-2 text-sm">
               <li><a href="/models" className="text-muted hover:text-gold-primary transition-colors text-left" data-testid="footer-link-browse">{t('footer.quickLinks.browse')}</a></li>
-              {/* VIP removed */}
               <li><a href="/become-model" className="text-muted hover:text-gold-primary transition-colors text-left" data-testid="footer-link-become-model">{t('footer.quickLinks.becomeModel')}</a></li>
               {user?.role === 'model' && (
                 <li><a href="/dashboard/model" className="text-muted hover:text-gold-primary transition-colors text-left">Model Dashboard</a></li>
